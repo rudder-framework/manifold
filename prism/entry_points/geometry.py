@@ -161,6 +161,19 @@ from prism.modules.wavelet_microscope import (
     extract_wavelet_features,
 )
 
+# V2 Architecture: Geometry from Laplace fields
+from prism.geometry.snapshot import (
+    compute_geometry_at_t,
+    compute_geometry_trajectory,
+    snapshot_to_vector,
+    get_unified_timestamps,
+)
+from prism.geometry.coupling import compute_coupling_matrix, compute_affinity_matrix
+from prism.geometry.divergence import compute_divergence, compute_divergence_trajectory
+from prism.geometry.modes import discover_modes as discover_modes_v2, track_mode_evolution
+from prism.signals.types import LaplaceField, GeometrySnapshot
+from prism.modules.laplace_transform import compute_laplace_field as compute_laplace_field_v2
+
 warnings.filterwarnings('ignore')
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -1112,6 +1125,208 @@ def clear_progress():
 
 
 # =============================================================================
+# V2 ARCHITECTURE: GEOMETRY FROM LAPLACE FIELDS
+# =============================================================================
+
+def load_laplace_fields_v2(
+    domain: str = None,
+) -> Dict[str, LaplaceField]:
+    """
+    Load V2 LaplaceFields from parquet storage.
+
+    Args:
+        domain: Domain name
+
+    Returns:
+        Dict mapping signal_id to LaplaceField
+    """
+    field_path = get_parquet_path('vector', 'laplace_field_v2')
+    if not field_path.exists():
+        logger.warning(f"No V2 Laplace fields at {field_path}. Run laplace.py --v2 first.")
+        return {}
+
+    # Load field data
+    df = pl.read_parquet(field_path)
+
+    # Group by signal_id and reconstruct LaplaceFields
+    fields = {}
+    for signal_id in df['signal_id'].unique().sort().to_list():
+        signal_data = df.filter(pl.col('signal_id') == signal_id).sort(['timestamp', 's_idx'])
+
+        # Get unique timestamps and s_values
+        timestamps = signal_data['timestamp'].unique().sort().to_numpy()
+        s_values = signal_data['s_value'].unique().sort().to_numpy()
+
+        n_t = len(timestamps)
+        n_s = len(s_values)
+
+        # Reconstruct field matrix [n_t × n_s]
+        field_matrix = np.zeros((n_t, n_s), dtype=np.complex128)
+
+        for row in signal_data.iter_rows(named=True):
+            t_idx = np.searchsorted(timestamps, row['timestamp'])
+            s_idx = row['s_idx']
+            field_matrix[t_idx, s_idx] = complex(row['real'], row['imag'])
+
+        fields[signal_id] = LaplaceField(
+            signal_id=signal_id,
+            timestamps=timestamps,
+            s_values=s_values,
+            field=field_matrix,
+        )
+
+    logger.info(f"Loaded {len(fields)} LaplaceFields from {field_path}")
+    return fields
+
+
+def compute_geometry_v2(
+    fields: Dict[str, LaplaceField],
+    verbose: bool = True,
+) -> Tuple[List[GeometrySnapshot], Dict]:
+    """
+    V2 Architecture: Compute geometry snapshots from Laplace fields.
+
+    Uses compute_geometry_at_t for each unified timestamp.
+
+    Args:
+        fields: Dict mapping signal_id to LaplaceField
+        verbose: Print progress
+
+    Returns:
+        (list of GeometrySnapshots, dict of statistics)
+    """
+    if not fields:
+        return [], {'n_snapshots': 0}
+
+    # Get unified timestamps from all fields
+    timestamps = get_unified_timestamps(fields)
+
+    if verbose:
+        logger.info(f"V2 Geometry: {len(fields)} signals, {len(timestamps)} timestamps")
+
+    # Compute geometry at each timestamp
+    snapshots = compute_geometry_trajectory(fields, timestamps)
+
+    if verbose:
+        logger.info(f"  Computed {len(snapshots)} geometry snapshots")
+
+    stats = {
+        'n_signals': len(fields),
+        'n_timestamps': len(timestamps),
+        'n_snapshots': len(snapshots),
+    }
+
+    return snapshots, stats
+
+
+def snapshots_to_rows(
+    snapshots: List[GeometrySnapshot],
+    computed_at: datetime = None,
+) -> List[Dict]:
+    """
+    Convert GeometrySnapshots to row format for parquet storage.
+
+    Args:
+        snapshots: List of GeometrySnapshot objects
+        computed_at: Computation timestamp
+
+    Returns:
+        List of row dictionaries
+    """
+    if computed_at is None:
+        computed_at = datetime.now()
+
+    rows = []
+    for snap in snapshots:
+        # Store per-snapshot metrics
+        rows.append({
+            'timestamp': snap.timestamp,
+            'n_signals': snap.n_signals,
+            'divergence': float(snap.divergence),
+            'n_modes': snap.n_modes,
+            'mean_mode_coherence': float(np.mean(snap.mode_coherence)) if len(snap.mode_coherence) > 0 else 0.0,
+            'mean_coupling': float(np.mean(snap.coupling_matrix)) if snap.coupling_matrix.size > 0 else 0.0,
+            'signal_ids': ','.join(snap.signal_ids),
+            'computed_at': computed_at,
+        })
+
+    return rows
+
+
+def run_v2_geometry(
+    verbose: bool = True,
+    domain: str = None,
+) -> Dict:
+    """
+    Run V2 geometry computation.
+
+    Loads LaplaceFields, computes geometry snapshots, saves to parquet.
+
+    Args:
+        verbose: Print progress
+        domain: Domain name
+
+    Returns:
+        Dict with processing statistics
+    """
+    computed_at = datetime.now()
+
+    # Load LaplaceFields
+    fields = load_laplace_fields_v2(domain=domain)
+
+    if not fields:
+        logger.warning("No fields loaded. Run laplace.py --v2 first.")
+        return {'snapshots': 0}
+
+    # Compute geometry snapshots
+    snapshots, stats = compute_geometry_v2(fields, verbose=verbose)
+
+    if not snapshots:
+        return stats
+
+    # Convert to rows for storage
+    rows = snapshots_to_rows(snapshots, computed_at)
+
+    if verbose:
+        logger.info(f"  Saving {len(rows)} geometry snapshot rows...")
+
+    # Save to parquet
+    df = pl.DataFrame(rows, infer_schema_length=None)
+    geom_path = get_parquet_path('geometry', 'snapshots_v2')
+    upsert_parquet(df, geom_path, ['timestamp'])
+
+    if verbose:
+        logger.info(f"  Saved: {geom_path}")
+
+    # Also save coupling matrices (detailed) if not too large
+    if len(snapshots) <= 1000:
+        coupling_rows = []
+        for snap in snapshots:
+            if snap.n_signals > 0:
+                for i, sig_a in enumerate(snap.signal_ids):
+                    for j, sig_b in enumerate(snap.signal_ids):
+                        if i < j:  # Upper triangle only
+                            coupling_rows.append({
+                                'timestamp': snap.timestamp,
+                                'signal_a': sig_a,
+                                'signal_b': sig_b,
+                                'coupling': float(snap.coupling_matrix[i, j]),
+                                'computed_at': computed_at,
+                            })
+
+        if coupling_rows:
+            coupling_df = pl.DataFrame(coupling_rows, infer_schema_length=None)
+            coupling_path = get_parquet_path('geometry', 'coupling_v2')
+            upsert_parquet(coupling_df, coupling_path, ['timestamp', 'signal_a', 'signal_b'])
+
+            if verbose:
+                logger.info(f"  Saved coupling: {coupling_path} ({len(coupling_rows):,} pairs)")
+
+    stats['saved_rows'] = len(rows)
+    return stats
+
+
+# =============================================================================
 # CLI
 # =============================================================================
 
@@ -1127,6 +1342,8 @@ def main():
                             help='Process within-cohort signal geometry (pairwise + cohort-level)')
     mode_group.add_argument('--cohort', action='store_true',
                             help='Process cross-cohort geometry (cohort comparisons)')
+    mode_group.add_argument('--v2', action='store_true',
+                            help='V2 Architecture: Compute geometry from Laplace fields')
 
     # Production flags
     parser.add_argument('--force', action='store_true',
@@ -1158,6 +1375,21 @@ def main():
     domain = require_domain(args.domain, "Select domain for geometry")
     os.environ["PRISM_DOMAIN"] = domain
     print(f"Domain: {domain}", flush=True)
+
+    # V2 Architecture: Geometry from Laplace fields
+    if args.v2:
+        logger.info("=" * 80)
+        logger.info("V2 ARCHITECTURE: Geometry from Laplace Fields")
+        logger.info("=" * 80)
+        ensure_schema()
+        result = run_v2_geometry(verbose=True, domain=domain)
+        logger.info("")
+        logger.info("=" * 80)
+        logger.info("COMPLETE")
+        logger.info("=" * 80)
+        logger.info(f"  Snapshots: {result.get('n_snapshots', 0)}")
+        logger.info(f"  Saved rows: {result.get('saved_rows', 0)}")
+        return 0
 
     # ==========================================================================
     # CRITICAL: --testing guard

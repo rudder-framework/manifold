@@ -9,25 +9,31 @@ Storage: Polars + Parquet (data/ directory)
 
 Pipeline Architecture:
 
-    CORE PIPELINE:
-        fetch → characterize → signal_vector → laplace → geometry → state
+    CORE PIPELINE (6 entry points):
+        fetch → signal_vector → geometry → state → physics
+                                   ↓
+                            (laplace computed
+                             internally here)
 
-    DYNAMICAL SYSTEMS:
-        generate_dynamical → dynamic_vector → dynamic_state → physics
+    Entry points orchestrate. Modules compute.
 
 Usage:
     # Core pipeline
     python -m prism.entry_points.fetch --cmapss
-    python -m prism.entry_points.characterize
-    python -m prism.entry_points.signal_vector
-    python -m prism.entry_points.laplace
-    python -m prism.entry_points.geometry
+    python -m prism.entry_points.signal_vector --signal --domain cmapss
+    python -m prism.entry_points.geometry --signal --domain cmapss
     python -m prism.entry_points.state
-
-    # Dynamical systems validation
-    python -m prism.entry_points.generate_dynamical --system lorenz
-    python -m prism.entry_points.dynamic_vector
     python -m prism.entry_points.physics
+
+    # V2 Architecture (Laplace-based)
+    python -m prism.entry_points.signal_vector --signal --domain cmapss
+    python -m prism.laplace.compute --v2 --domain cmapss
+    python -m prism.entry_points.geometry --v2 --domain cmapss
+    python -m prism.entry_points.state --v2
+
+    # Dynamical systems (moved to prism.testing)
+    python -m prism.testing.dynamical --system lorenz
+    python -m prism.testing.dynamic_vector
 """
 
 from typing import Dict, Any, Optional
@@ -38,7 +44,7 @@ from typing import Dict, Any, Optional
 
 ENTRY_POINT_REGISTRY: Dict[str, Dict[str, Any]] = {
     # ==========================================================================
-    # CORE PIPELINE
+    # CORE PIPELINE (6 entry points)
     # ==========================================================================
     'fetch': {
         'module': 'prism.entry_points.fetch',
@@ -56,68 +62,23 @@ ENTRY_POINT_REGISTRY: Dict[str, Dict[str, Any]] = {
 
     'signal_vector': {
         'module': 'prism.entry_points.signal_vector',
-        'goal': 'Compute vector metrics for each signal (51 metrics: entropy, hurst, lyapunov, RQA, etc.)',
+        'goal': 'Compute vector metrics for each signal (point-wise + windowed)',
         'inputs': ['raw/observations.parquet', 'raw/characterization.parquet'],
-        'outputs': ['vector/signal.parquet'],
-    },
-
-    'laplace': {
-        'module': 'prism.entry_points.laplace',
-        'goal': 'Compute Laplace field (gradient, laplacian, divergence) on signal vectors',
-        'inputs': ['vector/signal.parquet'],
-        'outputs': ['vector/signal_field.parquet'],
-    },
-
-    'laplace_pairwise': {
-        'module': 'prism.entry_points.laplace_pairwise',
-        'goal': 'Compute pairwise geometry in Laplace field space (vectorized)',
-        'inputs': ['vector/signal_field.parquet'],
-        'outputs': ['geometry/laplace_pair.parquet'],
+        'outputs': ['vector/signal.parquet', 'vector/signal_dense.parquet'],
     },
 
     'geometry': {
         'module': 'prism.entry_points.geometry',
-        'goal': 'Compute cohort geometry (PCA, MST, clustering, LOF) + modes + wavelet',
+        'goal': 'Compute cohort geometry (PCA, MST, clustering, LOF) + modes + wavelet. Calls laplace internally.',
         'inputs': ['vector/signal_field.parquet'],
-        'outputs': ['geometry/cohort.parquet', 'geometry/signal_pair.parquet'],
+        'outputs': ['geometry/cohort.parquet', 'geometry/signal_pair.parquet', 'geometry/snapshots_v2.parquet'],
     },
 
     'state': {
         'module': 'prism.entry_points.state',
         'goal': 'Derive query-time state for signals and cohorts',
         'inputs': ['geometry/cohort.parquet'],
-        'outputs': ['state/signal.parquet', 'state/cohort.parquet'],
-    },
-
-    # ==========================================================================
-    # DYNAMICAL SYSTEMS VALIDATION
-    # ==========================================================================
-    'generate_dynamical': {
-        'module': 'prism.entry_points.generate_dynamical',
-        'goal': 'Generate test data from dynamical systems (Lorenz, Rossler, etc.)',
-        'inputs': [],
-        'outputs': ['raw/observations.parquet (dynamical)'],
-    },
-
-    'generate_pendulum_regime': {
-        'module': 'prism.entry_points.generate_pendulum_regime',
-        'goal': 'Generate double pendulum regime data for testing',
-        'inputs': [],
-        'outputs': ['raw/observations.parquet (pendulum)'],
-    },
-
-    'dynamic_vector': {
-        'module': 'prism.entry_points.dynamic_vector',
-        'goal': 'Compute vector metrics for dynamical system data',
-        'inputs': ['raw/observations.parquet'],
-        'outputs': ['vector/signal.parquet'],
-    },
-
-    'dynamic_state': {
-        'module': 'prism.entry_points.dynamic_state',
-        'goal': 'Compute state metrics for dynamical system data',
-        'inputs': ['vector/signal.parquet'],
-        'outputs': ['state/signal.parquet'],
+        'outputs': ['state/signal.parquet', 'state/cohort.parquet', 'state/trajectory_v2.parquet'],
     },
 
     'physics': {
@@ -127,14 +88,80 @@ ENTRY_POINT_REGISTRY: Dict[str, Dict[str, Any]] = {
         'outputs': ['physics/conservation.parquet'],
     },
 
-    # ==========================================================================
-    # SUPERVISED LEARNING BRIDGE
-    # ==========================================================================
     'hybrid': {
         'module': 'prism.entry_points.hybrid',
         'goal': 'Combine PRISM features with ML models for supervised prediction',
         'inputs': ['vector/signal_field.parquet', 'geometry/cohort.parquet'],
         'outputs': ['predictions (in-memory)'],
+    },
+
+    # ==========================================================================
+    # LAPLACE (moved to prism.laplace package - internal, not user-facing)
+    # ==========================================================================
+    'laplace': {
+        'module': 'prism.laplace.compute',
+        'goal': 'Compute Laplace field (internal - called by geometry)',
+        'inputs': ['vector/signal.parquet'],
+        'outputs': ['vector/signal_field.parquet', 'vector/laplace_field_v2.parquet'],
+        'note': 'Use --v2 flag for Running Laplace transform',
+    },
+
+    'laplace_pairwise': {
+        'module': 'prism.laplace.pairwise',
+        'goal': 'Compute pairwise geometry in Laplace field space',
+        'inputs': ['vector/signal_field.parquet'],
+        'outputs': ['geometry/laplace_pair.parquet'],
+    },
+
+    # ==========================================================================
+    # TESTING UTILITIES (moved to prism.testing package)
+    # ==========================================================================
+    'generate_dynamical': {
+        'module': 'prism.testing.dynamical',
+        'goal': 'Generate test data from dynamical systems (Lorenz, Rossler, etc.)',
+        'inputs': [],
+        'outputs': ['raw/observations.parquet (dynamical)'],
+    },
+
+    'generate_pendulum_regime': {
+        'module': 'prism.testing.pendulum',
+        'goal': 'Generate double pendulum regime data for testing',
+        'inputs': [],
+        'outputs': ['raw/observations.parquet (pendulum)'],
+    },
+
+    'dynamic_vector': {
+        'module': 'prism.testing.dynamic_vector',
+        'goal': 'Compute vector metrics for dynamical system data',
+        'inputs': ['raw/observations.parquet'],
+        'outputs': ['vector/signal.parquet'],
+    },
+
+    'dynamic_state': {
+        'module': 'prism.testing.dynamic_state',
+        'goal': 'Compute state metrics for dynamical system data',
+        'inputs': ['vector/signal.parquet'],
+        'outputs': ['state/signal.parquet'],
+    },
+
+    # ==========================================================================
+    # GEOMETRY MODES (moved to prism.geometry package)
+    # ==========================================================================
+    'mode_geometry': {
+        'module': 'prism.geometry.mode_runner',
+        'goal': 'Compute geometry metrics organized by discovered behavioral modes',
+        'inputs': ['vector/signal_field.parquet'],
+        'outputs': ['geometry/mode.parquet'],
+    },
+
+    # ==========================================================================
+    # COHORT STATE (moved to prism.state package)
+    # ==========================================================================
+    'cohort_state': {
+        'module': 'prism.state.cohort',
+        'goal': 'Compute cohort-level state dynamics',
+        'inputs': ['geometry/cohort.parquet'],
+        'outputs': ['state/cohort.parquet'],
     },
 }
 
@@ -179,9 +206,7 @@ except ImportError:
     pass
 
 try:
-    from prism.entry_points.laplace import (
-        compute_laplace_field,
-        WindowConfig,
-    )
+    from prism.modules.laplace_transform import compute_laplace_field
+    from prism.modules.laplace_compute import WindowConfig
 except ImportError:
     pass

@@ -101,6 +101,15 @@ from prism.modules.laplace import (
     add_divergence_to_field_rows,
 )
 
+# V2 Architecture: Pointwise engines (native resolution)
+from prism.engines.pointwise import (
+    HilbertEngine,
+    DerivativesEngine,
+    StatisticalEngine,
+)
+from prism.signals.types import DenseSignal, SparseSignal
+from prism.modules.laplace_transform import compute_laplace_field as compute_laplace_field_v2
+
 # Domain clock for adaptive windowing
 from prism.modules.domain_clock import DomainClock, DomainInfo
 from prism.config.loader import load_clock_config, load_delta_thresholds
@@ -248,12 +257,110 @@ CONDITIONAL_ENGINES = {"spectral", "wavelet", "garch", "lyapunov"}
 # Discontinuity engines: break_detector always runs, heaviside/dirac run if breaks found
 DISCONTINUITY_ENGINES = {"break_detector", "heaviside", "dirac"}
 
+# V2 Architecture: Pointwise engines (native resolution output)
+POINTWISE_ENGINES = {"hilbert", "derivatives", "statistical"}
+
 
 # =============================================================================
 # VECTOR ENGINES
 # =============================================================================
 
 from prism.engines import VECTOR_ENGINES, OBSERVATION_ENGINES, compute_breaks
+
+
+# =============================================================================
+# V2 ARCHITECTURE: POINTWISE ENGINE COMPUTATION
+# =============================================================================
+
+def compute_pointwise_signals(
+    signal_id: str,
+    timestamps: np.ndarray,
+    values: np.ndarray,
+) -> List[DenseSignal]:
+    """
+    Compute all pointwise engine outputs for a signal.
+
+    V2 Architecture: These engines produce values at every timestamp
+    (native resolution), unlike windowed engines which produce sparse output.
+
+    Args:
+        signal_id: Signal identifier
+        timestamps: Array of timestamps
+        values: Array of signal values
+
+    Returns:
+        List of DenseSignal objects (amplitude, phase, freq, velocity, accel, etc.)
+    """
+    results = []
+
+    if len(values) < 10:
+        logger.debug(f"{signal_id}: Insufficient data for pointwise engines ({len(values)})")
+        return results
+
+    # 1. Hilbert Engine - instantaneous amplitude, phase, frequency
+    try:
+        hilbert = HilbertEngine()
+        amp, phase, freq = hilbert.compute(signal_id, timestamps, values)
+        results.extend([amp, phase, freq])
+        logger.debug(f"{signal_id}: Hilbert computed 3 DenseSignals")
+    except Exception as e:
+        logger.debug(f"{signal_id}: Hilbert failed: {e}")
+
+    # 2. Derivatives Engine - velocity, acceleration, jerk
+    try:
+        derivatives = DerivativesEngine()
+        vel, accel, jerk = derivatives.compute(signal_id, timestamps, values)
+        results.extend([vel, accel, jerk])
+        logger.debug(f"{signal_id}: Derivatives computed 3 DenseSignals")
+    except Exception as e:
+        logger.debug(f"{signal_id}: Derivatives failed: {e}")
+
+    # 3. Statistical Engine - zscore, rolling mean, rolling std
+    try:
+        statistical = StatisticalEngine()
+        zscore, rmean, rstd = statistical.compute(signal_id, timestamps, values)
+        results.extend([zscore, rmean, rstd])
+        logger.debug(f"{signal_id}: Statistical computed 3 DenseSignals")
+    except Exception as e:
+        logger.debug(f"{signal_id}: Statistical failed: {e}")
+
+    return results
+
+
+def dense_signals_to_rows(
+    dense_signals: List[DenseSignal],
+    computed_at: datetime,
+) -> List[Dict[str, Any]]:
+    """
+    Convert DenseSignal objects to row dictionaries for storage.
+
+    Args:
+        dense_signals: List of DenseSignal objects
+        computed_at: Computation timestamp
+
+    Returns:
+        List of row dictionaries for parquet storage
+    """
+    rows = []
+    for signal in dense_signals:
+        if not signal.is_valid:
+            continue
+        for i, (t, v) in enumerate(zip(signal.timestamps, signal.values)):
+            if not np.isfinite(v):
+                continue
+            rows.append({
+                'signal_id': signal.source_signal,
+                'obs_date': t,
+                'target_obs': len(signal.timestamps),
+                'actual_obs': len(signal.timestamps),
+                'lookback_start': signal.timestamps[0],
+                'engine': signal.engine,
+                'metric_name': signal.signal_id.split('_')[-1],  # e.g. 'inst_amp'
+                'metric_value': float(v),
+                'computed_at': computed_at,
+                'resolution': 'dense',  # V2: Mark as native resolution
+            })
+    return rows
 
 
 # =============================================================================
@@ -697,6 +804,25 @@ def process_signal_sequential(
         if len(obs_df) == 0:
             return {"signal": signal_id, "windows": 0, "metrics": 0}
 
+        # =================================================================
+        # V2 ARCHITECTURE: POINTWISE ENGINE COMPUTATION (native resolution)
+        # =================================================================
+        # These engines produce values at every timestamp, not windowed
+        full_series = obs_df.sort("obs_date")
+        full_timestamps = full_series["obs_date"].to_numpy()
+        full_values = full_series["value"].to_numpy()
+
+        # Compute pointwise signals (Hilbert, Derivatives, Statistical)
+        dense_signals = compute_pointwise_signals(
+            signal_id=signal_id,
+            timestamps=full_timestamps,
+            values=full_values,
+        )
+
+        # Convert to row format for storage
+        dense_rows = dense_signals_to_rows(dense_signals, datetime.now())
+
+        # =================================================================
         # INLINE CHARACTERIZATION: If engines_to_run not provided, characterize now
         char_summary = None
         if engines_to_run is None and use_inline_characterization:
@@ -934,8 +1060,10 @@ def process_signal_sequential(
             "windows": total_windows,
             "metrics": len(batch_rows),
             "rows": batch_rows,
+            "dense_rows": dense_rows,  # V2: Native resolution pointwise output
             "field_rows": field_rows,
             "char_summary": char_summary,
+            "n_dense_signals": len(dense_signals),  # V2: Count of DenseSignal objects
         }
 
     except Exception as e:
@@ -1004,15 +1132,19 @@ def run_window_tier(
     BATCH_SIZE = 1
     batch_rows = []
     batch_field_rows = []  # Field vectors (laplace)
+    batch_dense_rows = []  # V2: Native resolution pointwise output
     batch_signals = []
     total_windows = 0
     total_metrics = 0
     total_field_rows = 0
+    total_dense_rows = 0  # V2: Track dense signal rows
     errors = []
 
     # Paths
     field_path = get_parquet_path("vector", "signal_field")
+    dense_path = get_parquet_path("vector", "signal_dense")  # V2: Native resolution output
     FIELD_KEY_COLS = ["signal_id", "window_end", "engine", "metric_name"]
+    DENSE_KEY_COLS = ["signal_id", "obs_date", "engine", "metric_name"]  # V2: Dense key cols
 
     if verbose:
         if skipped > 0:
@@ -1048,6 +1180,10 @@ def run_window_tier(
             if "field_rows" in result and result["field_rows"]:
                 batch_field_rows.extend(result["field_rows"])
 
+            # V2: Collect dense rows (pointwise native resolution)
+            if "dense_rows" in result and result["dense_rows"]:
+                batch_dense_rows.extend(result["dense_rows"])
+
             print(f"  {signal_id}", end="", flush=True)
 
         # Write batch when full - COMPUTE → WRITE → RELEASE pattern
@@ -1071,6 +1207,14 @@ def run_window_tier(
                     del field_df
                     batch_field_rows = []
 
+                # V2: WRITE dense rows (pointwise native resolution)
+                if batch_dense_rows:
+                    dense_df = pl.DataFrame(batch_dense_rows, infer_schema_length=None)
+                    upsert_parquet(dense_df, dense_path, DENSE_KEY_COLS)
+                    total_dense_rows += len(batch_dense_rows)
+                    del dense_df
+                    batch_dense_rows = []
+
                 for ind_id, row_count in batch_signals:
                     tracker.mark_completed(ind_id, window_name, rows=row_count)
 
@@ -1090,6 +1234,7 @@ def run_window_tier(
                 batch_rows = []
                 batch_signals = []
                 batch_field_rows = []
+                batch_dense_rows = []
 
         else:
             print(",", end="", flush=True)
@@ -1113,6 +1258,13 @@ def run_window_tier(
             total_field_rows += len(batch_field_rows)
             del field_df
 
+        # V2: WRITE remaining dense rows (pointwise native resolution)
+        if batch_dense_rows:
+            dense_df = pl.DataFrame(batch_dense_rows, infer_schema_length=None)
+            upsert_parquet(dense_df, dense_path, DENSE_KEY_COLS)
+            total_dense_rows += len(batch_dense_rows)
+            del dense_df
+
         for ind_id, row_count in batch_signals:
             tracker.mark_completed(ind_id, window_name, rows=row_count)
 
@@ -1129,7 +1281,7 @@ def run_window_tier(
     # Summary with memory delta
     end_memory = get_memory_usage_mb()
     delta = end_memory - start_memory
-    print(f"\n[{window_name}] Complete: {total_metrics:,} vector rows, {total_field_rows:,} field rows", flush=True)
+    print(f"\n[{window_name}] Complete: {total_metrics:,} windowed rows, {total_dense_rows:,} dense rows, {total_field_rows:,} field rows", flush=True)
     print(f"[{window_name}] Signals: {len(pending)}", flush=True)
     print(f"[{window_name}] Memory: {start_memory:.0f} → {end_memory:.0f} MB (Δ{delta:+.0f} MB)", flush=True)
     if skipped > 0:
@@ -1142,6 +1294,7 @@ def run_window_tier(
         "signals": len(signals),
         "windows": total_windows,
         "metrics": total_metrics,
+        "dense_rows": total_dense_rows,  # V2: Native resolution pointwise output
         "field_rows": total_field_rows,
         "errors": len(errors),
     }
@@ -1501,6 +1654,7 @@ def run_sliding_vectors(
     # Aggregate results
     total_windows = sum(r["windows"] for r in all_results)
     total_metrics = sum(r["metrics"] for r in all_results)
+    total_dense_rows = sum(r.get("dense_rows", 0) for r in all_results)  # V2
     total_field_rows = sum(r.get("field_rows", 0) for r in all_results)
     total_errors = sum(r["errors"] for r in all_results)
 
@@ -1512,11 +1666,13 @@ def run_sliding_vectors(
         print(f"Signals processed: {len(signals)}")
         print(f"Window tiers processed: {len(window_tiers)}")
         print(f"Total windows: {total_windows:,}")
-        print(f"Total vector metrics: {total_metrics:,}")
+        print(f"Total windowed metrics: {total_metrics:,}")
+        print(f"Total dense rows (pointwise): {total_dense_rows:,}")  # V2
         print(f"Total field rows (laplace): {total_field_rows:,}")
         print(f"Errors: {total_errors}")
         print()
-        print(f"Output: vector/signal.parquet (metrics)")
+        print(f"Output: vector/signal.parquet (windowed metrics)")
+        print(f"Output: vector/signal_dense.parquet (V2: native resolution)")  # V2
         print(f"Output: vector/signal_field.parquet (laplace field)")
 
     return {
@@ -1524,6 +1680,7 @@ def run_sliding_vectors(
         "window_tiers": len(window_tiers),
         "windows": total_windows,
         "metrics": total_metrics,
+        "dense_rows": total_dense_rows,  # V2
         "field_rows": total_field_rows,
         "errors": total_errors,
         "results": all_results,

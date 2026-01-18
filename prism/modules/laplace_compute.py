@@ -49,12 +49,23 @@ from datetime import datetime, timedelta
 from dataclasses import dataclass
 
 from prism.db.parquet_store import get_parquet_path, ensure_directories
-from prism.db.polars_io import write_parquet_atomic
+from prism.db.polars_io import write_parquet_atomic, upsert_parquet
 from prism.utils.stride import load_stride_config
 
 # Adaptive domain clock integration
 from prism.config.loader import load_delta_thresholds
 import json
+
+# V2 Architecture: Running Laplace transform
+from prism.modules.laplace_transform import (
+    RunningLaplace,
+    compute_laplace_field as compute_laplace_field_v2,
+    laplace_gradient,
+    laplace_divergence,
+    laplace_energy,
+    decompose_by_scale,
+)
+from prism.signals.types import LaplaceField, DenseSignal
 
 
 # =============================================================================
@@ -486,6 +497,266 @@ def compute_laplace_field(
 
 
 # =============================================================================
+# V2 ARCHITECTURE: RUNNING LAPLACE TRANSFORM
+# =============================================================================
+
+def compute_running_laplace_fields(
+    verbose: bool = True,
+    domain: str = None,
+    s_values: np.ndarray = None,
+) -> Dict[str, LaplaceField]:
+    """
+    V2 Architecture: Compute Running Laplace fields for all signals.
+
+    Uses the RunningLaplace class with O(1) update per observation.
+    Each signal gets a LaplaceField with shape [n_timestamps × n_s].
+
+    Args:
+        verbose: Print progress
+        domain: Domain name (for path resolution)
+        s_values: Laplace s-values (default: logarithmic range)
+
+    Returns:
+        Dict mapping signal_id to LaplaceField
+    """
+    if s_values is None:
+        # Default logarithmic range covering multiple timescales
+        s_values = np.array([0.001, 0.01, 0.05, 0.1, 0.5, 1.0, 2.0, 5.0, 10.0])
+
+    # Load raw observations
+    obs_path = get_parquet_path('raw', 'observations')
+    if not obs_path.exists():
+        raise FileNotFoundError(f"No observations at {obs_path}")
+
+    if verbose:
+        print("=" * 70)
+        print("V2 RUNNING LAPLACE TRANSFORM")
+        print("=" * 70)
+        print(f"  s_values: {s_values}")
+
+    # Scan for signals
+    signals = (
+        pl.scan_parquet(obs_path)
+        .select('signal_id')
+        .unique()
+        .collect()['signal_id']
+        .sort()
+        .to_list()
+    )
+
+    if verbose:
+        print(f"  Signals: {len(signals)}")
+
+    # Compute LaplaceField for each signal
+    fields = {}
+    for idx, signal_id in enumerate(signals):
+        if verbose and (idx + 1) % 50 == 0:
+            print(f"    {idx + 1}/{len(signals)} signals processed")
+
+        # Load signal data
+        signal_data = (
+            pl.scan_parquet(obs_path)
+            .filter(pl.col('signal_id') == signal_id)
+            .select(['obs_date', 'value'])
+            .sort('obs_date')
+            .collect()
+        )
+
+        if len(signal_data) < 10:
+            continue
+
+        timestamps = signal_data['obs_date'].to_numpy()
+        values = signal_data['value'].to_numpy()
+
+        # Compute LaplaceField using batch function
+        field = compute_laplace_field_v2(
+            signal_id=signal_id,
+            timestamps=timestamps,
+            values=values,
+            s_values=s_values,
+            normalize=True,
+        )
+
+        fields[signal_id] = field
+
+    if verbose:
+        print(f"    {len(signals)}/{len(signals)} signals processed (complete)")
+        print(f"\n  LaplaceFields computed: {len(fields)}")
+
+    return fields
+
+
+def laplace_fields_to_rows(
+    fields: Dict[str, LaplaceField],
+    computed_at: datetime = None,
+) -> List[Dict]:
+    """
+    Convert LaplaceFields to row format for parquet storage.
+
+    Args:
+        fields: Dict mapping signal_id to LaplaceField
+        computed_at: Computation timestamp
+
+    Returns:
+        List of row dictionaries
+    """
+    if computed_at is None:
+        computed_at = datetime.now()
+
+    rows = []
+    for signal_id, field in fields.items():
+        # Store magnitude and phase at each (t, s) point
+        for t_idx, t in enumerate(field.timestamps):
+            for s_idx, s in enumerate(field.s_values):
+                F_val = field.field[t_idx, s_idx]
+                rows.append({
+                    'signal_id': signal_id,
+                    'timestamp': t,
+                    's_value': float(np.real(s)),
+                    's_idx': s_idx,
+                    'magnitude': float(np.abs(F_val)),
+                    'phase': float(np.angle(F_val)),
+                    'real': float(np.real(F_val)),
+                    'imag': float(np.imag(F_val)),
+                    'computed_at': computed_at,
+                })
+
+    return rows
+
+
+def compute_laplace_derived_signals(
+    fields: Dict[str, LaplaceField],
+    verbose: bool = True,
+) -> List[DenseSignal]:
+    """
+    Compute derived signals from LaplaceFields.
+
+    Derives:
+    - Gradient (velocity in Laplace space)
+    - Divergence (source/sink indicator)
+    - Energy (total spectral energy)
+    - Scale decomposition (low/mid/high frequency bands)
+
+    Args:
+        fields: Dict mapping signal_id to LaplaceField
+        verbose: Print progress
+
+    Returns:
+        List of DenseSignal objects
+    """
+    derived = []
+
+    for signal_id, field in fields.items():
+        # Gradient (velocity in Laplace space)
+        try:
+            grad_signal = laplace_gradient(field)
+            derived.append(grad_signal)
+        except Exception:
+            pass
+
+        # Divergence (source/sink indicator)
+        try:
+            div_signal = laplace_divergence(field)
+            derived.append(div_signal)
+        except Exception:
+            pass
+
+        # Total energy
+        try:
+            energy_signal = laplace_energy(field)
+            derived.append(energy_signal)
+        except Exception:
+            pass
+
+        # Scale decomposition
+        try:
+            scale_signals = decompose_by_scale(field)
+            derived.extend(scale_signals)
+        except Exception:
+            pass
+
+    if verbose:
+        print(f"  Derived signals: {len(derived)}")
+
+    return derived
+
+
+def run_v2_laplace(
+    verbose: bool = True,
+    domain: str = None,
+) -> Dict:
+    """
+    Run V2 Running Laplace computation.
+
+    Computes LaplaceFields for all signals and stores to parquet.
+
+    Args:
+        verbose: Print progress
+        domain: Domain name
+
+    Returns:
+        Dict with processing statistics
+    """
+    computed_at = datetime.now()
+
+    # Compute LaplaceFields
+    fields = compute_running_laplace_fields(verbose=verbose, domain=domain)
+
+    if not fields:
+        if verbose:
+            print("  No fields computed!")
+        return {'signals': 0, 'rows': 0}
+
+    # Convert to rows for storage
+    rows = laplace_fields_to_rows(fields, computed_at)
+
+    if verbose:
+        print(f"\n  Saving {len(rows):,} field rows...")
+
+    # Save to parquet
+    df = pl.DataFrame(rows, infer_schema_length=None)
+    field_path = get_parquet_path('vector', 'laplace_field_v2')
+    upsert_parquet(df, field_path, ['signal_id', 'timestamp', 's_idx'])
+
+    if verbose:
+        print(f"  Saved: {field_path}")
+
+    # Compute and save derived signals
+    derived = compute_laplace_derived_signals(fields, verbose=verbose)
+
+    if derived:
+        derived_rows = []
+        for signal in derived:
+            if not signal.is_valid:
+                continue
+            for t, v in zip(signal.timestamps, signal.values):
+                if not np.isfinite(v):
+                    continue
+                derived_rows.append({
+                    'signal_id': signal.source_signal,
+                    'timestamp': t,
+                    'engine': signal.engine,
+                    'metric_name': signal.signal_id.split('_')[-1],
+                    'value': float(v),
+                    'computed_at': computed_at,
+                })
+
+        if derived_rows:
+            derived_df = pl.DataFrame(derived_rows, infer_schema_length=None)
+            derived_path = get_parquet_path('vector', 'laplace_derived_v2')
+            upsert_parquet(derived_df, derived_path, ['signal_id', 'timestamp', 'engine', 'metric_name'])
+
+            if verbose:
+                print(f"  Saved derived: {derived_path} ({len(derived_rows):,} rows)")
+
+    return {
+        'signals': len(fields),
+        'field_rows': len(rows),
+        'derived_signals': len(derived),
+    }
+
+
+# =============================================================================
 # CLI
 # =============================================================================
 
@@ -506,7 +777,15 @@ Same hammer, different nails:
 
   # Custom entity
   python -m prism.entry_points.laplace --input mydata.parquet --entity-col cohort_id
+
+  # V2 Running Laplace (new architecture)
+  python -m prism.entry_points.laplace --v2
         """
+    )
+    parser.add_argument(
+        '--v2',
+        action='store_true',
+        help='V2 Architecture: Use Running Laplace transform F(s,t)'
     )
     parser.add_argument(
         '--level',
@@ -584,6 +863,23 @@ Same hammer, different nails:
     print(f"Domain: {domain}", flush=True)
 
     ensure_directories()
+
+    # V2 Architecture: Running Laplace transform
+    if args.v2:
+        if not args.quiet:
+            print("=" * 70)
+            print("V2 ARCHITECTURE: Running Laplace Transform")
+            print("=" * 70)
+        result = run_v2_laplace(verbose=not args.quiet, domain=domain)
+        if not args.quiet:
+            print()
+            print("=" * 70)
+            print("COMPLETE")
+            print("=" * 70)
+            print(f"  Signals processed: {result['signals']}")
+            print(f"  Field rows: {result['field_rows']:,}")
+            print(f"  Derived signals: {result.get('derived_signals', 0)}")
+        return
 
     # Load config (only used if input lacks window columns)
     config = load_config_from_stride(args.tier)
