@@ -1,80 +1,99 @@
-# Python bytecode / caches
+# =============================================================================
+# PRISM Diagnostics .gitignore
+# =============================================================================
+# All data lives on local machine - only code and docs go to GitHub
+
+# =============================================================================
+# DATA (all local, never commit)
+# =============================================================================
+/data/
+
+# Parquet files anywhere
+*.parquet
+
+# Raw data files
+*.csv
+*.tsv
+*.h5
+*.hdf5
+*.nc
+*.mat
+
+# =============================================================================
+# PYTHON
+# =============================================================================
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
 
 # Virtual environments
-.venv/
 venv/
+.venv/
 env/
-.env
-.env.*
-.env_guard.sh
-.claude/settings.local.json
+ENV/
 
-# Databases (runtime state)
+# =============================================================================
+# RUNTIME / TEMP
+# =============================================================================
+*.log
+*.tmp
+tmp/
+temp/
+.cache/
+runtime/
+scratch/
+
+# Databases (legacy)
 *.duckdb
 *.duckdb.wal
 *.db
 *.sqlite
 *.sqlite3
 
-# Archives
-*.zip
+# =============================================================================
+# SECRETS / CREDENTIALS
+# =============================================================================
+.env
+.env.*
+*.pem
+*.key
+secrets/
+credentials/
 
-# Runtime outputs / experiment artifacts
-# output/ is tracked for sharing via git pull
-runtime/
-results/
-/logs/
-reports/
-!sql/reports/
-!notebooks/logs/
-
-# Temporary / scratch files
-tmp/
-temp/
-.cache/
-
-# OS / editor
+# =============================================================================
+# OS / EDITOR
+# =============================================================================
 .DS_Store
+.DS_Store?
+._*
 Thumbs.db
 *.swp
 *.swo
+*~
+
+# IDEs
 .idea/
 .vscode/
+*.sublime-*
 
-# Secrets / credentials
-*.pem
-*.key
-*.env
-.env.*
-
-# Data directories
-/data/
-prism_data/
-EEG.csv/
-
-# Python packaging
-*.egg-info/
-dist/
-build/
-
-# Compiled extensions
-*.dylib
-*.so
-
-# Generated documentation
-docs/_build/
-docs/*.pdf
-docs/*.html
-docs/*.tmp
-
-# Test artifacts
+# =============================================================================
+# TESTING
+# =============================================================================
 .pytest_cache/
 .coverage
 htmlcov/
-placeholder/
-one-time.md
-zshrc.md
+.tox/
+.nox/
+
+# =============================================================================
+# MISC
+# =============================================================================
+*.zip
+*.tar.gz
+*.rar
