@@ -18,9 +18,15 @@ domains:
 
   # Aerospace / Prognostics
   cmapss:
-    description: "NASA C-MAPSS turbofan engine degradation (per-engine cycles)"
+    description: "NASA C-MAPSS turbofan engine degradation (all FD001-FD004)"
     source: "NASA Prognostics Repository"
     # window: 50 cycles, stride: 5 cycles
+
+  fd001:
+    description: "C-MAPSS FD001 - single operating condition, single fault mode"
+    source: "NASA Prognostics Repository"
+    window_profile: cmapss
+    # window: 50 cycles, stride: 5 cycles (inherits from cmapss)
 
   # Dynamical Systems (validation)
   dynamical:

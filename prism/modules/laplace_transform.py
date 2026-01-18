@@ -18,7 +18,7 @@ from typing import Optional, List, Tuple, Union
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from prism.signals.types import LaplaceField, DenseSignal
+from prism.modules.signals.types import LaplaceField, DenseSignal
 
 
 # =============================================================================

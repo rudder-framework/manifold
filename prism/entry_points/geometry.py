@@ -171,7 +171,7 @@ from prism.geometry.snapshot import (
 from prism.geometry.coupling import compute_coupling_matrix, compute_affinity_matrix
 from prism.geometry.divergence import compute_divergence, compute_divergence_trajectory
 from prism.geometry.modes import discover_modes as discover_modes_v2, track_mode_evolution
-from prism.signals.types import LaplaceField, GeometrySnapshot
+from prism.modules.signals.types import LaplaceField, GeometrySnapshot
 from prism.modules.laplace_transform import compute_laplace_field as compute_laplace_field_v2
 
 warnings.filterwarnings('ignore')

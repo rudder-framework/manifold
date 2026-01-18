@@ -69,6 +69,21 @@ from prism.engines.phase_detector import PhaseDetectorEngine
 from prism.engines.cohort_aggregator import CohortAggregatorEngine
 from prism.engines.transfer_detector import TransferDetectorEngine
 
+# V2 Architecture: State trajectory from geometry snapshots
+from prism.state.trajectory import (
+    compute_state_trajectory,
+    detect_failure_acceleration,
+    compute_state_metrics,
+    find_acceleration_events,
+    compute_trajectory_curvature,
+)
+from prism.geometry.snapshot import (
+    compute_geometry_trajectory,
+    snapshot_to_vector,
+    get_unified_timestamps,
+)
+from prism.modules.signals.types import GeometrySnapshot, StateTrajectory, LaplaceField
+
 warnings.filterwarnings('ignore')
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -829,6 +844,229 @@ def merge_state_results(temp_paths: List[Path], verbose: bool = True) -> Dict[st
 
 
 # =============================================================================
+# V2 ARCHITECTURE: STATE TRAJECTORY FROM GEOMETRY SNAPSHOTS
+# =============================================================================
+
+def load_geometry_snapshots_v2() -> List[GeometrySnapshot]:
+    """
+    Load V2 GeometrySnapshots from parquet storage.
+
+    Returns:
+        List of GeometrySnapshot objects sorted by timestamp
+    """
+    geom_path = get_parquet_path('geometry', 'snapshots_v2')
+    if not geom_path.exists():
+        logger.warning(f"No V2 geometry snapshots at {geom_path}. Run geometry --v2 first.")
+        return []
+
+    df = pl.read_parquet(geom_path).sort('timestamp')
+
+    # Also load coupling matrices if available
+    coupling_path = get_parquet_path('geometry', 'coupling_v2')
+    coupling_by_timestamp = {}
+    if coupling_path.exists():
+        coupling_df = pl.read_parquet(coupling_path)
+        for ts in coupling_df['timestamp'].unique().to_list():
+            ts_data = coupling_df.filter(pl.col('timestamp') == ts)
+            coupling_by_timestamp[ts] = ts_data
+
+    snapshots = []
+    for row in df.iter_rows(named=True):
+        ts = row['timestamp']
+        signal_ids = row['signal_ids'].split(',') if row['signal_ids'] else []
+        n_signals = row['n_signals']
+
+        # Reconstruct coupling matrix if available
+        if ts in coupling_by_timestamp and n_signals > 0:
+            ts_coupling = coupling_by_timestamp[ts]
+            coupling_matrix = np.eye(n_signals)  # Start with identity
+
+            for c_row in ts_coupling.iter_rows(named=True):
+                try:
+                    i = signal_ids.index(c_row['signal_a'])
+                    j = signal_ids.index(c_row['signal_b'])
+                    coupling_matrix[i, j] = c_row['coupling']
+                    coupling_matrix[j, i] = c_row['coupling']
+                except ValueError:
+                    pass
+        else:
+            coupling_matrix = np.array([[]])
+
+        # Create mode arrays from summary values
+        n_modes = row['n_modes']
+        mode_labels = np.zeros(n_signals, dtype=int) if n_signals > 0 else np.array([])
+        mode_coherence = np.array([row['mean_mode_coherence']]) if n_modes > 0 else np.array([])
+
+        snapshots.append(GeometrySnapshot(
+            timestamp=float(ts) if isinstance(ts, (int, float)) else ts.timestamp() if hasattr(ts, 'timestamp') else 0.0,
+            coupling_matrix=coupling_matrix,
+            divergence=row['divergence'],
+            mode_labels=mode_labels,
+            mode_coherence=mode_coherence,
+            signal_ids=signal_ids,
+        ))
+
+    logger.info(f"Loaded {len(snapshots)} GeometrySnapshots from {geom_path}")
+    return snapshots
+
+
+def state_trajectory_to_rows(
+    trajectory: StateTrajectory,
+    computed_at: datetime = None,
+) -> List[Dict]:
+    """
+    Convert StateTrajectory to row format for parquet storage.
+
+    Args:
+        trajectory: StateTrajectory object
+        computed_at: Computation timestamp
+
+    Returns:
+        List of row dictionaries
+    """
+    if computed_at is None:
+        computed_at = datetime.now()
+
+    rows = []
+    n_timestamps = len(trajectory.timestamps)
+
+    for i in range(n_timestamps):
+        # Compute scalar metrics at this timestamp
+        speed = trajectory.speed[i] if hasattr(trajectory, 'speed') else np.linalg.norm(trajectory.velocity[i])
+        accel_mag = trajectory.acceleration_magnitude[i] if hasattr(trajectory, 'acceleration_magnitude') else np.linalg.norm(trajectory.acceleration[i])
+
+        rows.append({
+            'timestamp': trajectory.timestamps[i],
+            'speed': float(speed),
+            'acceleration_magnitude': float(accel_mag),
+            'position_dim': int(trajectory.position.shape[1]) if len(trajectory.position.shape) > 1 else 1,
+            'computed_at': computed_at,
+        })
+
+    return rows
+
+
+def run_v2_state(
+    verbose: bool = True,
+) -> Dict:
+    """
+    Run V2 state trajectory computation.
+
+    Loads GeometrySnapshots, computes state trajectory (position, velocity,
+    acceleration), detects failure signatures, saves to parquet.
+
+    Args:
+        verbose: Print progress
+
+    Returns:
+        Dict with processing statistics
+    """
+    computed_at = datetime.now()
+
+    # Load geometry snapshots
+    snapshots = load_geometry_snapshots_v2()
+
+    if not snapshots:
+        logger.warning("No snapshots loaded. Run geometry --v2 first.")
+        return {'snapshots': 0}
+
+    if verbose:
+        logger.info("=" * 80)
+        logger.info("V2 ARCHITECTURE: State Trajectory from Geometry")
+        logger.info("=" * 80)
+        logger.info(f"  Snapshots: {len(snapshots)}")
+
+    # Compute state trajectory
+    trajectory = compute_state_trajectory(snapshots)
+
+    if verbose:
+        logger.info(f"  Trajectory computed: {len(trajectory.timestamps)} timestamps")
+
+    # Compute state metrics
+    metrics = compute_state_metrics(trajectory)
+
+    if verbose:
+        logger.info(f"  Mean velocity: {metrics['mean_velocity']:.6f}")
+        logger.info(f"  Mean acceleration: {metrics['mean_acceleration']:.6f}")
+
+    # Detect failure acceleration signatures
+    failure_mask = detect_failure_acceleration(trajectory)
+    n_failure_timestamps = int(np.sum(failure_mask))
+
+    if verbose:
+        logger.info(f"  Failure signature timestamps: {n_failure_timestamps}")
+
+    # Find acceleration events
+    events = find_acceleration_events(trajectory)
+
+    if verbose:
+        logger.info(f"  Significant acceleration events: {len(events)}")
+
+    # Compute trajectory curvature
+    curvature = compute_trajectory_curvature(trajectory)
+    mean_curvature = float(np.mean(curvature[~np.isnan(curvature)])) if len(curvature) > 0 else 0.0
+
+    if verbose:
+        logger.info(f"  Mean trajectory curvature: {mean_curvature:.6f}")
+
+    # Convert to rows for storage
+    rows = state_trajectory_to_rows(trajectory, computed_at)
+
+    # Add failure flag and curvature to rows
+    for i, row in enumerate(rows):
+        row['is_failure_signature'] = bool(failure_mask[i]) if i < len(failure_mask) else False
+        row['curvature'] = float(curvature[i]) if i < len(curvature) and not np.isnan(curvature[i]) else 0.0
+
+    if verbose:
+        logger.info(f"\n  Saving {len(rows)} state trajectory rows...")
+
+    # Save trajectory to parquet
+    df = pl.DataFrame(rows, infer_schema_length=None)
+    state_path = get_parquet_path('state', 'trajectory_v2')
+    upsert_parquet(df, state_path, ['timestamp'])
+
+    if verbose:
+        logger.info(f"  Saved: {state_path}")
+
+    # Save events to separate file
+    if events:
+        event_rows = []
+        for event in events:
+            event['computed_at'] = computed_at
+            event_rows.append(event)
+
+        events_df = pl.DataFrame(event_rows, infer_schema_length=None)
+        events_path = get_parquet_path('state', 'events_v2')
+        upsert_parquet(events_df, events_path, ['peak_idx'])
+
+        if verbose:
+            logger.info(f"  Saved events: {events_path} ({len(events)} events)")
+
+    # Save summary metrics
+    summary = {
+        **metrics,
+        'n_failure_timestamps': n_failure_timestamps,
+        'n_events': len(events),
+        'mean_curvature': mean_curvature,
+        'computed_at': computed_at,
+    }
+    summary_df = pl.DataFrame([summary], infer_schema_length=None)
+    summary_path = get_parquet_path('state', 'summary_v2')
+    summary_df.write_parquet(summary_path)
+
+    if verbose:
+        logger.info(f"  Saved summary: {summary_path}")
+
+    return {
+        'snapshots': len(snapshots),
+        'timestamps': len(trajectory.timestamps),
+        'failure_timestamps': n_failure_timestamps,
+        'events': len(events),
+        'saved_rows': len(rows),
+    }
+
+
+# =============================================================================
 # CLI
 # =============================================================================
 
@@ -857,6 +1095,8 @@ Storage: Parquet files (no database locks)
 """
     )
 
+    parser.add_argument('--v2', action='store_true',
+                        help='V2 Architecture: Compute state trajectory from geometry snapshots')
     parser.add_argument('--start', type=str, help='Start date (YYYY-MM-DD)')
     parser.add_argument('--end', type=str, help='End date (YYYY-MM-DD)')
     parser.add_argument('--snapshot', type=str, help='Single snapshot date')
@@ -871,6 +1111,21 @@ Storage: Parquet files (no database locks)
                         help='Enable testing mode. REQUIRED to use limiting flags (--start, --end, --snapshot). Without --testing, all limiting flags are ignored and full run executes.')
 
     args = parser.parse_args()
+
+    # V2 Architecture: State trajectory from geometry snapshots
+    if args.v2:
+        ensure_directories()
+        result = run_v2_state(verbose=not args.quiet)
+        logger.info("")
+        logger.info("=" * 80)
+        logger.info("COMPLETE")
+        logger.info("=" * 80)
+        logger.info(f"  Snapshots processed: {result.get('snapshots', 0)}")
+        logger.info(f"  Timestamps: {result.get('timestamps', 0)}")
+        logger.info(f"  Failure signatures: {result.get('failure_timestamps', 0)}")
+        logger.info(f"  Acceleration events: {result.get('events', 0)}")
+        logger.info(f"  Saved rows: {result.get('saved_rows', 0)}")
+        return 0
 
     # ==========================================================================
     # CRITICAL: --testing guard

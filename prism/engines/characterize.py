@@ -72,7 +72,7 @@ def compute_dfa_with_derivation(
     Returns:
         tuple: (result_dict, Derivation object)
     """
-    from prism.derivations.base import Derivation
+    from prism.entry_points.derivations.base import Derivation
 
     deriv = Derivation(
         engine_name="dfa",

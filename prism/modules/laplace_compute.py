@@ -65,7 +65,7 @@ from prism.modules.laplace_transform import (
     laplace_energy,
     decompose_by_scale,
 )
-from prism.signals.types import LaplaceField, DenseSignal
+from prism.modules.signals.types import LaplaceField, DenseSignal
 
 
 # =============================================================================

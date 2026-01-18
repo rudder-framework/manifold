@@ -97,6 +97,12 @@ domain_windows:
     min_obs: 30
     description: "NASA turbofan engine degradation (per-engine cycles)"
 
+  fd001:
+    window: 50        # ~50 cycles for degradation detection
+    stride: 5         # 5-cycle stride
+    min_obs: 30
+    description: "C-MAPSS FD001 - single condition, single fault mode"
+
   cheme:
     window: 480       # 24 hours of 3-min samples (1 day regime)
     stride: 60        # 3-hour stride

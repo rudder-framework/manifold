@@ -14,6 +14,12 @@ PRISM Diagnostics is a behavioral geometry engine for industrial signal topology
 - Pandas only at engine boundaries (scipy/sklearn compatibility)
 - Data stays local (gitignored), only code goes to GitHub
 
+**Core Philosophy: Do It Right, Not Quick**
+- Correctness over speed - a wrong answer fast is still wrong
+- Complete data, not samples - academic-grade analysis requires full datasets
+- Verify before proceeding - check results match expectations
+- Run the full pipeline - Vector → Geometry → Mode → State
+
 **Design Principles:**
 - Record observations faithfully
 - Persist all measurements to Parquet
@@ -23,8 +29,15 @@ PRISM Diagnostics is a behavioral geometry engine for industrial signal topology
 **Academic Research Standards:**
 - **NO SHORTCUTS** - All engines use complete data (no subsampling)
 - **NO APPROXIMATIONS** - Peer-reviewed algorithms (antropy, pyrqa)
+- **NO SPEED HACKS** - 2-3 hour runs acceptable, 2-3 week runs expected
 - **VERIFIED QUALITY** - All engines audited for data integrity
 - **Publication-grade** - Suitable for peer-reviewed research
+
+**ML Accelerator Benchmarks:**
+- Always train on train set, test on test set
+- Compare predictions with ground truth RUL
+- Use full PRISM pipeline (Vector + Geometry + Laplace + Mode)
+- Report RMSE against published benchmarks
 
 ## Directory Structure
 

@@ -107,7 +107,7 @@ from prism.engines.pointwise import (
     DerivativesEngine,
     StatisticalEngine,
 )
-from prism.signals.types import DenseSignal, SparseSignal
+from prism.modules.signals.types import DenseSignal, SparseSignal
 from prism.modules.laplace_transform import compute_laplace_field as compute_laplace_field_v2
 
 # Domain clock for adaptive windowing
