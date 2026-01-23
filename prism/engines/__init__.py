@@ -97,25 +97,20 @@ from prism.engines.state.break_detector import (
     DEFAULT_CONFIG as BREAK_DETECTOR_CONFIG,
 )
 
-from prism.engines.heaviside import (
-    compute_heaviside,
-    get_heaviside_metrics,
-    identify_steps,
-    reconstruct_step_function,
-    compute_step_residual,
-    StepEvent,
-    DEFAULT_CONFIG as HEAVISIDE_CONFIG,
-)
+from prism.engines.discontinuity.heaviside import compute as compute_heaviside
 
-from prism.engines.dirac import (
-    compute_dirac,
-    get_dirac_metrics,
-    identify_impulses,
-    reconstruct_impulse_response,
-    compute_impulse_residual,
-    ImpulseEvent,
-    DEFAULT_CONFIG as DIRAC_CONFIG,
-)
+from prism.engines.discontinuity.dirac import compute as compute_dirac
+
+
+# Adapter functions for backwards compatibility
+def get_heaviside_metrics(series):
+    """Get heaviside metrics - adapter for discontinuity.heaviside."""
+    return compute_heaviside(series)
+
+
+def get_dirac_metrics(series):
+    """Get dirac metrics - adapter for discontinuity.dirac."""
+    return compute_dirac(series)
 
 
 # =============================================================================
@@ -423,18 +418,8 @@ __all__ = [
     # Heaviside (step function measurement)
     "compute_heaviside",
     "get_heaviside_metrics",
-    "identify_steps",
-    "reconstruct_step_function",
-    "compute_step_residual",
-    "StepEvent",
-    "HEAVISIDE_CONFIG",
 
     # Dirac (impulse measurement)
     "compute_dirac",
     "get_dirac_metrics",
-    "identify_impulses",
-    "reconstruct_impulse_response",
-    "compute_impulse_residual",
-    "ImpulseEvent",
-    "DIRAC_CONFIG",
 ]

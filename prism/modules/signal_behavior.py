@@ -466,12 +466,12 @@ def compute_heaviside(values: np.ndarray) -> Dict[str, Any]:
     metrics = {}
 
     try:
-        from prism.engines.heaviside import get_heaviside_metrics
+        from prism.engines.discontinuity.heaviside import compute as compute_heaviside
 
-        h_metrics = get_heaviside_metrics(values)
+        h_metrics = compute_heaviside(values)
 
         metrics['heaviside_detected'] = h_metrics.get('detected', False)
-        metrics['heaviside_n_steps'] = h_metrics.get('n_steps', 0)
+        metrics['heaviside_n_steps'] = h_metrics.get('count', 0)  # discontinuity uses 'count'
         metrics['heaviside_max_magnitude'] = h_metrics.get('max_magnitude', np.nan)
         metrics['heaviside_mean_magnitude'] = h_metrics.get('mean_magnitude', np.nan)
         metrics['heaviside_up_ratio'] = h_metrics.get('up_ratio', np.nan)
@@ -490,12 +490,12 @@ def compute_dirac(values: np.ndarray) -> Dict[str, Any]:
     metrics = {}
 
     try:
-        from prism.engines.dirac import get_dirac_metrics
+        from prism.engines.discontinuity.dirac import compute as compute_dirac_impl
 
-        d_metrics = get_dirac_metrics(values)
+        d_metrics = compute_dirac_impl(values)
 
         metrics['dirac_detected'] = d_metrics.get('detected', False)
-        metrics['dirac_n_impulses'] = d_metrics.get('n_impulses', 0)
+        metrics['dirac_n_impulses'] = d_metrics.get('count', 0)  # discontinuity uses 'count'
         metrics['dirac_max_magnitude'] = d_metrics.get('max_magnitude', np.nan)
         metrics['dirac_mean_half_life'] = d_metrics.get('mean_half_life', np.nan)
         metrics['dirac_up_ratio'] = d_metrics.get('up_ratio', np.nan)

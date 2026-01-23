@@ -37,19 +37,19 @@ logger = logging.getLogger(__name__)
 
 # Import discontinuity engines
 try:
-    from prism.engines.break_detector import compute_breaks, analyze_break_pattern, get_break_metrics
+    from prism.engines.state.break_detector import compute_breaks, analyze_break_pattern, get_break_metrics
     HAS_BREAK_DETECTOR = True
 except ImportError:
     HAS_BREAK_DETECTOR = False
 
 try:
-    from prism.engines.heaviside import get_heaviside_metrics
+    from prism.engines.discontinuity.heaviside import compute as get_heaviside_metrics
     HAS_HEAVISIDE = True
 except ImportError:
     HAS_HEAVISIDE = False
 
 try:
-    from prism.engines.dirac import get_dirac_metrics
+    from prism.engines.discontinuity.dirac import compute as get_dirac_metrics
     HAS_DIRAC = True
 except ImportError:
     HAS_DIRAC = False
