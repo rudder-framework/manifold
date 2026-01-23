@@ -1587,3 +1587,348 @@ def get_characterization_summary(char_result: CharacterizationResult) -> Dict[st
         'frequency': char_result.frequency,
         'is_step_function': char_result.is_step_function,
     }
+
+
+# =============================================================================
+# UNIFIED 6-AXIS SYSTEM (Signal Typology v2.0)
+# =============================================================================
+# New orthogonal axes for ORTHON framework Layer 1
+#
+# The 6 Axes:
+#   1. Memory        - Temporal persistence (Hurst, ACF decay)
+#   2. Periodicity   - Cyclical structure (FFT, wavelets)
+#   3. Volatility    - Variance dynamics (GARCH, rolling std)
+#   4. Discontinuity - Level shifts / Heaviside (PELT, CUSUM)
+#   5. Impulsivity   - Shocks / Dirac (derivative spikes, kurtosis)
+#   6. Complexity    - Predictability (entropy)
+
+
+def compute_all_axes(
+    signal: np.ndarray,
+    config: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """
+    Compute all 6 orthogonal axes for Signal Typology.
+
+    This is the main computation function called by the typology orchestrator.
+
+    Args:
+        signal: 1D numpy array of observations
+        config: Optional configuration dict
+
+    Returns:
+        Dict with axis scores [0,1] and optional event details
+    """
+    signal = np.asarray(signal, dtype=float)
+    signal = signal[~np.isnan(signal)]
+    n = len(signal)
+
+    if n < 30:
+        return {
+            'memory': np.nan,
+            'periodicity': np.nan,
+            'volatility': np.nan,
+            'discontinuity': np.nan,
+            'impulsivity': np.nan,
+            'complexity': np.nan,
+        }
+
+    config = config or {}
+
+    # Compute each axis
+    memory = _compute_memory_axis(signal)
+    periodicity = _compute_periodicity_axis(signal)
+    volatility = _compute_volatility_axis(signal)
+    discontinuity, disc_events = _compute_discontinuity_axis(signal)
+    impulsivity, impulse_events = _compute_impulsivity_axis(signal)
+    complexity = _compute_complexity_axis(signal)
+
+    result = {
+        'memory': memory,
+        'periodicity': periodicity,
+        'volatility': volatility,
+        'discontinuity': discontinuity,
+        'impulsivity': impulsivity,
+        'complexity': complexity,
+    }
+
+    # Include event details if present
+    if disc_events:
+        result['discontinuity_events'] = disc_events
+    if impulse_events:
+        result['impulse_events'] = impulse_events
+
+    return result
+
+
+def _compute_memory_axis(signal: np.ndarray) -> float:
+    """
+    Compute Memory axis: temporal persistence / long-range dependence.
+
+    Methods:
+        - Hurst exponent via DFA
+        - ACF decay rate
+
+    Returns:
+        Score [0,1] where 1 = strong memory/persistence
+    """
+    n = len(signal)
+    if n < 50:
+        return 0.5
+
+    try:
+        # Use existing Hurst computation (DFA)
+        char = Characterizer()
+        hurst, _ = char._compute_memory(signal)
+
+        # Hurst > 0.5 = persistent, Hurst < 0.5 = anti-persistent
+        # Map to [0,1] where 1 = strong memory
+        # Anti-persistent (H < 0.5) = low memory, Persistent (H > 0.5) = high memory
+        # H = 0.5 = random walk (some memory but no long-range)
+        # Scale: H=0 -> 0, H=0.5 -> 0.5, H=1 -> 1
+        memory_score = float(np.clip(hurst, 0, 1))
+
+        return memory_score
+
+    except Exception:
+        return 0.5
+
+
+def _compute_periodicity_axis(signal: np.ndarray) -> float:
+    """
+    Compute Periodicity axis: cyclical/seasonal structure.
+
+    Methods:
+        - FFT peak detection
+        - Spectral entropy (low = periodic)
+
+    Returns:
+        Score [0,1] where 1 = strong periodicity
+    """
+    n = len(signal)
+    if n < 64:
+        return 0.0
+
+    try:
+        # Use existing periodicity computation
+        char = Characterizer()
+        periodicity = char._compute_periodicity(signal)
+
+        return float(np.clip(periodicity, 0, 1))
+
+    except Exception:
+        return 0.0
+
+
+def _compute_volatility_axis(signal: np.ndarray) -> float:
+    """
+    Compute Volatility axis: variance dynamics / heteroskedasticity.
+
+    Methods:
+        - Rolling std ratio
+        - GARCH-like clustering detection
+
+    Returns:
+        Score [0,1] where 1 = high volatility clustering
+    """
+    n = len(signal)
+    if n < 30:
+        return 0.0
+
+    try:
+        # Use existing volatility computation
+        char = Characterizer()
+        volatility = char._compute_volatility(signal)
+
+        return float(np.clip(volatility, 0, 1))
+
+    except Exception:
+        return 0.0
+
+
+def _compute_discontinuity_axis(signal: np.ndarray) -> Tuple[float, List[Dict]]:
+    """
+    Compute Discontinuity axis: level shifts / structural breaks (Heaviside).
+
+    Methods:
+        - CUSUM changepoint detection
+        - Level shift detection
+        - Magnitude analysis
+
+    Returns:
+        Tuple of (score [0,1], list of event details)
+    """
+    n = len(signal)
+    events = []
+
+    if n < 50:
+        return 0.0, events
+
+    try:
+        # Simple CUSUM-based detection
+        mean_val = np.mean(signal)
+        std_val = np.std(signal)
+
+        if std_val == 0:
+            return 0.0, events
+
+        # Standardize
+        standardized = (signal - mean_val) / std_val
+
+        # CUSUM
+        cusum = np.cumsum(standardized)
+
+        # Find significant deviations (potential changepoints)
+        threshold = np.sqrt(n) * 1.5  # Heuristic threshold
+
+        # Detect level shifts by finding where CUSUM changes direction significantly
+        d_cusum = np.diff(cusum)
+        abs_d_cusum = np.abs(d_cusum)
+
+        # Find peaks in CUSUM derivative (potential changepoints)
+        mean_deriv = np.mean(abs_d_cusum)
+        std_deriv = np.std(abs_d_cusum)
+
+        if std_deriv > 0:
+            z_deriv = (abs_d_cusum - mean_deriv) / std_deriv
+            changepoints = np.where(z_deriv > 3.0)[0]  # 3 sigma threshold
+        else:
+            changepoints = np.array([])
+
+        n_changes = len(changepoints)
+
+        # Also check for level shifts via segment comparison
+        n_segments = 4
+        segment_size = n // n_segments
+        segment_means = []
+
+        for i in range(n_segments):
+            start = i * segment_size
+            end = (i + 1) * segment_size if i < n_segments - 1 else n
+            segment_means.append(np.mean(signal[start:end]))
+
+        # Check for significant mean shifts between segments
+        mean_shifts = np.abs(np.diff(segment_means))
+        significant_shifts = np.sum(mean_shifts > std_val)
+
+        # Combine metrics
+        # More changepoints or significant segment shifts = higher discontinuity
+        change_ratio = min(n_changes / 10, 1.0)  # Cap at 10 changes
+        shift_ratio = significant_shifts / (n_segments - 1)
+
+        discontinuity_score = 0.6 * change_ratio + 0.4 * shift_ratio
+
+        # Build event list
+        for idx in changepoints[:10]:  # Cap at 10 events
+            events.append({
+                'type': 'level_shift',
+                'index': int(idx),
+                'magnitude': float(abs_d_cusum[idx]) if idx < len(abs_d_cusum) else 0.0,
+            })
+
+        return float(np.clip(discontinuity_score, 0, 1)), events
+
+    except Exception:
+        return 0.0, events
+
+
+def _compute_impulsivity_axis(signal: np.ndarray) -> Tuple[float, List[Dict]]:
+    """
+    Compute Impulsivity axis: shocks / spikes / impulse events (Dirac).
+
+    Methods:
+        - Derivative magnitude spikes
+        - Kurtosis (heavy tails)
+        - Isolated outlier detection
+
+    Returns:
+        Tuple of (score [0,1], list of event details)
+    """
+    n = len(signal)
+    events = []
+
+    if n < 30:
+        return 0.0, events
+
+    try:
+        # First derivative (velocity)
+        d1 = np.diff(signal)
+
+        if len(d1) == 0:
+            return 0.0, events
+
+        # Detect spikes in derivative
+        d1_mean = np.mean(np.abs(d1))
+        d1_std = np.std(d1)
+
+        if d1_std == 0:
+            return 0.0, events
+
+        # Z-scores of derivative
+        d1_z = np.abs(d1 - np.mean(d1)) / d1_std
+
+        # Impulses are isolated spikes (not sustained changes)
+        spike_threshold = 3.0  # 3 sigma
+        spike_indices = np.where(d1_z > spike_threshold)[0]
+
+        # Filter to isolated spikes (not consecutive)
+        isolated_spikes = []
+        for idx in spike_indices:
+            # Check if isolated (not part of sustained move)
+            if idx > 0 and idx < len(d1_z) - 1:
+                is_isolated = d1_z[idx - 1] < spike_threshold and d1_z[idx + 1] < spike_threshold
+                if is_isolated or idx == 0 or idx == len(d1_z) - 1:
+                    isolated_spikes.append(idx)
+            elif idx == 0 or idx == len(d1_z) - 1:
+                isolated_spikes.append(idx)
+
+        n_spikes = len(isolated_spikes)
+
+        # Kurtosis (heavy tails indicate impulse-prone)
+        kurtosis = stats.kurtosis(signal)
+        kurtosis_score = np.clip((kurtosis - 3) / 10, 0, 1)  # Excess kurtosis, scaled
+
+        # Combine metrics
+        spike_ratio = min(n_spikes / 5, 1.0)  # Cap at 5 spikes
+        impulsivity_score = 0.5 * spike_ratio + 0.5 * kurtosis_score
+
+        # Build event list
+        for idx in isolated_spikes[:10]:
+            events.append({
+                'type': 'impulse',
+                'index': int(idx),
+                'magnitude': float(d1[idx]) if idx < len(d1) else 0.0,
+                'z_score': float(d1_z[idx]) if idx < len(d1_z) else 0.0,
+            })
+
+        return float(np.clip(impulsivity_score, 0, 1)), events
+
+    except Exception:
+        return 0.0, events
+
+
+def _compute_complexity_axis(signal: np.ndarray) -> float:
+    """
+    Compute Complexity axis: predictability / information content.
+
+    Methods:
+        - Permutation entropy
+        - Sample entropy
+        - Lempel-Ziv complexity
+
+    Returns:
+        Score [0,1] where 1 = high complexity (unpredictable)
+    """
+    n = len(signal)
+    if n < 50:
+        return 0.5
+
+    try:
+        # Use existing complexity computation
+        char = Characterizer()
+        complexity = char._compute_complexity(signal)
+
+        return float(np.clip(complexity, 0, 1))
+
+    except Exception:
+        return 0.5

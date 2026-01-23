@@ -2,6 +2,11 @@
 PRISM Vector Runner
 ===================
 
+DEPRECATED: This module is maintained for backward compatibility only.
+            Use `signal_typology.py` instead for the unified 6-axis system.
+
+            python -m prism.entry_points.signal_typology
+
 Computes behavioral vector metrics from observations using sliding windows.
 Uses inline characterization to determine which engines to run per signal.
 
@@ -46,6 +51,14 @@ Usage:
     python -m prism.entry_points.signal_vector --testing --limit 100
     python -m prism.entry_points.signal_vector --testing --signal sensor_1,sensor_2
 """
+
+import warnings
+warnings.warn(
+    "vector.py is deprecated. Use signal_typology.py instead for the unified 6-axis system: "
+    "python -m prism.entry_points.signal_typology",
+    DeprecationWarning,
+    stacklevel=2
+)
 
 import argparse
 import gc

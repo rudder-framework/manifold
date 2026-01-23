@@ -2,192 +2,99 @@
 Ørthon Signal Typology
 ======================
 
-Signal Typology classifies time series through measurement across
-**six orthogonal axes** combined with **structural discontinuity detection**.
+Signal Typology is Layer 1 of the ORTHON framework:
+
+    Signal Typology    → WHAT is it?     (this package)
+    Behavioral Geometry → HOW does it behave?
+    Dynamical Systems   → WHEN/HOW does it change?
+    Causal Mechanics    → WHY does it change?
 
 The Six Orthogonal Axes:
-    1. Memory        - Long-range dependence (Hurst, ACF decay, spectral slope)
-    2. Information   - Complexity (permutation entropy, sample entropy)
-    3. Recurrence    - Pattern structure (RQA: determinism, laminarity, trapping)
-    4. Volatility    - Amplitude dynamics (GARCH persistence, Hilbert envelope)
-    5. Frequency     - Spectral character (centroid, bandwidth, 1/f character)
-    6. Dynamics      - Stability (Lyapunov exponent, embedding dimension)
+    1. Memory        - Temporal persistence (Hurst, ACF decay)
+    2. Periodicity   - Cyclical structure (FFT, wavelets)
+    3. Volatility    - Variance dynamics (GARCH, rolling std)
+    4. Discontinuity - Level shifts / Heaviside (PELT, CUSUM)
+    5. Impulsivity   - Shocks / Dirac (derivative spikes, kurtosis)
+    6. Complexity    - Predictability (entropy)
 
-Plus: Structural Discontinuity Detection
-    - Dirac (impulse): Transient shocks that decay
-    - Heaviside (step): Permanent level shifts
+Key Design:
+    CONTINUOUS DYNAMICS (smooth behavior):
+        Memory, Periodicity, Volatility, Complexity
 
-Key Insight:
-    "When axes measure different things, disagreement isn't noise — it's discovery.
-    The fingerprint combination reveals what the signal actually IS."
+    DISCRETE EVENTS (structural behavior):
+        Discontinuity (Heaviside - level shifts)
+        Impulsivity (Dirac - shocks/spikes)
 
 Usage:
-    >>> from prism.typology import analyze_signal, analyze_windowed
+    >>> from prism.typology import run_signal_typology, analyze_single
     >>>
-    >>> # Quick analysis
-    >>> typology = analyze_signal(my_series)
-    >>> print(typology.archetype, typology.confidence)
+    >>> # Analyze multiple signals
+    >>> results = run_signal_typology({'signal_1': my_array})
+    >>> print(results['axes']['signal_1'])
+    >>> print(results['classification']['signal_1'])
+    >>> print(results['engine_recommendations']['signal_1'])
     >>>
-    >>> # Windowed analysis with transition detection
-    >>> typologies = analyze_windowed(my_series, window_size=50, step_size=10)
-    >>> for t in typologies:
-    ...     if t.regime_transition.value != "none":
-    ...         print(f"Warning: {t.archetype}: {t.summary}")
+    >>> # Quick single analysis
+    >>> result = analyze_single(my_array)
+    >>> print(result['axes'], result['classification'])
 
-Academic Advancement:
-    Traditional approach: Single metric (Hurst) → single label
-    Ørthon approach: 6 orthogonal axes + discontinuity → fingerprint → archetype
-
-    This enables:
-    - Multi-dimensional regime characterization
-    - Early warning via axis divergence
-    - Differential diagnosis ("what changed, what didn't")
-    - Structural discontinuity as first-class citizen
+Architecture:
+    signal_typology.py (entry point)
+            │
+            ▼
+    orchestrator.py (routes + formats)
+            │
+            ▼
+    characterize.py (computes 6 axes)
+            │
+            ▼
+    engine_mapping.py (selects engines)
 """
 
-__version__ = "0.1.0"
+__version__ = "2.0.0"
 __author__ = "Ørthon Project"
 
-# Core analysis functions
-from .analyzer import (
-    analyze_signal,
-    analyze_windowed,
-    analyze_batch,
-    compare_typologies,
-    find_regime_changes,
-    quick_typology,
-    typologies_to_dataframe,
-    typologies_to_parquet
+# Orchestrator (main API)
+from .orchestrator import (
+    run_signal_typology,
+    analyze_single,
+    get_fingerprint,
+    fingerprint_distance,
+    detect_regime_change,
+    AXIS_NAMES,
 )
 
-# Data models
-from .models import (
-    SignalTypology,
-    MemoryAxis,
-    InformationAxis,
-    RecurrenceAxis,
-    VolatilityAxis,
-    FrequencyAxis,
-    DynamicsAxis,
-    StructuralDiscontinuity,
-    DiracDiscontinuity,
-    HeavisideDiscontinuity,
-    Archetype,
-    # Enums
-    MemoryClass,
-    InformationClass,
-    RecurrenceClass,
-    VolatilityClass,
-    FrequencyClass,
-    DynamicsClass,
-    ACFDecayType,
-    TransitionType
-)
-
-# Archetype library
-from .archetypes import (
-    ARCHETYPES,
-    match_archetype,
-    compute_fingerprint,
-    diagnose_differential,
-    generate_summary,
-    compute_confidence,
-    compute_boundary_proximity,
-    # Classification helpers
-    classify_memory,
-    classify_information,
-    classify_recurrence,
-    classify_volatility,
-    classify_frequency,
-    classify_dynamics,
-)
-
-# Low-level engines (for custom analysis)
-from .engines import (
-    measure_memory_axis,
-    measure_information_axis,
-    measure_recurrence_axis,
-    measure_volatility_axis,
-    measure_frequency_axis,
-    measure_dynamics_axis,
-    measure_discontinuity,
-    # Individual computations
-    compute_hurst_dfa,
-    compute_hurst_rs,
-    compute_permutation_entropy,
-    compute_sample_entropy,
-    compute_rqa,
-    detect_dirac_impulses,
-    detect_heaviside_steps
+# Engine mapping
+from .engine_mapping import (
+    select_engines,
+    get_primary_classification,
+    get_axis_weights,
+    get_engine_priority,
+    should_run_engine,
+    ENGINE_MAP,
+    COMPOUND_ENGINES,
+    THRESHOLDS,
 )
 
 __all__ = [
     # Version
     "__version__",
 
-    # Main API
-    "analyze_signal",
-    "analyze_windowed",
-    "analyze_batch",
-    "compare_typologies",
-    "find_regime_changes",
-    "quick_typology",
+    # Orchestrator API
+    "run_signal_typology",
+    "analyze_single",
+    "get_fingerprint",
+    "fingerprint_distance",
+    "detect_regime_change",
+    "AXIS_NAMES",
 
-    # Export
-    "typologies_to_dataframe",
-    "typologies_to_parquet",
-
-    # Models
-    "SignalTypology",
-    "MemoryAxis",
-    "InformationAxis",
-    "RecurrenceAxis",
-    "VolatilityAxis",
-    "FrequencyAxis",
-    "DynamicsAxis",
-    "StructuralDiscontinuity",
-    "DiracDiscontinuity",
-    "HeavisideDiscontinuity",
-    "Archetype",
-
-    # Enums
-    "MemoryClass",
-    "InformationClass",
-    "RecurrenceClass",
-    "VolatilityClass",
-    "FrequencyClass",
-    "DynamicsClass",
-    "ACFDecayType",
-    "TransitionType",
-
-    # Archetypes
-    "ARCHETYPES",
-    "match_archetype",
-    "compute_fingerprint",
-    "diagnose_differential",
-    "generate_summary",
-    "compute_confidence",
-    "compute_boundary_proximity",
-    "classify_memory",
-    "classify_information",
-    "classify_recurrence",
-    "classify_volatility",
-    "classify_frequency",
-    "classify_dynamics",
-
-    # Engines
-    "measure_memory_axis",
-    "measure_information_axis",
-    "measure_recurrence_axis",
-    "measure_volatility_axis",
-    "measure_frequency_axis",
-    "measure_dynamics_axis",
-    "measure_discontinuity",
-    "compute_hurst_dfa",
-    "compute_hurst_rs",
-    "compute_permutation_entropy",
-    "compute_sample_entropy",
-    "compute_rqa",
-    "detect_dirac_impulses",
-    "detect_heaviside_steps"
+    # Engine mapping
+    "select_engines",
+    "get_primary_classification",
+    "get_axis_weights",
+    "get_engine_priority",
+    "should_run_engine",
+    "ENGINE_MAP",
+    "COMPOUND_ENGINES",
+    "THRESHOLDS",
 ]
