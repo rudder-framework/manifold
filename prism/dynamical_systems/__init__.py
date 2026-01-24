@@ -1,19 +1,19 @@
 """
-Dynamical Systems Layer
-=======================
+Dynamical Systems
+=================
 
-Layer 3 of the ORTHON framework:
+One of the four ORTHON analytical frameworks:
 
-    Signal Typology     → WHAT is it?
-    Behavioral Geometry → HOW does it behave?
-    Dynamical Systems   → WHEN/HOW does it change? (this package)
-    Causal Mechanics    → WHY does it change?
+    Signal Typology     → What IS this signal?
+    Structural Geometry → What is its STRUCTURE?
+    Dynamical Systems   → How does the SYSTEM evolve? (this framework)
+    Causal Mechanics    → What DRIVES the system?
 
 The Four Dimensions of Dynamical Analysis:
-    1. Regime     - What dynamical state is the system in?
-    2. Stability  - Is the system stable or transitioning?
-    3. Trajectory - Where is the system heading?
-    4. Attractor  - What states does it tend toward?
+    - Regime     - What dynamical state is the system in?
+    - Stability  - Is the system stable or transitioning?
+    - Trajectory - Where is the system heading?
+    - Attractor  - What states does it tend toward?
 
 Key Questions:
     - Is the system in a coupled, decoupled, or transitioning regime?
@@ -35,20 +35,32 @@ Usage:
     >>> print(result.typology.summary)
 
 Architecture:
-    run.py (entry point)
-        │
-        ▼
-    orchestrator.py (routes + formats)
-        │
-        ▼
-    engines/dynamics/* (computations)
-        │
-        ▼
-    engine_mapping.py (selects next-phase engines)
+    dynamical_systems/
+        __init__.py         # This file
+        orchestrator.py     # Routes + formats
+        models.py           # DynamicsVector, DynamicsTypology
+        engine_mapping.py   # Engine selection
 """
 
 __version__ = "1.0.0"
 __author__ = "Ørthon Project"
+
+# Models (dataclasses and enums)
+from .models import (
+    # Enums
+    RegimeClass,
+    StabilityClass,
+    TrajectoryClass,
+    AttractorClass,
+    # Legacy dataclasses (one summary per entity)
+    DynamicsVector,
+    DynamicsTypology,
+    DynamicalSystemsOutput,
+    # New dataclasses (state + transitions per window)
+    DynamicsState,
+    DynamicsTransition,
+    NUMERIC_THRESHOLDS,
+)
 
 # Orchestrator (main API)
 from .orchestrator import (
@@ -57,6 +69,8 @@ from .orchestrator import (
     detect_regime_transition,
     get_trajectory_fingerprint,
     trajectory_distance,
+    DynamicalSystemsFramework,
+    analyze_dynamics,
     DIMENSION_NAMES,
 )
 
@@ -71,22 +85,49 @@ from .engine_mapping import (
     STABILITY_THRESHOLDS,
 )
 
-# Re-export layer classes from prism.layers
-from ..layers.dynamical_systems import (
-    DynamicalSystemsLayer,
-    DynamicalSystemsOutput,
-    DynamicsVector,
-    DynamicsTypology,
-    RegimeClass,
-    StabilityClass,
-    TrajectoryClass,
-    AttractorClass,
-    analyze_dynamics,
+# Transitions
+from .transitions import (
+    detect_transitions,
+    detect_all_transitions,
+    filter_transitions_by_severity,
+    filter_transitions_by_type,
+    get_bifurcations,
+    get_collapses,
+    get_escalation_candidates,
+    summarize_transitions,
+)
+
+# State computation
+from .state_computation import (
+    compute_state,
+    compute_state_from_vector,
+    compute_states_for_entity,
+    classify_regime,
+    classify_stability,
+    classify_trajectory,
+    classify_attractor,
+    state_to_typology,
 )
 
 __all__ = [
     # Version
     "__version__",
+
+    # Enums
+    "RegimeClass",
+    "StabilityClass",
+    "TrajectoryClass",
+    "AttractorClass",
+
+    # Legacy dataclasses (one summary per entity)
+    "DynamicsVector",
+    "DynamicsTypology",
+    "DynamicalSystemsOutput",
+
+    # New dataclasses (state + transitions per window)
+    "DynamicsState",
+    "DynamicsTransition",
+    "NUMERIC_THRESHOLDS",
 
     # Orchestrator API
     "run_dynamical_systems",
@@ -94,6 +135,8 @@ __all__ = [
     "detect_regime_transition",
     "get_trajectory_fingerprint",
     "trajectory_distance",
+    "DynamicalSystemsFramework",
+    "analyze_dynamics",
     "DIMENSION_NAMES",
 
     # Engine mapping
@@ -105,14 +148,26 @@ __all__ = [
     "ENGINE_MAP",
     "STABILITY_THRESHOLDS",
 
-    # Layer classes
-    "DynamicalSystemsLayer",
-    "DynamicalSystemsOutput",
-    "DynamicsVector",
-    "DynamicsTypology",
-    "RegimeClass",
-    "StabilityClass",
-    "TrajectoryClass",
-    "AttractorClass",
-    "analyze_dynamics",
+    # Transitions
+    "detect_transitions",
+    "detect_all_transitions",
+    "filter_transitions_by_severity",
+    "filter_transitions_by_type",
+    "get_bifurcations",
+    "get_collapses",
+    "get_escalation_candidates",
+    "summarize_transitions",
+
+    # State computation
+    "compute_state",
+    "compute_state_from_vector",
+    "compute_states_for_entity",
+    "classify_regime",
+    "classify_stability",
+    "classify_trajectory",
+    "classify_attractor",
+    "state_to_typology",
 ]
+
+# Backwards compatibility
+DynamicalSystemsLayer = DynamicalSystemsFramework

@@ -52,6 +52,11 @@ from prism.config.thresholds import (
     TRANSITION_NUMERIC,
     TRANSITION_SEVERITY,
     STATE_TRANSITION,
+    # Causal Mechanics
+    MECHANICS_ENERGY,
+    MECHANICS_FLOW,
+    MECHANICS_ORBIT,
+    MECHANICS_TRANSITION,
     # Domain overrides
     DOMAIN_OVERRIDES,
     # Helper functions
@@ -112,6 +117,10 @@ __all__ = [
     'TRANSITION_NUMERIC',
     'TRANSITION_SEVERITY',
     'STATE_TRANSITION',
+    'MECHANICS_ENERGY',
+    'MECHANICS_FLOW',
+    'MECHANICS_ORBIT',
+    'MECHANICS_TRANSITION',
     'DOMAIN_OVERRIDES',
     'get_typology_thresholds',
     'is_meaningful_change',

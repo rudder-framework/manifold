@@ -215,6 +215,139 @@ class CausalMechanicsOutput:
         return result
 
 
+# =============================================================================
+# NEW ARCHITECTURE: STATE + TRANSITIONS
+# =============================================================================
+
+@dataclass
+class MechanicsState:
+    """
+    State of physical system at a single window.
+
+    The 4 Mechanics Metrics:
+        - energy: Energy regime classification
+        - equilibrium: Equilibrium tendency
+        - flow: Flow regime (laminar/turbulent)
+        - orbit: Phase space orbit type
+
+    Numeric metrics:
+        - energy_conservation: How constant is total energy? (0-1)
+        - equilibrium_distance: Distance from equilibrium (0-1)
+        - turbulence_intensity: Flow chaos level (0-1)
+        - orbit_stability: How consistent is the orbit? (0-1)
+    """
+    entity_id: str
+    unit_id: str = ""  # Defaults to entity_id if not set
+    signal_id: str = ""
+    window_idx: int = 0
+    timestamp: Optional[Any] = None
+
+    # Categorical states (from enums)
+    energy: str = "conservative"      # conservative | driven | dissipative | fluctuating
+    equilibrium: str = "at_equilibrium"  # approaching | at_equilibrium | departing | forced
+    flow: str = "laminar"             # laminar | transitional | turbulent
+    orbit: str = "linear"             # circular | elliptical | irregular | linear
+
+    # Numeric metrics (all normalized 0-1)
+    energy_conservation: float = 1.0  # 1 = perfectly conserved, 0 = highly variable
+    equilibrium_distance: float = 0.0  # 0 = at equilibrium, 1 = far from equilibrium
+    turbulence_intensity: float = 0.0  # 0 = laminar, 1 = fully turbulent
+    orbit_stability: float = 1.0      # 1 = perfectly stable orbit, 0 = chaotic
+
+    def __post_init__(self):
+        # unit_id defaults to entity_id for backwards compatibility
+        if not self.unit_id and self.entity_id:
+            self.unit_id = self.entity_id
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for serialization."""
+        return {
+            'entity_id': self.entity_id,
+            'unit_id': self.unit_id if self.unit_id else self.entity_id,
+            'signal_id': self.signal_id,
+            'window_idx': self.window_idx,
+            'timestamp': self.timestamp,
+            'energy': self.energy,
+            'equilibrium': self.equilibrium,
+            'flow': self.flow,
+            'orbit': self.orbit,
+            'energy_conservation': self.energy_conservation,
+            'equilibrium_distance': self.equilibrium_distance,
+            'turbulence_intensity': self.turbulence_intensity,
+            'orbit_stability': self.orbit_stability,
+        }
+
+    def state_string(self) -> str:
+        """Generate dot-delimited state string for signal_states table."""
+        # Format: ENERGY.EQUILIBRIUM.FLOW.ORBIT
+        return f"{self.energy.upper()}.{self.equilibrium.upper()}.{self.flow.upper()}.{self.orbit.upper()}"
+
+
+@dataclass
+class MechanicsTransition:
+    """
+    A meaningful state change between consecutive windows.
+
+    Transition Types:
+        - energy_injection: Energy regime changed from conservative to driven
+        - energy_dissipation: Energy regime changed to dissipative
+        - equilibrium_departure: System moved away from equilibrium
+        - equilibrium_approach: System moved toward equilibrium
+        - turbulence_onset: Flow became turbulent
+        - laminarization: Flow became laminar
+        - orbit_destabilization: Orbit became irregular
+        - orbit_stabilization: Orbit became stable
+
+    Severity Classification:
+        - mild: Small numeric change or minor categorical shift
+        - moderate: Significant numeric change or categorical change
+        - severe: Major categorical flip or extreme numeric change
+    """
+    entity_id: str
+    unit_id: str = ""  # Defaults to entity_id if not set
+    signal_id: str = ""
+    window_idx: int = 0
+    timestamp: Optional[Any] = None
+
+    field: str = ""              # which metric changed
+    from_value: str = ""         # previous value (string for flexibility)
+    to_value: str = ""           # new value
+    delta: Optional[float] = None  # numeric change magnitude (if applicable)
+
+    transition_type: str = "shift"   # See types above
+    severity: str = "mild"           # mild | moderate | severe
+
+    def __post_init__(self):
+        # unit_id defaults to entity_id for backwards compatibility
+        if not self.unit_id and self.entity_id:
+            self.unit_id = self.entity_id
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for serialization."""
+        return {
+            'entity_id': self.entity_id,
+            'unit_id': self.unit_id if self.unit_id else self.entity_id,
+            'signal_id': self.signal_id,
+            'window_idx': self.window_idx,
+            'timestamp': self.timestamp,
+            'field': self.field,
+            'from_value': self.from_value,
+            'to_value': self.to_value,
+            'delta': self.delta,
+            'transition_type': self.transition_type,
+            'severity': self.severity,
+        }
+
+
+# Thresholds for "meaningful" numeric changes in mechanics
+MECHANICS_THRESHOLDS = {
+    "energy_conservation": 0.15,      # 15% change in energy conservation
+    "equilibrium_distance": 0.20,     # 20% change in equilibrium distance
+    "turbulence_intensity": 0.15,     # 15% change in turbulence
+    "orbit_stability": 0.20,          # 20% change in orbit stability
+}
+
+
 # Backwards compatibility aliases
 PhysicsVector = MechanicsVector
 PhysicsTypology = MechanicsTypology

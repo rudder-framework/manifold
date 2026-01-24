@@ -1,20 +1,20 @@
 """
-Causal Mechanics Layer
-======================
+Causal Mechanics
+================
 
-Layer 4 of the ORTHON framework:
+One of the four ORTHON analytical frameworks:
 
-    Signal Typology     → WHAT is it?
-    Behavioral Geometry → HOW does it behave?
-    Dynamical Systems   → WHEN/HOW does it change?
-    Causal Mechanics    → WHY does it change? (this package)
+    Signal Typology     → What IS this signal?
+    Structural Geometry → What is its STRUCTURE?
+    Dynamical Systems   → How does the SYSTEM evolve?
+    Causal Mechanics    → What DRIVES the system? (this framework)
 
 The Five Physics-Inspired Dimensions:
-    1. Energy       - Is energy conserved? (Hamiltonian)
-    2. Motion       - What are the equations of motion? (Lagrangian)
-    3. Equilibrium  - Spontaneous or forced? (Gibbs free energy)
-    4. Cycles       - What are the rotational dynamics? (Angular momentum)
-    5. Flow         - How does momentum propagate? (Momentum flux)
+    - Energy       - Is energy conserved? (Hamiltonian)
+    - Motion       - What are the equations of motion? (Lagrangian)
+    - Equilibrium  - Spontaneous or forced? (Gibbs free energy)
+    - Cycles       - What are the rotational dynamics? (Angular momentum)
+    - Flow         - How does momentum propagate? (Momentum flux)
 
 Key Questions:
     - Is the system conservative, driven, or dissipative?
@@ -36,20 +36,33 @@ Usage:
     >>> print(result.typology.summary)
 
 Architecture:
-    run.py (entry point)
-        │
-        ▼
-    orchestrator.py (routes + formats)
-        │
-        ▼
-    engines/physics/* (computations)
-        │
-        ▼
-    engine_mapping.py (action recommendations)
+    causal_mechanics/
+        __init__.py         # This file
+        orchestrator.py     # Routes + formats
+        models.py           # MechanicsVector, MechanicsTypology
+        engine_mapping.py   # Engine selection
 """
 
 __version__ = "1.0.0"
 __author__ = "Ørthon Project"
+
+# Models (dataclasses and enums)
+from .models import (
+    # Enums
+    EnergyClass,
+    EquilibriumClass,
+    FlowClass,
+    OrbitClass,
+    DominanceClass,
+    # Legacy dataclasses (one summary per signal)
+    MechanicsVector,
+    MechanicsTypology,
+    CausalMechanicsOutput,
+    # New dataclasses (state + transitions per window)
+    MechanicsState,
+    MechanicsTransition,
+    MECHANICS_THRESHOLDS,
+)
 
 # Orchestrator (main API)
 from .orchestrator import (
@@ -59,6 +72,8 @@ from .orchestrator import (
     get_mechanics_fingerprint,
     mechanics_distance,
     classify_system,
+    CausalMechanicsFramework,
+    analyze_mechanics,
     DIMENSION_NAMES,
 )
 
@@ -74,23 +89,52 @@ from .engine_mapping import (
     INTERVENTION_MAP,
 )
 
-# Re-export layer classes from prism.layers
-from ..layers.causal_mechanics import (
-    CausalMechanicsLayer,
-    CausalMechanicsOutput,
-    MechanicsVector,
-    MechanicsTypology,
-    EnergyClass,
-    EquilibriumClass,
-    FlowClass,
-    OrbitClass,
-    DominanceClass,
-    analyze_mechanics,
+# Transitions
+from .transitions import (
+    detect_transitions as detect_mechanics_transitions,
+    detect_all_transitions as detect_all_mechanics_transitions,
+    filter_transitions_by_severity as filter_mechanics_by_severity,
+    filter_transitions_by_type as filter_mechanics_by_type,
+    get_turbulence_events,
+    get_energy_events,
+    get_critical_transitions,
+    validate_mechanics_stability,
+    summarize_transitions as summarize_mechanics_transitions,
+)
+
+# State computation
+from .state_computation import (
+    compute_state as compute_mechanics_state,
+    compute_state_from_vector as compute_mechanics_state_from_vector,
+    compute_states_for_signal,
+    classify_energy,
+    classify_equilibrium,
+    classify_flow,
+    classify_orbit,
+    state_to_typology as mechanics_state_to_typology,
+    validate_state as validate_mechanics_state,
 )
 
 __all__ = [
     # Version
     "__version__",
+
+    # Enums
+    "EnergyClass",
+    "EquilibriumClass",
+    "FlowClass",
+    "OrbitClass",
+    "DominanceClass",
+
+    # Legacy dataclasses (one summary per signal)
+    "MechanicsVector",
+    "MechanicsTypology",
+    "CausalMechanicsOutput",
+
+    # New dataclasses (state + transitions per window)
+    "MechanicsState",
+    "MechanicsTransition",
+    "MECHANICS_THRESHOLDS",
 
     # Orchestrator API
     "run_causal_mechanics",
@@ -99,6 +143,8 @@ __all__ = [
     "get_mechanics_fingerprint",
     "mechanics_distance",
     "classify_system",
+    "CausalMechanicsFramework",
+    "analyze_mechanics",
     "DIMENSION_NAMES",
 
     # Engine mapping
@@ -111,15 +157,29 @@ __all__ = [
     "ENERGY_THRESHOLDS",
     "INTERVENTION_MAP",
 
-    # Layer classes
-    "CausalMechanicsLayer",
-    "CausalMechanicsOutput",
-    "MechanicsVector",
-    "MechanicsTypology",
-    "EnergyClass",
-    "EquilibriumClass",
-    "FlowClass",
-    "OrbitClass",
-    "DominanceClass",
-    "analyze_mechanics",
+    # Transitions
+    "detect_mechanics_transitions",
+    "detect_all_mechanics_transitions",
+    "filter_mechanics_by_severity",
+    "filter_mechanics_by_type",
+    "get_turbulence_events",
+    "get_energy_events",
+    "get_critical_transitions",
+    "validate_mechanics_stability",
+    "summarize_mechanics_transitions",
+
+    # State computation
+    "compute_mechanics_state",
+    "compute_mechanics_state_from_vector",
+    "compute_states_for_signal",
+    "classify_energy",
+    "classify_equilibrium",
+    "classify_flow",
+    "classify_orbit",
+    "mechanics_state_to_typology",
+    "validate_mechanics_state",
 ]
+
+# Backwards compatibility
+CausalMechanicsLayer = CausalMechanicsFramework
+SystemPhysicsLayer = CausalMechanicsFramework

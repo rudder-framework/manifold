@@ -167,3 +167,123 @@ class DynamicalSystemsOutput:
         result.update(self.typology.to_dict())
         result['metadata'] = self.metadata
         return result
+
+
+# =============================================================================
+# NEW ARCHITECTURE: STATE + TRANSITIONS
+# =============================================================================
+
+@dataclass
+class DynamicsState:
+    """
+    State of dynamical system at a single window.
+
+    The 6 Dynamics Metrics:
+        - trajectory: Where is it going? (categorical)
+        - stability: Will perturbations grow? (-1 to 1)
+        - attractor: What does it settle toward? (categorical)
+        - predictability: How far can we forecast? (0-1)
+        - coupling: How do signals drive each other? (0-1)
+        - memory: Does past influence future? (0-1, 0.5 = random walk)
+    """
+    entity_id: str
+    unit_id: str = ""  # Defaults to entity_id if not set
+    window_idx: int = 0
+    timestamp: Optional[Any] = None
+
+    # Categorical states
+    trajectory: str = "stationary"   # converging | diverging | periodic | chaotic | stationary
+    attractor: str = "none"          # fixed_point | limit_cycle | strange | none
+
+    # Numeric metrics (all normalized)
+    stability: float = 0.5           # -1 to 1, >0 stable, <0 unstable
+    predictability: float = 0.5      # 0-1, 1=deterministic, 0=random
+    coupling: float = 0.5            # 0-1, 1=fully coupled, 0=independent
+    memory: float = 0.5              # 0-1, 0.5=random walk, >0.5=persistent, <0.5=anti-persistent
+
+    def __post_init__(self):
+        # unit_id defaults to entity_id for backwards compatibility
+        if not self.unit_id and self.entity_id:
+            self.unit_id = self.entity_id
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for serialization."""
+        return {
+            'entity_id': self.entity_id,
+            'unit_id': self.unit_id if self.unit_id else self.entity_id,
+            'window_idx': self.window_idx,
+            'timestamp': self.timestamp,
+            'trajectory': self.trajectory,
+            'attractor': self.attractor,
+            'stability': self.stability,
+            'predictability': self.predictability,
+            'coupling': self.coupling,
+            'memory': self.memory,
+        }
+
+    def state_string(self) -> str:
+        """Generate dot-delimited state string for signal_states table."""
+        # Format: REGIME.STABILITY.TRAJECTORY.ATTRACTOR
+        regime = "COUPLED" if self.coupling > 0.6 else "DECOUPLED" if self.coupling < 0.4 else "MODERATE"
+        stab = "STABLE" if self.stability > 0.3 else "UNSTABLE" if self.stability < -0.3 else "EVOLVING"
+        return f"{regime}.{stab}.{self.trajectory.upper()}.{self.attractor.upper()}"
+
+
+@dataclass
+class DynamicsTransition:
+    """
+    A meaningful state change between consecutive windows.
+
+    Transition Types:
+        - bifurcation: Stability crossed zero (stable → unstable)
+        - collapse: Predictability or coupling dropped sharply
+        - recovery: Metrics improving after previous decline
+        - shift: Categorical change (trajectory or attractor type)
+        - flip: Memory crossed 0.5 (persistent ↔ anti-persistent)
+
+    Severity Classification:
+        - mild: Delta > threshold but < 2x threshold
+        - moderate: Delta > 2x threshold OR sign change
+        - severe: Categorical flip OR delta > 3x threshold OR stability crosses zero
+    """
+    entity_id: str
+    unit_id: str = ""  # Defaults to entity_id if not set
+    window_idx: int = 0
+    timestamp: Optional[Any] = None
+
+    field: str = ""              # which metric changed
+    from_value: str = ""         # previous value (string for flexibility)
+    to_value: str = ""           # new value
+    delta: Optional[float] = None  # numeric change magnitude (if applicable)
+
+    transition_type: str = "shift"   # bifurcation | collapse | recovery | shift | flip
+    severity: str = "mild"           # mild | moderate | severe
+
+    def __post_init__(self):
+        # unit_id defaults to entity_id for backwards compatibility
+        if not self.unit_id and self.entity_id:
+            self.unit_id = self.entity_id
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for serialization."""
+        return {
+            'entity_id': self.entity_id,
+            'unit_id': self.unit_id if self.unit_id else self.entity_id,
+            'window_idx': self.window_idx,
+            'timestamp': self.timestamp,
+            'field': self.field,
+            'from_value': self.from_value,
+            'to_value': self.to_value,
+            'delta': self.delta,
+            'transition_type': self.transition_type,
+            'severity': self.severity,
+        }
+
+
+# Thresholds for "meaningful" numeric changes
+NUMERIC_THRESHOLDS = {
+    "stability": 0.2,       # 20% of range
+    "predictability": 0.15,
+    "coupling": 0.15,
+    "memory": 0.1
+}

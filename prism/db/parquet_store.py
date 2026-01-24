@@ -56,6 +56,14 @@ SIGNAL_STATES = "signal_states"     # Unified signal states across all layers
 COHORT_MEMBERS = "cohort_members"   # User-defined cohort memberships
 CORPUS_CLASS = "corpus_class"       # Corpus-level classifications
 
+# Dynamics (state + transitions architecture)
+DYNAMICS_STATES = "dynamics_states"         # 6 metrics per entity per window
+DYNAMICS_TRANSITIONS = "dynamics_transitions"  # Only when state changes
+
+# Mechanics (state + transitions architecture)
+MECHANICS_STATES = "mechanics_states"       # 4 metrics per signal per window
+MECHANICS_TRANSITIONS = "mechanics_transitions"  # Only when state changes
+
 # ML Accelerator files
 ML_FEATURES = "ml_features"     # Denormalized feature table for ML
 ML_RESULTS = "ml_results"       # Model predictions vs actuals
@@ -66,7 +74,9 @@ ML_MODEL = "ml_model"           # Serialized model (actually .pkl)
 FILES = [OBSERVATIONS, VECTOR, GEOMETRY, MANIFOLD_GEOMETRY, STATE, COHORTS]
 ML_FILES = [ML_FEATURES, ML_RESULTS, ML_IMPORTANCE, ML_MODEL]
 STATE_FILES = [SIGNAL_STATES, COHORT_MEMBERS, CORPUS_CLASS]
-ALL_FILES = FILES + [COHORTS_RAW, COHORTS_VECTOR] + ML_FILES + STATE_FILES
+DYNAMICS_FILES = [DYNAMICS_STATES, DYNAMICS_TRANSITIONS]
+MECHANICS_FILES = [MECHANICS_STATES, MECHANICS_TRANSITIONS]
+ALL_FILES = FILES + [COHORTS_RAW, COHORTS_VECTOR] + ML_FILES + STATE_FILES + DYNAMICS_FILES + MECHANICS_FILES
 
 
 # =============================================================================

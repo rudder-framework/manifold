@@ -175,6 +175,39 @@ STATE_TRANSITION = {
 
 
 # =============================================================================
+# CAUSAL MECHANICS THRESHOLDS
+# =============================================================================
+# Used in: prism/causal_mechanics/transitions.py, state_computation.py
+# Purpose: Classify energy regime, flow, orbit, and detect transitions
+
+MECHANICS_ENERGY = {
+    'conservative_cv': 0.05,           # CV below this = CONSERVATIVE
+    'driven_trend': 0.1,               # H_trend above this = DRIVEN
+    'dissipative_trend': -0.1,         # H_trend below this = DISSIPATIVE
+}
+
+MECHANICS_FLOW = {
+    'laminar_reynolds': 2000,          # Below = LAMINAR
+    'turbulent_reynolds': 4000,        # Above = TURBULENT
+    'transitional_turbulence': 0.3,    # Intensity above = TRANSITIONAL
+}
+
+MECHANICS_ORBIT = {
+    'circular_circularity': 0.8,       # Above = CIRCULAR
+    'elliptical_circularity': 0.4,     # Above = ELLIPTICAL
+    'irregular_circularity': 0.1,      # Above = IRREGULAR (else LINEAR)
+}
+
+MECHANICS_TRANSITION = {
+    # Thresholds for "meaningful" change in numeric fields
+    'energy_conservation': 0.15,       # 15% change in conservation
+    'equilibrium_distance': 0.20,      # 20% change in equilibrium distance
+    'turbulence_intensity': 0.15,      # 15% change in turbulence
+    'orbit_stability': 0.20,           # 20% change in orbit stability
+}
+
+
+# =============================================================================
 # DOMAIN-SPECIFIC OVERRIDES
 # =============================================================================
 # Each domain can override any threshold above.
@@ -375,6 +408,10 @@ def get_domain_thresholds(domain: str) -> Dict[str, Any]:
         'TRANSITION_NUMERIC': deepcopy(TRANSITION_NUMERIC),
         'TRANSITION_SEVERITY': deepcopy(TRANSITION_SEVERITY),
         'STATE_TRANSITION': deepcopy(STATE_TRANSITION),
+        'MECHANICS_ENERGY': deepcopy(MECHANICS_ENERGY),
+        'MECHANICS_FLOW': deepcopy(MECHANICS_FLOW),
+        'MECHANICS_ORBIT': deepcopy(MECHANICS_ORBIT),
+        'MECHANICS_TRANSITION': deepcopy(MECHANICS_TRANSITION),
     }
 
     # Apply domain overrides if they exist
