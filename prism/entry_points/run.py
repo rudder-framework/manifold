@@ -3,33 +3,33 @@
 PRISM Pipeline Runner
 =====================
 
-Single entry point for the ORTHON four-layer pipeline.
+Single entry point for the ORTHON four-framework pipeline.
 
     fetch.py → observations.parquet (standalone)
     run.py   → signal_typology.parquet
-             → behavioral_geometry.parquet
+             → structural_geometry.parquet
              → dynamical_systems.parquet
              → causal_mechanics.parquet
 
 Behavior:
-    1. Checks for each layer's parquet file
+    1. Checks for each framework's parquet file
     2. Validates schema if file exists
-    3. Skips completed layers (correct schema)
+    3. Skips completed frameworks (correct schema)
     4. On schema mismatch: warns, offers to rename old → legacy_*
-    5. Runs remaining layers in order
+    5. Runs remaining frameworks in order
 
 Usage:
     python -m prism.entry_points.run                    # Run full pipeline
-    python -m prism.entry_points.run --from geometry    # Start from Layer 2
-    python -m prism.entry_points.run --only typology    # Run only Layer 1
+    python -m prism.entry_points.run --from geometry    # Start from Framework 2
+    python -m prism.entry_points.run --only typology    # Run only Framework 1
     python -m prism.entry_points.run --force            # Recompute all
     python -m prism.entry_points.run --check            # Validate only, no compute
 
-The Four Layers:
-    1. Signal Typology      → WHAT is it?
-    2. Behavioral Geometry  → HOW does it behave?
-    3. Dynamical Systems    → WHEN/HOW does it change?
-    4. Causal Mechanics     → WHY does it change?
+The Four Frameworks:
+    1. Signal Typology      -> WHAT is it?
+    2. Manifold Geometry    -> What is its STRUCTURE?
+    3. Dynamical Systems    -> How does the SYSTEM evolve?
+    4. Causal Mechanics     -> What DRIVES the system?
 """
 
 import argparse
@@ -56,7 +56,7 @@ logger = logging.getLogger(__name__)
 LAYERS = {
     'typology': {
         'name': 'Signal Typology',
-        'layer_num': 1,
+        'framework_num': 1,
         'question': 'WHAT is it?',
         'input': 'observations.parquet',
         'output': 'signal_typology.parquet',
@@ -69,22 +69,22 @@ LAYERS = {
         'runner': '_run_signal_typology',
     },
     'geometry': {
-        'name': 'Behavioral Geometry',
-        'layer_num': 2,
-        'question': 'HOW does it behave?',
+        'name': 'Manifold Geometry',
+        'framework_num': 2,
+        'question': 'What is its STRUCTURE?',
         'input': 'signal_typology.parquet',
-        'output': 'behavioral_geometry.parquet',
+        'output': 'manifold_geometry.parquet',
         'required_columns': [
             'entity_id', 'timestamp',
             'mean_correlation', 'n_clusters', 'network_density',
         ],
-        'runner': '_run_behavioral_geometry',
+        'runner': '_run_manifold_geometry',
     },
     'dynamics': {
         'name': 'Dynamical Systems',
-        'layer_num': 3,
-        'question': 'WHEN/HOW does it change?',
-        'input': 'behavioral_geometry.parquet',
+        'framework_num': 3,
+        'question': 'How does the SYSTEM evolve?',
+        'input': 'manifold_geometry.parquet',
         'output': 'dynamical_systems.parquet',
         'required_columns': [
             'entity_id', 'timestamp',
@@ -94,8 +94,8 @@ LAYERS = {
     },
     'mechanics': {
         'name': 'Causal Mechanics',
-        'layer_num': 4,
-        'question': 'WHY does it change?',
+        'framework_num': 4,
+        'question': 'What DRIVES the system?',
         'input': 'dynamical_systems.parquet',
         'output': 'causal_mechanics.parquet',
         'required_columns': [
@@ -105,6 +105,11 @@ LAYERS = {
         'runner': '_run_causal_mechanics',
     },
 }
+
+FRAMEWORK_ORDER = ['typology', 'geometry', 'dynamics', 'mechanics']
+
+# Backwards compatibility alias
+LAYER_ORDER = FRAMEWORK_ORDER
 
 LAYER_ORDER = ['typology', 'geometry', 'dynamics', 'mechanics']
 
@@ -186,7 +191,7 @@ def rename_to_legacy(path: Path) -> Path:
 # =============================================================================
 
 def _run_signal_typology(data_dir: Path, config: Dict) -> bool:
-    """Run Signal Typology layer."""
+    """Run Signal Typology framework."""
     from prism.engines.characterize import compute_all_axes
     from prism.typology import select_engines, get_primary_classification, detect_regime_change
 
@@ -283,13 +288,10 @@ def _run_signal_typology(data_dir: Path, config: Dict) -> bool:
     return True
 
 
-def _run_behavioral_geometry(data_dir: Path, config: Dict) -> bool:
-    """Run Behavioral Geometry layer."""
-    # Import the layer
-    from prism.layers.behavioral_geometry import BehavioralGeometryLayer, analyze_geometry
-
+def _run_manifold_geometry(data_dir: Path, config: Dict) -> bool:
+    """Run Manifold Geometry framework."""
     input_path = data_dir / 'signal_typology.parquet'
-    output_path = data_dir / 'behavioral_geometry.parquet'
+    output_path = data_dir / 'manifold_geometry.parquet'
 
     if not input_path.exists():
         logger.error(f"Input not found: {input_path}")
@@ -362,8 +364,8 @@ def _run_behavioral_geometry(data_dir: Path, config: Dict) -> bool:
 
 
 def _run_dynamical_systems(data_dir: Path, config: Dict) -> bool:
-    """Run Dynamical Systems layer."""
-    input_path = data_dir / 'behavioral_geometry.parquet'
+    """Run Dynamical Systems framework."""
+    input_path = data_dir / 'manifold_geometry.parquet'
     output_path = data_dir / 'dynamical_systems.parquet'
 
     if not input_path.exists():
@@ -431,7 +433,7 @@ def _run_dynamical_systems(data_dir: Path, config: Dict) -> bool:
 
 
 def _run_causal_mechanics(data_dir: Path, config: Dict) -> bool:
-    """Run Causal Mechanics layer."""
+    """Run Causal Mechanics framework."""
     input_path = data_dir / 'dynamical_systems.parquet'
     output_path = data_dir / 'causal_mechanics.parquet'
 
@@ -546,7 +548,7 @@ def run_pipeline(
             status_str = "NOT FOUND"
 
         marker = "→" if layer_key in layers_to_run else " "
-        logger.info(f"  {marker} Layer {layer['layer_num']}: {layer['name']:<20} {status_str}")
+        logger.info(f"  {marker} Layer {layer['framework_num']}: {layer['name']:<20} {status_str}")
 
     if check_only:
         logger.info("\n[CHECK ONLY] No computation performed.")
@@ -559,7 +561,7 @@ def run_pipeline(
         layer = LAYERS[layer_key]
         status = check_layer_status(data_dir, layer_key)
 
-        logger.info(f"\nLayer {layer['layer_num']}: {layer['name']}")
+        logger.info(f"\nLayer {layer['framework_num']}: {layer['name']}")
         logger.info(f"  Question: {layer['question']}")
 
         # Check if we can skip

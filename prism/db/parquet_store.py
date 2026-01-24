@@ -42,13 +42,19 @@ from typing import List, Optional
 OBSERVATIONS = "observations"   # Raw sensor data
 VECTOR = "vector"               # All behavioral signals (was SIGNALS)
 SIGNALS = VECTOR                # Backwards compatibility alias
-GEOMETRY = "geometry"           # System structure at each t
+GEOMETRY = "geometry"           # System structure at each t (legacy)
+MANIFOLD_GEOMETRY = "manifold_geometry"  # Manifold geometry with curvature
 STATE = "state"                 # Dynamics at each t
 COHORTS = "cohorts"             # Discovered entity groupings
 
 # Intermediate cohort files
 COHORTS_RAW = "cohorts_raw"     # Cohorts discovered from raw observations
 COHORTS_VECTOR = "cohorts_vector"  # Cohorts discovered from vector signals
+
+# Signal States (unified state-based architecture)
+SIGNAL_STATES = "signal_states"     # Unified signal states across all layers
+COHORT_MEMBERS = "cohort_members"   # User-defined cohort memberships
+CORPUS_CLASS = "corpus_class"       # Corpus-level classifications
 
 # ML Accelerator files
 ML_FEATURES = "ml_features"     # Denormalized feature table for ML
@@ -57,9 +63,10 @@ ML_IMPORTANCE = "ml_importance" # Feature importance rankings
 ML_MODEL = "ml_model"           # Serialized model (actually .pkl)
 
 # All valid file names
-FILES = [OBSERVATIONS, VECTOR, GEOMETRY, STATE, COHORTS]
+FILES = [OBSERVATIONS, VECTOR, GEOMETRY, MANIFOLD_GEOMETRY, STATE, COHORTS]
 ML_FILES = [ML_FEATURES, ML_RESULTS, ML_IMPORTANCE, ML_MODEL]
-ALL_FILES = FILES + [COHORTS_RAW, COHORTS_VECTOR] + ML_FILES
+STATE_FILES = [SIGNAL_STATES, COHORT_MEMBERS, CORPUS_CLASS]
+ALL_FILES = FILES + [COHORTS_RAW, COHORTS_VECTOR] + ML_FILES + STATE_FILES
 
 
 # =============================================================================

@@ -312,7 +312,7 @@ class Archetype:
 class SignalTypology:
     """
     Complete signal typology output.
-    
+
     This is the primary output of the Signal Typology layer, containing:
     - All six axis measurements
     - Structural discontinuity detection
@@ -320,13 +320,19 @@ class SignalTypology:
     - Regime transition status
     - Human-readable summary
     """
-    
+
     # === IDENTIFICATION ===
     entity_id: str = "unknown"
+    unit_id: str = ""  # New: unit_id (defaults to entity_id if not set)
     signal_id: str = "unknown"
     window_start: datetime = field(default_factory=datetime.now)
     window_end: datetime = field(default_factory=datetime.now)
     n_observations: int = 0
+
+    def __post_init__(self):
+        # unit_id defaults to entity_id for backwards compatibility
+        if not self.unit_id and self.entity_id:
+            self.unit_id = self.entity_id
     
     # === THE SIX ORTHOGONAL AXES ===
     memory: MemoryAxis = field(default_factory=MemoryAxis)
@@ -376,6 +382,7 @@ class SignalTypology:
         """Export to dictionary for serialization"""
         return {
             'entity_id': self.entity_id,
+            'unit_id': self.unit_id if self.unit_id else self.entity_id,
             'signal_id': self.signal_id,
             'window_start': self.window_start.isoformat(),
             'window_end': self.window_end.isoformat(),
