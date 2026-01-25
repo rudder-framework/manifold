@@ -323,6 +323,427 @@ DISCIPLINES = {
             "compute_all_dimensionless",
         ],
     },
+
+    # === NEW ChemE DISCIPLINES ===
+
+    "separations": {
+        "name": "Separations",
+        "description": "Distillation, absorption, extraction, membranes",
+        "icon": "flask",
+        "subdisciplines": {
+            "distillation": {
+                "name": "Distillation",
+                "signals": {
+                    "required_any": ["temperature", "composition", "vapor_fraction"],
+                },
+                "constants": {
+                    "required": {
+                        "relative_volatility": {"unit": "dimensionless", "symbol": "α"},
+                    },
+                    "optional": {
+                        "feed_quality": {"unit": "dimensionless", "symbol": "q", "description": "q=1 saturated liquid, q=0 saturated vapor"},
+                        "reflux_ratio": {"unit": "dimensionless", "symbol": "R"},
+                        "min_reflux_ratio": {"unit": "dimensionless", "symbol": "R_min"},
+                        "n_stages": {"unit": "dimensionless"},
+                        "feed_stage": {"unit": "dimensionless"},
+                        "distillate_composition": {"unit": "mol fraction", "symbol": "x_D"},
+                        "bottoms_composition": {"unit": "mol fraction", "symbol": "x_B"},
+                        "feed_composition": {"unit": "mol fraction", "symbol": "x_F"},
+                        "murphree_efficiency": {"unit": "dimensionless", "symbol": "E_M"},
+                        "tray_spacing": {"unit": "m"},
+                        "column_diameter": {"unit": "m"},
+                    }
+                },
+                "engines": [
+                    "mccabe_thiele",
+                    "fenske",
+                    "underwood",
+                    "gilliland",
+                    "kirkbride",
+                    "stage_efficiency",
+                    "flooding_velocity",
+                ],
+            },
+            "absorption": {
+                "name": "Absorption / Stripping",
+                "signals": {
+                    "required_any": ["gas_concentration", "liquid_concentration"],
+                },
+                "constants": {
+                    "required": {
+                        "henrys_constant": {"unit": "Pa", "symbol": "H"},
+                    },
+                    "optional": {
+                        "gas_flow_rate": {"unit": "mol/s", "symbol": "G"},
+                        "liquid_flow_rate": {"unit": "mol/s", "symbol": "L"},
+                        "absorption_factor": {"unit": "dimensionless", "symbol": "A", "description": "A = L/(mG)"},
+                        "mass_transfer_coeff_gas": {"unit": "mol/(m²·s·Pa)", "symbol": "k_G"},
+                        "mass_transfer_coeff_liquid": {"unit": "m/s", "symbol": "k_L"},
+                        "interfacial_area": {"unit": "m²/m³", "symbol": "a"},
+                        "packing_height": {"unit": "m"},
+                    }
+                },
+                "engines": [
+                    "ntu",
+                    "htu",
+                    "kremser",
+                    "operating_line",
+                    "overall_mass_transfer",
+                ],
+            },
+            "extraction": {
+                "name": "Liquid-Liquid Extraction",
+                "signals": {
+                    "required": ["concentration"],
+                },
+                "constants": {
+                    "required": {
+                        "partition_coefficient": {"unit": "dimensionless", "symbol": "K_D", "description": "K = C_extract/C_raffinate"},
+                    },
+                    "optional": {
+                        "solvent_flow_rate": {"unit": "mol/s", "symbol": "S"},
+                        "feed_flow_rate": {"unit": "mol/s", "symbol": "F"},
+                        "extraction_factor": {"unit": "dimensionless", "symbol": "E", "description": "E = KS/F"},
+                        "n_stages": {"unit": "dimensionless"},
+                    }
+                },
+                "engines": [
+                    "single_stage_extraction",
+                    "cross_current",
+                    "counter_current",
+                    "extraction_efficiency",
+                ],
+            },
+            "membrane": {
+                "name": "Membrane Separations",
+                "signals": {
+                    "required_any": ["flux", "pressure", "concentration"],
+                },
+                "constants": {
+                    "required": {
+                        "permeability": {"unit": "mol/(m·s·Pa)", "symbol": "P"},
+                    },
+                    "optional": {
+                        "membrane_thickness": {"unit": "m", "symbol": "δ"},
+                        "membrane_area": {"unit": "m²", "symbol": "A"},
+                        "selectivity": {"unit": "dimensionless", "symbol": "α", "description": "α = P_A/P_B"},
+                        "pressure_ratio": {"unit": "dimensionless"},
+                        "stage_cut": {"unit": "dimensionless", "symbol": "θ", "description": "permeate/feed"},
+                        "rejection_coefficient": {"unit": "dimensionless", "symbol": "R", "description": "R = 1 - C_p/C_f"},
+                    }
+                },
+                "engines": [
+                    "permeation_flux",
+                    "membrane_selectivity",
+                    "concentration_polarization",
+                    "spiral_wound",
+                    "hollow_fiber",
+                ],
+            },
+        },
+        "engines": [],
+    },
+
+    "phase_equilibria": {
+        "name": "Phase Equilibria",
+        "description": "VLE, LLE, flash calculations, activity models",
+        "icon": "balance",
+        "subdisciplines": {
+            "vle": {
+                "name": "Vapor-Liquid Equilibrium",
+                "signals": {
+                    "required_any": ["temperature", "pressure", "composition"],
+                },
+                "constants": {
+                    "required": {
+                        "vapor_pressure_params": {"unit": "various", "description": "Antoine A, B, C or other correlation"},
+                    },
+                    "optional": {
+                        "critical_temperature": {"unit": "K", "symbol": "T_c"},
+                        "critical_pressure": {"unit": "Pa", "symbol": "P_c"},
+                        "acentric_factor": {"unit": "dimensionless", "symbol": "ω"},
+                        "molar_volume_liquid": {"unit": "m³/mol", "symbol": "V_L"},
+                    }
+                },
+                "engines": [
+                    "antoine",
+                    "raoults_law",
+                    "modified_raoults",
+                    "k_value",
+                    "relative_volatility",
+                    "bubble_point",
+                    "dew_point",
+                    "txy_diagram",
+                    "pxy_diagram",
+                ],
+            },
+            "lle": {
+                "name": "Liquid-Liquid Equilibrium",
+                "signals": {
+                    "required": ["composition"],
+                },
+                "constants": {
+                    "optional": {
+                        "binary_interaction_params": {"unit": "various", "description": "NRTL or UNIQUAC parameters"},
+                        "plait_point": {"unit": "mol fraction"},
+                    }
+                },
+                "engines": [
+                    "tie_line",
+                    "binodal_curve",
+                    "plait_point",
+                    "lever_rule",
+                    "ternary_diagram",
+                ],
+            },
+            "flash": {
+                "name": "Flash Calculations",
+                "signals": {
+                    "required": ["composition"],
+                    "required_any": ["temperature", "pressure"],
+                },
+                "constants": {
+                    "required": {
+                        "k_values": {"unit": "dimensionless", "description": "Or correlation to calculate"},
+                    },
+                    "optional": {
+                        "feed_flow_rate": {"unit": "mol/s", "symbol": "F"},
+                    }
+                },
+                "engines": [
+                    "rachford_rice",
+                    "isothermal_flash",
+                    "adiabatic_flash",
+                    "three_phase_flash",
+                ],
+            },
+            "activity_models": {
+                "name": "Activity Coefficient Models",
+                "signals": {
+                    "required": ["composition"],
+                },
+                "constants": {
+                    "optional": {
+                        "margules_params": {"unit": "dimensionless", "description": "A_12, A_21"},
+                        "van_laar_params": {"unit": "dimensionless", "description": "A, B"},
+                        "wilson_params": {"unit": "dimensionless", "description": "Λ_12, Λ_21"},
+                        "nrtl_params": {"unit": "various", "description": "τ_12, τ_21, α"},
+                        "uniquac_params": {"unit": "various", "description": "r, q, u"},
+                        "unifac_groups": {"unit": "various", "description": "Group definitions"},
+                    }
+                },
+                "engines": [
+                    "ideal_solution",
+                    "margules",
+                    "van_laar",
+                    "wilson",
+                    "nrtl",
+                    "uniquac",
+                    "unifac",
+                ],
+            },
+        },
+        "engines": [
+            "fugacity_coefficient",
+            "poynting_correction",
+            "gamma_phi",
+        ],
+    },
+
+    "balances": {
+        "name": "Material & Energy Balances",
+        "description": "Conservation equations, process calculations",
+        "icon": "scale",
+        "subdisciplines": {
+            "material": {
+                "name": "Material Balances",
+                "signals": {
+                    "required_any": ["flow_rate", "mass_flow", "molar_flow", "concentration"],
+                },
+                "constants": {
+                    "optional": {
+                        "molecular_weight": {"unit": "kg/mol", "symbol": "M"},
+                        "density": {"unit": "kg/m³", "symbol": "ρ"},
+                        "stoichiometric_coefficients": {"unit": "dimensionless", "symbol": "ν"},
+                        "conversion": {"unit": "dimensionless", "symbol": "X"},
+                    }
+                },
+                "engines": [
+                    "total_mass_balance",
+                    "component_balance",
+                    "extent_of_reaction",
+                    "limiting_reactant",
+                    "excess_reactant",
+                    "recycle_ratio",
+                    "purge_calculation",
+                    "bypass_calculation",
+                    "mixing_balance",
+                    "splitting_balance",
+                ],
+            },
+            "energy": {
+                "name": "Energy Balances",
+                "signals": {
+                    "required_any": ["temperature", "enthalpy", "heat_duty"],
+                },
+                "constants": {
+                    "optional": {
+                        "heat_capacity_cp": {"unit": "J/(mol·K)", "symbol": "C_p"},
+                        "heat_capacity_params": {"unit": "various", "description": "Cp = a + bT + cT² polynomial"},
+                        "heat_of_reaction": {"unit": "J/mol", "symbol": "ΔH_rxn"},
+                        "heat_of_formation": {"unit": "J/mol", "symbol": "ΔH_f"},
+                        "heat_of_vaporization": {"unit": "J/mol", "symbol": "ΔH_vap"},
+                        "heat_of_fusion": {"unit": "J/mol", "symbol": "ΔH_fus"},
+                        "reference_temperature": {"unit": "K", "symbol": "T_ref", "default": 298.15},
+                    }
+                },
+                "engines": [
+                    "sensible_heat",
+                    "latent_heat",
+                    "enthalpy_balance",
+                    "heat_of_reaction_calc",
+                    "adiabatic_flame_temp",
+                    "adiabatic_reaction_temp",
+                    "heat_exchanger_duty",
+                    "lmtd",
+                    "effectiveness_ntu",
+                ],
+            },
+            "combined": {
+                "name": "Combined Balances",
+                "signals": {
+                    "required_any": ["flow_rate", "temperature", "composition"],
+                },
+                "constants": {},
+                "engines": [
+                    "degrees_of_freedom",
+                    "process_simulation",
+                    "recycle_convergence",
+                ],
+            },
+        },
+        "engines": [],
+    },
+
+    "electrochemistry": {
+        "name": "Electrochemistry",
+        "description": "Electrochemical cells, batteries, corrosion",
+        "icon": "battery",
+        "subdisciplines": {
+            "thermodynamics": {
+                "name": "Electrochemical Thermodynamics",
+                "signals": {
+                    "required_any": ["voltage", "potential", "concentration"],
+                },
+                "constants": {
+                    "optional": {
+                        "standard_potential": {"unit": "V", "symbol": "E°"},
+                        "electrons_transferred": {"unit": "dimensionless", "symbol": "n"},
+                        "temperature": {"unit": "K", "symbol": "T", "default": 298.15},
+                        "activity_product": {"unit": "dimensionless", "symbol": "Q"},
+                    }
+                },
+                "engines": [
+                    "nernst",
+                    "cell_potential",
+                    "gibbs_electrochemical",
+                    "equilibrium_constant_echem",
+                    "pourbaix",
+                ],
+            },
+            "kinetics": {
+                "name": "Electrode Kinetics",
+                "signals": {
+                    "required_any": ["current", "current_density", "overpotential"],
+                },
+                "constants": {
+                    "optional": {
+                        "exchange_current_density": {"unit": "A/m²", "symbol": "i_0"},
+                        "transfer_coefficient": {"unit": "dimensionless", "symbol": "α", "default": 0.5},
+                        "electrons_transferred": {"unit": "dimensionless", "symbol": "n"},
+                        "electrode_area": {"unit": "m²", "symbol": "A"},
+                        "tafel_slope": {"unit": "V/decade", "symbol": "b"},
+                    }
+                },
+                "engines": [
+                    "butler_volmer",
+                    "tafel",
+                    "limiting_current",
+                    "mixed_potential",
+                    "polarization_curve",
+                ],
+            },
+            "mass_transfer": {
+                "name": "Electrochemical Mass Transfer",
+                "signals": {
+                    "required_any": ["concentration", "current_density"],
+                },
+                "constants": {
+                    "optional": {
+                        "diffusivity": {"unit": "m²/s", "symbol": "D"},
+                        "boundary_layer_thickness": {"unit": "m", "symbol": "δ"},
+                        "bulk_concentration": {"unit": "mol/m³", "symbol": "C_b"},
+                    }
+                },
+                "engines": [
+                    "limiting_current_density",
+                    "rotating_disk",
+                    "concentration_overpotential",
+                ],
+            },
+            "applications": {
+                "name": "Electrochemical Applications",
+                "signals": {
+                    "required_any": ["current", "voltage", "mass", "time"],
+                },
+                "constants": {
+                    "optional": {
+                        "molecular_weight": {"unit": "kg/mol", "symbol": "M"},
+                        "electrons_transferred": {"unit": "dimensionless", "symbol": "n"},
+                        "current_efficiency": {"unit": "dimensionless", "symbol": "η_I", "default": 1.0},
+                        "corrosion_rate_constant": {"unit": "various"},
+                    }
+                },
+                "engines": [
+                    "faraday",
+                    "coulombic_efficiency",
+                    "energy_efficiency",
+                    "corrosion_rate",
+                    "electroplating_thickness",
+                    "electrolysis_power",
+                ],
+            },
+            "batteries": {
+                "name": "Battery Analysis",
+                "signals": {
+                    "required_any": ["voltage", "current", "capacity", "soc"],
+                },
+                "constants": {
+                    "optional": {
+                        "nominal_capacity": {"unit": "Ah", "symbol": "Q_nom"},
+                        "nominal_voltage": {"unit": "V", "symbol": "V_nom"},
+                        "internal_resistance": {"unit": "Ω", "symbol": "R_i"},
+                        "open_circuit_voltage": {"unit": "V", "symbol": "OCV"},
+                        "charge_transfer_resistance": {"unit": "Ω", "symbol": "R_ct"},
+                        "diffusion_coefficient": {"unit": "m²/s", "symbol": "D"},
+                    }
+                },
+                "engines": [
+                    "state_of_charge",
+                    "state_of_health",
+                    "c_rate",
+                    "peukert",
+                    "internal_resistance_calc",
+                    "impedance_spectrum",
+                    "capacity_fade",
+                    "cycle_life",
+                ],
+            },
+        },
+        "engines": [
+            "faraday_constant",
+        ],
+    },
 }
 
 
