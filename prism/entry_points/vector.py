@@ -58,244 +58,148 @@ logger = logging.getLogger(__name__)
 # ENGINE IMPORTS
 # =============================================================================
 
+# Available engines - must be explicitly enabled in config
+AVAILABLE_ENGINES = {
+    # Memory engines
+    'hurst_dfa': 'prism.engines.memory:compute_hurst_dfa',
+    'hurst_rs': 'prism.engines.memory:compute_hurst_rs',
+    'acf_decay': 'prism.engines.memory:compute_acf_decay',
+    'spectral_slope': 'prism.engines.memory:compute_spectral_slope',
+    # Information engines
+    'permutation_entropy': 'prism.engines.information:compute_permutation_entropy',
+    'sample_entropy': 'prism.engines.information:compute_sample_entropy',
+    'entropy_rate': 'prism.engines.information:compute_entropy_rate',
+    # Frequency engines
+    'spectral': 'prism.engines.frequency:compute_spectral',
+    'wavelet': 'prism.engines.frequency:compute_wavelet',
+    # Volatility engines
+    'garch': 'prism.engines.volatility:compute_garch',
+    'realized_vol': 'prism.engines.volatility:compute_realized_vol',
+    'bipower_variation': 'prism.engines.volatility:compute_bipower_variation',
+    'hilbert_amplitude': 'prism.engines.volatility:compute_hilbert_amplitude',
+    # Recurrence engines
+    'rqa': 'prism.engines.recurrence:compute_rqa',
+    # Typology engines
+    'cusum': 'prism.engines.typology:compute_cusum',
+    'derivative_stats': 'prism.engines.typology:compute_derivative_stats',
+    'distribution': 'prism.engines.typology:compute_distribution',
+    'rolling_volatility': 'prism.engines.typology:compute_rolling_volatility',
+    'seasonality': 'prism.engines.typology:compute_seasonality',
+    'stationarity': 'prism.engines.typology:compute_stationarity',
+    'takens': 'prism.engines.typology:compute_takens',
+    'trend': 'prism.engines.typology:compute_trend',
+    # Pointwise engines
+    'derivatives': 'prism.engines.pointwise:compute_derivatives',
+    'hilbert': 'prism.engines.pointwise:compute_hilbert',
+    'statistical': 'prism.engines.pointwise:compute_statistical',
+    # Momentum engines
+    'runs_test': 'prism.engines.momentum:compute_runs_test',
+    # Discontinuity engines
+    'dirac': 'prism.engines.discontinuity:compute_dirac',
+    'heaviside': 'prism.engines.discontinuity:compute_heaviside',
+    'structural': 'prism.engines.discontinuity:compute_structural',
+    # Laplace engines
+    'laplace': None,  # Special handling
+    # Dynamics engines
+    'hd_slope': 'prism.engines.dynamics.hd_slope:compute_hd_slope',
+}
+
+
 def import_engines(config: Dict[str, Any]):
     """
-    Import vector engines based on config selection.
+    Import vector engines based on EXPLICIT config selection.
 
-    Config structure:
+    ZERO DEFAULTS POLICY: Engines must be explicitly listed in config.
+
+    Config structure (REQUIRED):
         engines:
           vector:
-            hurst_dfa: true
-            hurst_rs: false
-            ...
+            enabled:
+              - hurst_dfa
+              - sample_entropy
+              - rqa
+            params:
+              rqa:
+                embedding_dim: 3
+                time_delay: 1
+                threshold_percentile: 10.0
+
+    Raises:
+        ConfigurationError: If engines.vector.enabled not specified
     """
     engines = {}
-    engine_config = config.get('engines', {}).get('vector', {})
 
-    # If no config, enable all engines by default
-    if not engine_config:
-        engine_config = {k: True for k in [
-            'hurst_dfa', 'hurst_rs', 'acf_decay', 'spectral_slope',
-            'permutation_entropy', 'sample_entropy', 'entropy_rate',
-            'spectral', 'wavelet', 'garch', 'realized_vol',
-            'bipower_variation', 'hilbert_amplitude', 'rqa',
-            'cusum', 'derivative_stats', 'distribution', 'rolling_volatility',
-            'seasonality', 'stationarity', 'takens', 'trend',
-            'derivatives', 'hilbert', 'statistical', 'runs_test',
-            'dirac', 'heaviside', 'structural',
-            'laplace',  # Gradient, laplacian, divergence - key for geometry
-            'hd_slope',  # Degradation rate - most important for prognosis
-        ]}
+    if 'engines' not in config or 'vector' not in config.get('engines', {}):
+        raise ConfigurationError(
+            f"\n{'='*60}\n"
+            f"CONFIGURATION ERROR: engines.vector section missing\n"
+            f"{'='*60}\n\n"
+            f"PRISM requires explicit engine configuration.\n"
+            f"Add to config.yaml:\n\n"
+            f"  engines:\n"
+            f"    vector:\n"
+            f"      enabled:\n"
+            f"        - hurst_dfa\n"
+            f"        - sample_entropy\n"
+            f"        - rqa\n\n"
+            f"Available engines: {list(AVAILABLE_ENGINES.keys())}\n\n"
+            f"NO DEFAULTS. NO FALLBACKS. Configure your domain.\n"
+            f"{'='*60}"
+        )
 
-    # Memory engines
-    if engine_config.get('hurst_dfa', True):
-        try:
-            from prism.engines.memory import compute_hurst_dfa
-            engines['hurst_dfa'] = compute_hurst_dfa
-        except ImportError:
-            pass
-    if engine_config.get('hurst_rs', True):
-        try:
-            from prism.engines.memory import compute_hurst_rs
-            engines['hurst_rs'] = compute_hurst_rs
-        except ImportError:
-            pass
-    if engine_config.get('acf_decay', True):
-        try:
-            from prism.engines.memory import compute_acf_decay
-            engines['acf_decay'] = compute_acf_decay
-        except ImportError:
-            pass
-    if engine_config.get('spectral_slope', True):
-        try:
-            from prism.engines.memory import compute_spectral_slope
-            engines['spectral_slope'] = compute_spectral_slope
-        except ImportError:
-            pass
+    engine_config = config['engines']['vector']
 
-    # Information engines
-    if engine_config.get('permutation_entropy', True):
-        try:
-            from prism.engines.information import compute_permutation_entropy
-            engines['permutation_entropy'] = compute_permutation_entropy
-        except ImportError:
-            pass
-    if engine_config.get('sample_entropy', True):
-        try:
-            from prism.engines.information import compute_sample_entropy
-            engines['sample_entropy'] = compute_sample_entropy
-        except ImportError:
-            pass
-    if engine_config.get('entropy_rate', True):
-        try:
-            from prism.engines.information import compute_entropy_rate
-            engines['entropy_rate'] = compute_entropy_rate
-        except ImportError:
-            pass
+    if 'enabled' not in engine_config:
+        raise ConfigurationError(
+            f"\n{'='*60}\n"
+            f"CONFIGURATION ERROR: engines.vector.enabled not specified\n"
+            f"{'='*60}\n\n"
+            f"List the engines to run explicitly:\n\n"
+            f"  engines:\n"
+            f"    vector:\n"
+            f"      enabled:\n"
+            f"        - hurst_dfa\n"
+            f"        - sample_entropy\n"
+            f"        - rqa\n\n"
+            f"Available engines: {list(AVAILABLE_ENGINES.keys())}\n\n"
+            f"NO DEFAULTS. NO FALLBACKS. Configure your domain.\n"
+            f"{'='*60}"
+        )
 
-    # Frequency engines
-    if engine_config.get('spectral', True):
-        try:
-            from prism.engines.frequency import compute_spectral
-            engines['spectral'] = compute_spectral
-        except ImportError:
-            pass
-    if engine_config.get('wavelet', True):
-        try:
-            from prism.engines.frequency import compute_wavelet
-            engines['wavelet'] = compute_wavelet
-        except ImportError:
-            pass
+    enabled_engines = engine_config['enabled']
+    engine_params = engine_config.get('params', {})
 
-    # Volatility engines
-    if engine_config.get('garch', True):
-        try:
-            from prism.engines.volatility import compute_garch
-            engines['garch'] = compute_garch
-        except ImportError:
-            pass
-    if engine_config.get('realized_vol', True):
-        try:
-            from prism.engines.volatility import compute_realized_vol
-            engines['realized_vol'] = compute_realized_vol
-        except ImportError:
-            pass
-    if engine_config.get('bipower_variation', True):
-        try:
-            from prism.engines.volatility import compute_bipower_variation
-            engines['bipower_variation'] = compute_bipower_variation
-        except ImportError:
-            pass
-    if engine_config.get('hilbert_amplitude', True):
-        try:
-            from prism.engines.volatility import compute_hilbert_amplitude
-            engines['hilbert_amplitude'] = compute_hilbert_amplitude
-        except ImportError:
-            pass
+    for engine_name in enabled_engines:
+        if engine_name not in AVAILABLE_ENGINES:
+            logger.warning(f"Unknown engine: {engine_name}")
+            continue
 
-    # Recurrence engines
-    if engine_config.get('rqa', True):
-        try:
-            from prism.engines.recurrence import compute_rqa
-            engines['rqa'] = compute_rqa
-        except ImportError:
-            pass
-
-    # Typology engines
-    if engine_config.get('cusum', True):
-        try:
-            from prism.engines.typology import compute_cusum
-            engines['cusum'] = compute_cusum
-        except ImportError:
-            pass
-    if engine_config.get('derivative_stats', True):
-        try:
-            from prism.engines.typology import compute_derivative_stats
-            engines['derivative_stats'] = compute_derivative_stats
-        except ImportError:
-            pass
-    if engine_config.get('distribution', True):
-        try:
-            from prism.engines.typology import compute_distribution
-            engines['distribution'] = compute_distribution
-        except ImportError:
-            pass
-    if engine_config.get('rolling_volatility', True):
-        try:
-            from prism.engines.typology import compute_rolling_volatility
-            engines['rolling_volatility'] = compute_rolling_volatility
-        except ImportError:
-            pass
-    if engine_config.get('seasonality', True):
-        try:
-            from prism.engines.typology import compute_seasonality
-            engines['seasonality'] = compute_seasonality
-        except ImportError:
-            pass
-    if engine_config.get('stationarity', True):
-        try:
-            from prism.engines.typology import compute_stationarity
-            engines['stationarity'] = compute_stationarity
-        except ImportError:
-            pass
-    if engine_config.get('takens', True):
-        try:
-            from prism.engines.typology import compute_takens
-            engines['takens'] = compute_takens
-        except ImportError:
-            pass
-    if engine_config.get('trend', True):
-        try:
-            from prism.engines.typology import compute_trend
-            engines['trend'] = compute_trend
-        except ImportError:
-            pass
-
-    # Pointwise engines
-    if engine_config.get('derivatives', True):
-        try:
-            from prism.engines.pointwise import compute_derivatives
-            engines['derivatives'] = compute_derivatives
-        except ImportError:
-            pass
-    if engine_config.get('hilbert', True):
-        try:
-            from prism.engines.pointwise import compute_hilbert
-            engines['hilbert'] = compute_hilbert
-        except ImportError:
-            pass
-    if engine_config.get('statistical', True):
-        try:
-            from prism.engines.pointwise import compute_statistical
-            engines['statistical'] = compute_statistical
-        except ImportError:
-            pass
-
-    # Momentum engines
-    if engine_config.get('runs_test', True):
-        try:
-            from prism.engines.momentum import compute_runs_test
-            engines['runs_test'] = compute_runs_test
-        except ImportError:
-            pass
-
-    # Discontinuity engines
-    if engine_config.get('dirac', True):
-        try:
-            from prism.engines.discontinuity import compute_dirac
-            engines['dirac'] = compute_dirac
-        except ImportError:
-            pass
-    if engine_config.get('heaviside', True):
-        try:
-            from prism.engines.discontinuity import compute_heaviside
-            engines['heaviside'] = compute_heaviside
-        except ImportError:
-            pass
-    if engine_config.get('structural', True):
-        try:
-            from prism.engines.discontinuity import compute_structural
-            engines['structural'] = compute_structural
-        except ImportError:
-            pass
-
-    # Laplace engines (gradient, laplacian, divergence)
-    if engine_config.get('laplace', True):
-        try:
-            from prism.engines.laplace import compute_gradient, compute_laplacian
+        # Special handling for laplace
+        if engine_name == 'laplace':
             engines['laplace'] = _compute_laplace_metrics
-        except ImportError:
-            pass
+            continue
 
-    # HD Slope - degradation rate (most important for prognosis)
-    if engine_config.get('hd_slope', True):
+        module_path = AVAILABLE_ENGINES[engine_name]
+        if module_path is None:
+            continue
+
         try:
-            from prism.engines.dynamics.hd_slope import compute_hd_slope
-            engines['hd_slope'] = compute_hd_slope
-        except ImportError:
-            pass
+            module_name, func_name = module_path.rsplit(':', 1)
+            module = __import__(module_name, fromlist=[func_name])
+            compute_fn = getattr(module, func_name)
 
-    logger.info(f"  Loaded {len(engines)} engines from config")
+            # Wrap with params if specified
+            params = engine_params.get(engine_name, {})
+            if params:
+                from functools import partial
+                engines[engine_name] = partial(compute_fn, **params)
+            else:
+                engines[engine_name] = compute_fn
+
+        except (ImportError, AttributeError) as e:
+            logger.warning(f"Could not load engine {engine_name}: {e}")
+
+    logger.info(f"  Loaded {len(engines)} engines from config: {list(engines.keys())}")
     return engines
 
 

@@ -108,17 +108,54 @@ def load_config(data_path: Path) -> Dict[str, Any]:
 # HELPER FUNCTIONS
 # =============================================================================
 
+# Required values from each prior stage
+REQUIRED_DYNAMICS_VALUES = [
+    'hd_slope', 'hd_velocity_mean', 'hd_velocity_std',
+    'hd_acceleration_mean', 'hd_final_distance', 'hd_max_distance'
+]
+
+REQUIRED_GEOMETRY_VALUES = [
+    'cov_trace'
+]
+
+
+def require_value(values: Dict[str, float], key: str, stage: str, entity_id: str) -> float:
+    """
+    Get a required value from prior stage output.
+
+    ZERO DEFAULTS POLICY: Fails loudly if value is missing.
+
+    Raises:
+        ConfigurationError: If required value is missing
+    """
+    if key not in values:
+        raise ConfigurationError(
+            f"\n{'='*60}\n"
+            f"PHYSICS ERROR: Required value missing from {stage}\n"
+            f"{'='*60}\n"
+            f"Entity: {entity_id}\n"
+            f"Missing: {key}\n\n"
+            f"Physics layer requires this value from {stage} layer.\n"
+            f"Ensure {stage} layer completed successfully.\n\n"
+            f"NO DEFAULTS. NO FALLBACKS. Fix the pipeline.\n"
+            f"{'='*60}"
+        )
+    return values[key]
+
+
 def get_dynamics_values(dynamics_df: pl.DataFrame, entity_id: str) -> Dict[str, float]:
-    """Extract dynamics values for an entity."""
+    """
+    Extract dynamics values for an entity.
+
+    Returns dict of available values. Caller must validate required values.
+    """
     entity_dyn = dynamics_df.filter(pl.col('entity_id') == entity_id)
 
     if len(entity_dyn) == 0:
         return {}
 
     result = {}
-    for col in ['hd_slope', 'hd_velocity_mean', 'hd_velocity_std',
-                'hd_acceleration_mean', 'hd_acceleration_std',
-                'hd_final_distance', 'hd_max_distance']:
+    for col in REQUIRED_DYNAMICS_VALUES:
         if col in entity_dyn.columns:
             val = entity_dyn[col][0]
             if val is not None and np.isfinite(val):
@@ -128,14 +165,18 @@ def get_dynamics_values(dynamics_df: pl.DataFrame, entity_id: str) -> Dict[str, 
 
 
 def get_geometry_values(geometry_df: pl.DataFrame, entity_id: str) -> Dict[str, float]:
-    """Extract geometry values for an entity."""
+    """
+    Extract geometry values for an entity.
+
+    Returns dict of available values. Caller must validate required values.
+    """
     entity_geom = geometry_df.filter(pl.col('entity_id') == entity_id)
 
     if len(entity_geom) == 0:
         return {}
 
     result = {}
-    for col in ['effective_dimensionality', 'cov_trace', 'dist_mean', 'centroid_dist_mean']:
+    for col in REQUIRED_GEOMETRY_VALUES + ['effective_dimensionality', 'dist_mean', 'centroid_dist_mean']:
         if col in entity_geom.columns:
             val = entity_geom[col][0]
             if val is not None and np.isfinite(val):
@@ -209,17 +250,19 @@ def compute_hamiltonian(
     Where:
     - T = kinetic energy = ½ v² (velocity from dynamics)
     - V = potential energy = ½ k x² (distance from equilibrium)
+
+    ZERO DEFAULTS: All required values must be present from prior stages.
     """
     # Kinetic energy: T = ½ v²
-    velocity = dynamics_vals.get('hd_velocity_mean', 0.0)
+    velocity = require_value(dynamics_vals, 'hd_velocity_mean', 'dynamics', entity_id)
     T = 0.5 * velocity ** 2
 
     # Potential energy: V = ½ k x²
     # x = distance from equilibrium (approximated by centroid distance or final distance)
-    displacement = dynamics_vals.get('hd_final_distance', 0.0)
+    displacement = require_value(dynamics_vals, 'hd_final_distance', 'dynamics', entity_id)
 
     # Spring constant k ≈ 1 / variance (stiffer system = lower variance)
-    cov_trace = geometry_vals.get('cov_trace', 1.0)
+    cov_trace = require_value(geometry_vals, 'cov_trace', 'geometry', entity_id)
     k = 1.0 / (cov_trace + 1e-10) if cov_trace > 0 else 1.0
     k = min(k, 10.0)  # Cap to avoid numerical issues
 
@@ -256,13 +299,15 @@ def compute_lagrangian(
 
     The Lagrangian describes the "action" of the system.
     Deviation from expected motion indicates external forcing.
+
+    ZERO DEFAULTS: All required values must be present from prior stages.
     """
     # Get T and V from Hamiltonian calculation
-    velocity = dynamics_vals.get('hd_velocity_mean', 0.0)
+    velocity = require_value(dynamics_vals, 'hd_velocity_mean', 'dynamics', entity_id)
     T = 0.5 * velocity ** 2
 
-    displacement = dynamics_vals.get('hd_final_distance', 0.0)
-    cov_trace = geometry_vals.get('cov_trace', 1.0)
+    displacement = require_value(dynamics_vals, 'hd_final_distance', 'dynamics', entity_id)
+    cov_trace = require_value(geometry_vals, 'cov_trace', 'geometry', entity_id)
     k = 1.0 / (cov_trace + 1e-10) if cov_trace > 0 else 1.0
     k = min(k, 10.0)
     V = 0.5 * k * displacement ** 2
@@ -272,7 +317,7 @@ def compute_lagrangian(
     # Residual force (deviation from expected motion)
     # Expected: system should decelerate as it moves away from equilibrium
     # Actual acceleration
-    actual_accel = dynamics_vals.get('hd_acceleration_mean', 0.0)
+    actual_accel = require_value(dynamics_vals, 'hd_acceleration_mean', 'dynamics', entity_id)
 
     # Expected acceleration (from potential gradient): F = -kx, a = -kx/m
     expected_accel = -k * displacement
@@ -314,7 +359,7 @@ def compute_gibbs_free_energy(
     G = hamiltonian_H - TS
 
     # Rate of change proxy: hd_slope indicates direction
-    hd_slope = dynamics_vals.get('hd_slope', 0.0)
+    hd_slope = require_value(dynamics_vals, 'hd_slope', 'dynamics', entity_id)
 
     # If hd_slope > 0, system is moving away from baseline → spontaneous degradation
     spontaneous = hd_slope > 0
@@ -342,18 +387,20 @@ def compute_momentum_analysis(
 
     p = mv (momentum, mass = 1 in behavioral space)
     F = ma (force from acceleration)
+
+    ZERO DEFAULTS: All required values must be present from prior stages.
     """
     # Momentum (mass = 1)
-    velocity = dynamics_vals.get('hd_velocity_mean', 0.0)
+    velocity = require_value(dynamics_vals, 'hd_velocity_mean', 'dynamics', entity_id)
     momentum = velocity  # m = 1
 
     # Force (F = ma, m = 1)
-    acceleration = dynamics_vals.get('hd_acceleration_mean', 0.0)
+    acceleration = require_value(dynamics_vals, 'hd_acceleration_mean', 'dynamics', entity_id)
     force = acceleration
 
     # Impulse proxy (change in momentum over trajectory)
     # Approximated by velocity_std * some factor
-    velocity_std = dynamics_vals.get('hd_velocity_std', 0.0)
+    velocity_std = require_value(dynamics_vals, 'hd_velocity_std', 'dynamics', entity_id)
     impulse_proxy = velocity_std
 
     return {
@@ -376,14 +423,16 @@ def analyze_equilibrium(
 ) -> Dict[str, Any]:
     """
     Analyze equilibrium state and stability.
+
+    ZERO DEFAULTS: All required values must be present from prior stages.
     """
     # Distance from equilibrium (baseline)
-    displacement = dynamics_vals.get('hd_final_distance', 0.0)
-    max_displacement = dynamics_vals.get('hd_max_distance', 0.0)
+    displacement = require_value(dynamics_vals, 'hd_final_distance', 'dynamics', entity_id)
+    max_displacement = require_value(dynamics_vals, 'hd_max_distance', 'dynamics', entity_id)
 
     # Velocity at end
-    velocity = dynamics_vals.get('hd_velocity_mean', 0.0)
-    acceleration = dynamics_vals.get('hd_acceleration_mean', 0.0)
+    velocity = require_value(dynamics_vals, 'hd_velocity_mean', 'dynamics', entity_id)
+    acceleration = require_value(dynamics_vals, 'hd_acceleration_mean', 'dynamics', entity_id)
 
     # Stability indicators
     # Stable: returning to baseline (negative velocity when displaced)
@@ -397,12 +446,14 @@ def analyze_equilibrium(
     else:
         stability = 'unknown'
 
-    stability_score = {
+    # Stability score lookup - all cases covered by if/else above
+    stability_scores = {
         'at_equilibrium': 1.0,
         'stable': 0.7,
         'unstable': 0.0,
         'unknown': 0.5,
-    }.get(stability, 0.5)
+    }
+    stability_score = stability_scores[stability]  # No fallback - fail if unexpected value
 
     return {
         'equilibrium_distance': float(displacement),
@@ -460,10 +511,10 @@ def compute_entity_physics(
     result.update(momentum)
     result.update(equilibrium)
 
-    # Include key dynamics values for reference
-    result['hd_slope'] = dynamics_vals.get('hd_slope', 0.0)
-    result['hd_velocity_mean'] = dynamics_vals.get('hd_velocity_mean', 0.0)
-    result['hd_acceleration_mean'] = dynamics_vals.get('hd_acceleration_mean', 0.0)
+    # Include key dynamics values for reference (already validated above)
+    result['hd_slope'] = require_value(dynamics_vals, 'hd_slope', 'dynamics', entity_id)
+    result['hd_velocity_mean'] = require_value(dynamics_vals, 'hd_velocity_mean', 'dynamics', entity_id)
+    result['hd_acceleration_mean'] = require_value(dynamics_vals, 'hd_acceleration_mean', 'dynamics', entity_id)
 
     return result
 
