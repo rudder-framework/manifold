@@ -35,7 +35,6 @@ DERIVABLE_ENGINES = {
     'lyapunov': 'prism.engines.lyapunov',
     'sample_entropy': 'prism.engines.entropy',
     'permutation_entropy': 'prism.engines.entropy',
-    'dfa': 'prism.engines.memory',
     'spectral_entropy': 'prism.engines.spectral',
     'garch': 'prism.engines.garch',
 }
@@ -143,15 +142,6 @@ def generate_derivation(engine_name: str, signal_id: str,
     elif engine_name == 'permutation_entropy':
         from prism.engines.entropy import compute_permutation_entropy_with_derivation
         result, derivation = compute_permutation_entropy_with_derivation(
-            values,
-            signal_id=signal_id,
-            window_id=window_id,
-            window_start=window_start,
-            window_end=window_end,
-        )
-    elif engine_name == 'dfa':
-        from prism.engines.characterize import compute_dfa_with_derivation
-        result, derivation = compute_dfa_with_derivation(
             values,
             signal_id=signal_id,
             window_id=window_id,

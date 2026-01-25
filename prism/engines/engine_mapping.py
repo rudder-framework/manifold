@@ -2,12 +2,12 @@
 UNIFIED ENGINE MAPPING - Single Source of Truth
 ================================================
 
-This replaces the separate ENGINE_THRESHOLDS and WEIGHT_RULES
-with a single, explicit mapping table.
+Engine metadata, threshold requirements, and weight scaling.
 
-Location: prism/engines/characterize.py
-Replace the existing ENGINE_THRESHOLDS and WEIGHT_RULES (~lines 45-75)
-
+NOTE: This file contains engine selection logic (what engines are valid
+for given data characteristics). This may belong in ORTHON for
+classification-aware selection. For PRISM pure compute, all engines
+always run and produce numbers.
 """
 
 # =============================================================================

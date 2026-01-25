@@ -53,14 +53,6 @@ ENTRY_POINT_REGISTRY: Dict[str, Dict[str, Any]] = {
         'outputs': ['raw/observations.parquet'],
     },
 
-    'characterize': {
-        'module': 'prism.modules.characterize',
-        'goal': 'Inline characterization for signals (called by signal_vector)',
-        'inputs': ['signal values array'],
-        'outputs': ['CharacterizationResult (in-memory)'],
-        'note': 'Module, not CLI entry point. Use from prism.engines.characterize import characterize_signal',
-    },
-
     'signal_vector': {
         'module': 'prism.entry_points.signal_vector',
         'goal': 'Compute vector metrics for each signal (point-wise + windowed)',
