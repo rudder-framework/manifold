@@ -177,13 +177,19 @@ def _run_compute_sync(config: Dict, observations_path: str) -> ComputeResponse:
 
         duration = time.time() - start_time
 
-        if result.returncode != 0:
-            # Parse error for helpful hints
+        # Find created parquet files (check regardless of return code)
+        parquets = [f.name for f in output_dir.glob("*.parquet")
+                    if f.name != "observations.parquet"]  # Exclude input file
+
+        # Consider success if core parquets were created
+        core_created = any(p in parquets for p in ["vector.parquet", "physics.parquet"])
+
+        if result.returncode != 0 and not core_created:
+            # Real failure - no output produced
             error_msg = result.stderr or result.stdout or "Unknown error"
             hint = None
             engine = None
 
-            # Try to extract engine name from error
             if "Missing required" in error_msg:
                 hint = "Check config has all required constants for this discipline"
             if "viscosity" in error_msg.lower():
@@ -191,14 +197,13 @@ def _run_compute_sync(config: Dict, observations_path: str) -> ComputeResponse:
 
             return ComputeResponse(
                 status="error",
-                message=error_msg[:500],  # Truncate long errors
+                message=error_msg[:500],
                 hint=hint,
                 engine=engine,
                 duration_seconds=round(duration, 2),
             )
 
-        # Find created parquet files
-        parquets = [f.name for f in output_dir.glob("*.parquet")]
+        # Success - some parquets were created (even if some layers failed)
 
         # Write completion status
         status_file = output_dir / "job_status.json"
