@@ -8,16 +8,20 @@ Usage (ORTHON - writing):
     config = PrismConfig(
         sequence_column="timestamp",
         entities=["P-101", "P-102"],
-        domain="turbomachinery",  # Optional, from dropdown
+        discipline="reaction",  # Optional, from dropdown
         ...
     )
     config.to_json("config.json")
 
 Usage (PRISM - reading):
     config = PrismConfig.from_json("config.json")
-    if config.domain:
-        # Route to domain-specific engines
+    disc = config.get_effective_discipline()
+    if disc:
+        # Route to discipline-specific engines
     print(config.global_constants)
+
+Note: 'domain' is deprecated but still supported for backwards compatibility.
+      Use 'discipline' for new code.
 """
 
 from pydantic import BaseModel, Field
@@ -27,45 +31,27 @@ import json
 
 
 # =============================================================================
-# AVAILABLE DOMAINS
+# DISCIPLINES (primary) and DOMAINS (deprecated alias)
 # =============================================================================
 
-# Domain registry - ORTHON uses this for dropdown, PRISM uses for routing
-DOMAINS = {
-    "turbomachinery": {
-        "name": "Turbomachinery",
-        "description": "Gas turbines, compressors, turbofans (C-MAPSS, etc.)",
-        "engines": ["compressor_efficiency", "turbine_efficiency", "polytropic_efficiency"],
-    },
-    "fluid": {
-        "name": "Fluid Dynamics",
-        "description": "CFD validation, PINN solutions, Navier-Stokes",
-        "engines": ["vorticity", "divergence", "q_criterion"],
-    },
-    "battery": {
-        "name": "Battery",
-        "description": "Li-ion degradation, capacity fade (CALCE, etc.)",
-        "engines": ["capacity_fade", "impedance", "soh"],
-    },
-    "bearing": {
-        "name": "Bearings",
-        "description": "Rotating machinery bearings (FEMTO, CWRU, etc.)",
-        "engines": ["envelope_spectrum", "ball_pass_frequency"],
-    },
-    "chemical": {
-        "name": "Chemical Process",
-        "description": "Reaction kinetics, TEP, batch processes",
-        "engines": ["reaction_rate", "yield", "selectivity"],
-    },
+# Import the authoritative discipline registry
+from prism.disciplines.registry import DISCIPLINES, list_disciplines
+
+# Discipline type - all valid discipline names
+DisciplineType = Optional[str]  # Validated against DISCIPLINES keys at runtime
+
+# Legacy domain mapping → discipline (for backwards compatibility)
+DOMAIN_TO_DISCIPLINE = {
+    "turbomachinery": "mechanics",      # Map to mechanics discipline
+    "fluid": "fluid_dynamics",          # Direct match
+    "battery": "electrochemistry",      # Map to electrochemistry discipline
+    "bearing": "mechanics",             # Map to mechanics discipline
+    "chemical": "reaction",             # Map to reaction discipline
 }
 
-DomainType = Optional[Literal[
-    "turbomachinery",
-    "fluid",
-    "battery",
-    "bearing",
-    "chemical",
-]]
+# DEPRECATED: Legacy domains - use DISCIPLINES instead
+DOMAINS = DOMAIN_TO_DISCIPLINE  # Alias for backwards compatibility
+DomainType = DisciplineType     # Alias for backwards compatibility
 
 
 class WindowConfig(BaseModel):
@@ -118,12 +104,18 @@ class PrismConfig(BaseModel):
     )
 
     # ==========================================================================
-    # DOMAIN (OPTIONAL)
+    # DISCIPLINE (OPTIONAL)
     # ==========================================================================
 
+    discipline: DisciplineType = Field(
+        default=None,
+        description="Discipline for specialized engines. None = general/core engines only."
+    )
+
+    # DEPRECATED: Use 'discipline' instead. Kept for backwards compatibility.
     domain: DomainType = Field(
         default=None,
-        description="Domain for specialized engines. None = general/core engines only."
+        description="DEPRECATED: Use 'discipline' instead. Maps to discipline if set."
     )
 
     # ==========================================================================
@@ -248,24 +240,57 @@ class PrismConfig(BaseModel):
         """Get list of all signal IDs"""
         return [s.signal_id for s in self.signals]
 
-    def get_domain_info(self) -> Optional[Dict[str, Any]]:
-        """Get domain metadata if domain is specified"""
-        if self.domain and self.domain in DOMAINS:
-            return DOMAINS[self.domain]
+    def get_effective_discipline(self) -> Optional[str]:
+        """Get the effective discipline, resolving domain→discipline if needed.
+
+        Priority:
+        1. discipline (if set)
+        2. domain mapped to discipline (backwards compatibility)
+        3. None
+        """
+        if self.discipline:
+            return self.discipline
+        if self.domain:
+            # Map legacy domain to discipline
+            return DOMAIN_TO_DISCIPLINE.get(self.domain, self.domain)
         return None
 
+    def get_discipline_info(self) -> Optional[Dict[str, Any]]:
+        """Get discipline metadata if discipline is specified"""
+        disc = self.get_effective_discipline()
+        if disc and disc in DISCIPLINES:
+            return DISCIPLINES[disc]
+        return None
+
+    def get_discipline_engines(self) -> List[str]:
+        """Get list of discipline-specific engines to run"""
+        info = self.get_discipline_info()
+        if not info:
+            return []
+        engines = list(info.get("engines", []))
+        # Also include subdiscipline engines
+        for sub in info.get("subdisciplines", {}).values():
+            engines.extend(sub.get("engines", []))
+        return engines
+
+    # DEPRECATED: Use get_discipline_info instead
+    def get_domain_info(self) -> Optional[Dict[str, Any]]:
+        """DEPRECATED: Use get_discipline_info instead"""
+        return self.get_discipline_info()
+
+    # DEPRECATED: Use get_discipline_engines instead
     def get_domain_engines(self) -> List[str]:
-        """Get list of domain-specific engines to run"""
-        info = self.get_domain_info()
-        return info["engines"] if info else []
+        """DEPRECATED: Use get_discipline_engines instead"""
+        return self.get_discipline_engines()
 
     def summary(self) -> str:
         """Human-readable summary"""
+        disc = self.get_effective_discipline()
         lines = [
             "PrismConfig Summary",
             "=" * 40,
             f"Source: {self.source_file}",
-            f"Domain: {self.domain or '(general)'}",
+            f"Discipline: {disc or '(general/core only)'}",
             f"Sequence: {self.sequence_column or '(row index)'} [{self.sequence_unit or 'none'}]",
             f"Window: size={self.window.size}, stride={self.window.stride}, min_samples={self.window.min_samples}"
             + (f" (auto-detected via {self.window.detection_method})" if self.window.auto_detected else ""),
