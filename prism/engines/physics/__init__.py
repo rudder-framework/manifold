@@ -228,15 +228,11 @@ from prism.engines.physics.cstr_kinetics import (
     analyze_cstr_kinetics,
 )
 
-# === Reaction Output (ORTHON interface) ===
+# === Reaction Output (→ ORTHON) ===
 from prism.engines.physics.reaction_output import (
-    create_reaction_dataframe,
-    create_arrhenius_dataframe,
-    create_material_balance_dataframe,
-    create_energy_balance_dataframe,
-    create_transport_dataframe,
-    write_reaction_outputs,
-    analyze_and_output,
+    calculate_reaction_metrics,
+    calculate_arrhenius_metrics,
+    compute_reaction_to_orthon,
 )
 
 # === Process Control ===
@@ -398,14 +394,10 @@ __all__ = [
     'reynolds_number_pipe',
     'analyze_cstr_kinetics',
 
-    # === Reaction Output (ORTHON) ===
-    'create_reaction_dataframe',
-    'create_arrhenius_dataframe',
-    'create_material_balance_dataframe',
-    'create_energy_balance_dataframe',
-    'create_transport_dataframe',
-    'write_reaction_outputs',
-    'analyze_and_output',
+    # === Reaction Output (→ ORTHON) ===
+    'calculate_reaction_metrics',
+    'calculate_arrhenius_metrics',
+    'compute_reaction_to_orthon',
 
     # === Process Control ===
     'first_order_response',
