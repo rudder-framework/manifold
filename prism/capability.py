@@ -124,6 +124,16 @@ class Capability(Enum):
     MAXWELL_CURL_B = auto()       # ∇×B = μ₀J + μ₀ε₀∂E/∂t
     POYNTING = auto()             # S = E × B / μ₀
 
+    # ─────────────────────────────────────────────────────────────────────────
+    # PIPE FLOW: With pipe geometry
+    # ─────────────────────────────────────────────────────────────────────────
+    PIPE_REYNOLDS = auto()        # Re = vD/ν (per-pipe)
+    FLOW_REGIME = auto()          # Laminar/Transitional/Turbulent
+    FRICTION_FACTOR = auto()      # f (Darcy-Weisbach)
+    PRESSURE_DROP = auto()        # ΔP = f(L/D)(ρv²/2)
+    HEAD_LOSS = auto()            # h_f = ΔP/(ρg)
+    PIPE_POWER_LOSS = auto()      # P = ΔP × Q
+
 
 # =============================================================================
 # PHYSICAL QUANTITIES
@@ -261,6 +271,79 @@ class ConstantsSpec:
             dz=d.get('dz'),
             dt=d.get('dt'),
         )
+
+
+# =============================================================================
+# PIPE GEOMETRY SPECIFICATION
+# =============================================================================
+
+@dataclass
+class PipeSpec:
+    """Per-pipe geometry specification."""
+    signal: str                              # Velocity signal name
+    diameter: float                          # m
+    length: Optional[float] = None           # m
+    roughness: float = 0.0                   # m (absolute roughness)
+    description: Optional[str] = None
+
+    @property
+    def area(self) -> float:
+        """Cross-sectional area [m²]."""
+        import math
+        return math.pi * (self.diameter / 2) ** 2
+
+    @classmethod
+    def from_dict(cls, d: Dict) -> 'PipeSpec':
+        return cls(
+            signal=d['signal'],
+            diameter=d['diameter'],
+            length=d.get('length'),
+            roughness=d.get('roughness', 0.0),
+            description=d.get('description'),
+        )
+
+
+@dataclass
+class PipeNetworkSpec:
+    """Pipe network specification."""
+    pipes: List[PipeSpec]
+
+    # Network topology (optional)
+    connections: List[Dict] = field(default_factory=list)
+
+    @classmethod
+    def from_dict(cls, d: Dict) -> 'PipeNetworkSpec':
+        if not d:
+            return cls(pipes=[])
+
+        pipes_raw = d.get('pipes', [])
+
+        # Handle both list format and dict format
+        pipes = []
+        if isinstance(pipes_raw, list):
+            for p in pipes_raw:
+                pipes.append(PipeSpec.from_dict(p))
+        elif isinstance(pipes_raw, dict):
+            # Dict format: {signal_name: {diameter: ..., length: ...}}
+            for signal, spec in pipes_raw.items():
+                spec['signal'] = signal
+                pipes.append(PipeSpec.from_dict(spec))
+
+        return cls(
+            pipes=pipes,
+            connections=d.get('connections', []),
+        )
+
+    def get_pipe(self, signal: str) -> Optional[PipeSpec]:
+        """Get pipe spec for a signal."""
+        for p in self.pipes:
+            if p.signal == signal:
+                return p
+        return None
+
+    def has_pipe(self, signal: str) -> bool:
+        """Check if signal has pipe geometry."""
+        return self.get_pipe(signal) is not None
 
 
 # =============================================================================
@@ -412,6 +495,7 @@ class DataSpec:
     constants: ConstantsSpec
     relationships: RelationshipsSpec
     spatial: SpatialSpec
+    pipe_network: PipeNetworkSpec
 
     # Windowing (required)
     window_size: int
@@ -430,6 +514,7 @@ class DataSpec:
             constants=ConstantsSpec.from_dict(config.get('constants', {})),
             relationships=RelationshipsSpec.from_dict(config.get('relationships', {})),
             spatial=SpatialSpec.from_dict(config.get('spatial', {})),
+            pipe_network=PipeNetworkSpec.from_dict(config.get('pipe_network', {})),
             window_size=config.get('window_size', 50),
             window_stride=config.get('window_stride', 25),
         )
@@ -505,6 +590,37 @@ class DataSpec:
     def has_velocity_field(self) -> bool:
         return self.spatial.type == SpatialType.VELOCITY_FIELD
 
+    # ─────────────────────────────────────────────────────────────────────────
+    # Pipe network helpers
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def has_pipe_network(self) -> bool:
+        """Check if pipe geometry is defined."""
+        return len(self.pipe_network.pipes) > 0
+
+    def has_pipe_for_signal(self, signal: str) -> bool:
+        """Check if a specific signal has pipe geometry."""
+        return self.pipe_network.has_pipe(signal)
+
+    def get_pipe(self, signal: str) -> Optional[PipeSpec]:
+        """Get pipe geometry for a signal."""
+        return self.pipe_network.get_pipe(signal)
+
+    def can_compute_reynolds(self) -> bool:
+        """Check if Reynolds number can be computed for any pipe."""
+        return (
+            self.has_pipe_network() and
+            self.constants.kinematic_viscosity is not None
+        )
+
+    def can_compute_pressure_drop(self) -> bool:
+        """Check if pressure drop can be computed."""
+        return (
+            self.can_compute_reynolds() and
+            self.constants.density is not None and
+            any(p.length is not None for p in self.pipe_network.pipes)
+        )
+
 
 # =============================================================================
 # CAPABILITY REQUIREMENTS
@@ -577,6 +693,14 @@ CAPABILITY_REQUIREMENTS: Dict[Capability, Dict[str, Any]] = {
     Capability.MAXWELL_DIV_E: {'spatial': 'em_field'},
     Capability.MAXWELL_CURL_B: {'spatial': 'em_field'},
     Capability.POYNTING: {'spatial': 'em_field'},
+
+    # Pipe flow: Need pipe geometry
+    Capability.PIPE_REYNOLDS: {'pipe_network': True, 'constants': ['kinematic_viscosity']},
+    Capability.FLOW_REGIME: {'pipe_network': True, 'constants': ['kinematic_viscosity']},
+    Capability.FRICTION_FACTOR: {'pipe_network': True, 'constants': ['kinematic_viscosity']},
+    Capability.PRESSURE_DROP: {'pipe_network': True, 'constants': ['kinematic_viscosity', 'density']},
+    Capability.HEAD_LOSS: {'pipe_network': True, 'constants': ['kinematic_viscosity', 'density']},
+    Capability.PIPE_POWER_LOSS: {'pipe_network': True, 'constants': ['kinematic_viscosity', 'density']},
 }
 
 
@@ -757,6 +881,14 @@ def check_requirements(spec: DataSpec, reqs: Dict) -> Optional[str]:
     min_signals = reqs.get('min_signals')
     if min_signals and len(spec.signals) < min_signals:
         missing.append(f"at least {min_signals} signals")
+
+    # Check for pipe network
+    if reqs.get('pipe_network') and not spec.has_pipe_network():
+        missing.append("pipe_network with pipe geometry (diameter)")
+
+    # Check for density (used in pressure drop, etc.)
+    if 'density' in reqs.get('constants', []) and not spec.constants.density:
+        missing.append("density (rho) [kg/m^3]")
 
     if missing:
         return ", ".join(missing)
