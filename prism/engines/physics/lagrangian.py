@@ -118,7 +118,9 @@ def compute_action(
             'equation': 'S = ∫L dt',
         }
 
-    S = np.trapz(L[~np.isnan(L)], dx=dt)
+    # np.trapz renamed to np.trapezoid in numpy 2.0
+    trapz_fn = getattr(np, 'trapezoid', None) or getattr(np, 'trapz', None)
+    S = trapz_fn(L[~np.isnan(L)], dx=dt)
 
     return {
         'action': float(S),

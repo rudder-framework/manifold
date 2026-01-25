@@ -185,7 +185,7 @@ def validate_gibbs_free_energy(
     """Validate Gibbs free energy: G = H - TS"""
     from prism.engines.physics.gibbs_free_energy import compute
 
-    result = compute(enthalpy, temperature, entropy)
+    result = compute(temperature=temperature, enthalpy=enthalpy, entropy=entropy)
     computed = result['gibbs_free_energy']
 
     error = np.abs(computed - expected)

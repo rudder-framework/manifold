@@ -228,7 +228,9 @@ def compute_impulse(
     # Handle NaN values
     F_clean = np.where(np.isnan(F), 0, F)
 
-    J = np.trapz(F_clean, dx=dt, axis=0)
+    # np.trapz renamed to np.trapezoid in numpy 2.0
+    trapz_fn = getattr(np, 'trapezoid', None) or getattr(np, 'trapz', None)
+    J = trapz_fn(F_clean, dx=dt, axis=0)
 
     if F.ndim > 1 and F.shape[-1] > 1:
         J_magnitude = np.sqrt(np.sum(J**2))
