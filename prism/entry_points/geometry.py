@@ -198,6 +198,11 @@ def prepare_entity_matrix(
     if len(entity_obs) == 0:
         return None
 
+    # Aggregate duplicates (same timestamp+signal) by taking mean
+    entity_obs = entity_obs.group_by(['timestamp', 'signal_id']).agg(
+        pl.col('value').mean()
+    )
+
     # Pivot to wide format
     try:
         wide = entity_obs.pivot(
