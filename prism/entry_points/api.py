@@ -125,14 +125,31 @@ def _run_compute_sync(config: Dict, observations_path: str) -> ComputeResponse:
         config_path = output_dir / "config.yaml"
 
         # Build config with required fields + user overrides
+        # Default engines for each layer
+        default_engines = {
+            "vector": {
+                "enabled": [
+                    "hurst_dfa", "sample_entropy", "spectral_slope",
+                    "garch", "rqa", "stationarity", "trend"
+                ]
+            },
+            "geometry": {
+                "enabled": [
+                    "bg_correlation", "bg_distance", "bg_clustering"
+                ]
+            },
+        }
+
         prism_config = {
             "discipline": discipline,
             "observations_path": observations_path,
             # Required window config (use defaults if not provided)
             "window": config.get("window", {"size": 100, "stride": 50}),
             "min_samples": config.get("min_samples", 50),
+            # Engine config (use defaults if not provided)
+            "engines": config.get("engines", default_engines),
             # Pass through other config
-            **{k: v for k, v in config.items() if k not in ["discipline", "window", "min_samples"]},
+            **{k: v for k, v in config.items() if k not in ["discipline", "window", "min_samples", "engines"]},
         }
         with open(config_path, 'w') as f:
             yaml.dump(prism_config, f)
