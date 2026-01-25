@@ -336,40 +336,100 @@ def _compute_laplace_metrics(values: np.ndarray) -> Dict[str, float]:
 # CONFIG
 # =============================================================================
 
-DEFAULT_CONFIG = {
-    'min_samples': 50,
-    'window_size': None,  # None = use full signal
-    'stride': None,       # None = non-overlapping
-}
+class ConfigurationError(Exception):
+    """Raised when required configuration is missing."""
+    pass
 
 
 def load_config(data_path: Path) -> Dict[str, Any]:
-    """Load config from data directory."""
+    """
+    Load config from data directory.
+
+    REQUIRED config values (no defaults):
+        window.size  - Window size for temporal analysis
+        window.stride - Stride between windows
+
+    Raises:
+        ConfigurationError: If window.size or window.stride not set
+    """
     config_path = data_path / 'config.yaml'
-    config = DEFAULT_CONFIG.copy()
 
-    if config_path.exists():
-        with open(config_path) as f:
-            user_config = yaml.safe_load(f) or {}
+    if not config_path.exists():
+        raise ConfigurationError(
+            f"\n{'='*60}\n"
+            f"CONFIGURATION ERROR: config.yaml not found\n"
+            f"{'='*60}\n"
+            f"Location: {config_path}\n\n"
+            f"PRISM requires explicit windowing configuration.\n"
+            f"Create config.yaml with:\n\n"
+            f"  window:\n"
+            f"    size: 50      # samples per window\n"
+            f"    stride: 25    # samples between windows\n\n"
+            f"NO DEFAULTS. NO FALLBACKS. Configure your domain.\n"
+            f"{'='*60}"
+        )
 
-        # Extract window settings from nested structure
-        if 'window' in user_config:
-            window_cfg = user_config['window']
-            if window_cfg.get('size') is not None:
-                config['window_size'] = window_cfg['size']
-            if window_cfg.get('stride') is not None:
-                config['stride'] = window_cfg['stride']
-            if window_cfg.get('min_samples') is not None:
-                config['min_samples'] = window_cfg['min_samples']
+    with open(config_path) as f:
+        user_config = yaml.safe_load(f) or {}
 
-        # Also check top-level min_samples
-        if 'min_samples' in user_config:
-            config['min_samples'] = user_config['min_samples']
+    config = {
+        'min_samples': user_config.get('min_samples', 50),
+        'engines': user_config.get('engines', {}),
+    }
 
-        # Store full config for engine selection
-        config['engines'] = user_config.get('engines', {})
+    # REQUIRED: window.size
+    if 'window' not in user_config:
+        raise ConfigurationError(
+            f"\n{'='*60}\n"
+            f"CONFIGURATION ERROR: window section missing\n"
+            f"{'='*60}\n"
+            f"File: {config_path}\n\n"
+            f"PRISM requires explicit windowing configuration.\n"
+            f"Add to config.yaml:\n\n"
+            f"  window:\n"
+            f"    size: 50      # samples per window\n"
+            f"    stride: 25    # samples between windows\n\n"
+            f"NO DEFAULTS. NO FALLBACKS. Configure your domain.\n"
+            f"{'='*60}"
+        )
 
-        logger.info(f"Loaded config: min_samples={config['min_samples']}, window={config['window_size']}, stride={config['stride']}")
+    window_cfg = user_config['window']
+
+    if window_cfg.get('size') is None:
+        raise ConfigurationError(
+            f"\n{'='*60}\n"
+            f"CONFIGURATION ERROR: window.size not set\n"
+            f"{'='*60}\n"
+            f"File: {config_path}\n\n"
+            f"window.size is REQUIRED. Example:\n\n"
+            f"  window:\n"
+            f"    size: 50      # samples per window\n"
+            f"    stride: 25    # samples between windows\n\n"
+            f"NO DEFAULTS. NO FALLBACKS. Configure your domain.\n"
+            f"{'='*60}"
+        )
+
+    if window_cfg.get('stride') is None:
+        raise ConfigurationError(
+            f"\n{'='*60}\n"
+            f"CONFIGURATION ERROR: window.stride not set\n"
+            f"{'='*60}\n"
+            f"File: {config_path}\n\n"
+            f"window.stride is REQUIRED. Example:\n\n"
+            f"  window:\n"
+            f"    size: 50      # samples per window\n"
+            f"    stride: 25    # 50% overlap\n\n"
+            f"NO DEFAULTS. NO FALLBACKS. Configure your domain.\n"
+            f"{'='*60}"
+        )
+
+    config['window_size'] = window_cfg['size']
+    config['stride'] = window_cfg['stride']
+
+    if window_cfg.get('min_samples') is not None:
+        config['min_samples'] = window_cfg['min_samples']
+
+    logger.info(f"Loaded config: window_size={config['window_size']}, stride={config['stride']}, min_samples={config['min_samples']}")
 
     return config
 
@@ -381,8 +441,8 @@ def load_config(data_path: Path) -> Dict[str, Any]:
 def generate_windows(
     values: np.ndarray,
     timestamps: np.ndarray,
-    window_size: Optional[int] = None,
-    stride: Optional[int] = None,
+    window_size: int,
+    stride: int,
     min_samples: int = 50,
 ) -> List[Dict]:
     """
@@ -391,8 +451,8 @@ def generate_windows(
     Args:
         values: Signal values
         timestamps: Corresponding timestamps
-        window_size: Window size (None = full signal)
-        stride: Stride between windows (None = window_size)
+        window_size: Window size (REQUIRED)
+        stride: Stride between windows (REQUIRED)
         min_samples: Minimum samples per window
 
     Yields:
@@ -400,20 +460,9 @@ def generate_windows(
     """
     n = len(values)
 
-    if window_size is None or window_size >= n:
-        # Single window (full signal)
-        if n >= min_samples:
-            yield {
-                'window_idx': 0,
-                'window_start': float(timestamps[0]),
-                'window_end': float(timestamps[-1]),
-                'values': values,
-                'timestamps': timestamps,
-            }
+    # If signal is shorter than window, skip it entirely
+    if n < window_size:
         return
-
-    if stride is None:
-        stride = window_size
 
     window_idx = 0
     for start in range(0, n - window_size + 1, stride):
@@ -576,10 +625,12 @@ def main():
     )
     parser.add_argument('--force', '-f', action='store_true',
                         help='Recompute even if output exists')
-    parser.add_argument('--window', type=int, default=None,
-                        help='Window size (default: full signal)')
-    parser.add_argument('--stride', type=int, default=None,
-                        help='Stride between windows (default: window size)')
+    # Window/stride OVERRIDE config but don't provide defaults
+    # Config must have these set, CLI just allows temporary override
+    parser.add_argument('--window', type=int,
+                        help='Override window.size from config')
+    parser.add_argument('--stride', type=int,
+                        help='Override window.stride from config')
 
     args = parser.parse_args()
 
@@ -602,11 +653,19 @@ def main():
         logger.info(f"vector.parquet exists, use --force to recompute")
         return 0
 
-    # Load config
-    config = load_config(data_path)
-    if args.window:
+    # Load config - WILL FAIL LOUDLY if window/stride not set
+    try:
+        config = load_config(data_path)
+    except ConfigurationError as e:
+        logger.error(str(e))
+        sys.exit(1)
+
+    # CLI overrides (only if explicitly provided)
+    if args.window is not None:
+        logger.info(f"CLI override: window_size={args.window}")
         config['window_size'] = args.window
-    if args.stride:
+    if args.stride is not None:
+        logger.info(f"CLI override: stride={args.stride}")
         config['stride'] = args.stride
 
     # Load engines from config
