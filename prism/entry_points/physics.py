@@ -3,27 +3,53 @@
 PRISM Physics Entry Point
 =========================
 
-Orchestrates energy and momentum calculations using physics engines.
+Orchestrates physics and chemical engineering calculations.
 
 REQUIRES: observations.parquet (for raw signal values)
 
-Engines (7 total):
-    Energy: kinetic_energy, potential_energy, hamiltonian, lagrangian
-    Momentum: linear_momentum, angular_momentum
-    Thermodynamics: gibbs_free_energy, work_energy
+Orchestrates physics engines - NO INLINE COMPUTATION.
+All compute lives in prism/engines/physics/.
+
+Engines by Category:
+
+    Classical Mechanics (6):
+        kinetic_energy, potential_energy, hamiltonian, lagrangian,
+        momentum, work_energy
+
+    Fluid Mechanics (3):
+        reynolds, pressure_drop, fluid_mechanics
+
+    Heat Transfer (2):
+        fourier, heat_transfer
+
+    Mass Transfer (2):
+        fick, mass_transfer
+
+    Thermodynamics (2):
+        thermodynamics, gibbs_free_energy
+
+    Dimensionless Numbers (1):
+        dimensionless (computes all: Re, Pr, Sc, Nu, Sh, etc.)
+
+    Reaction Kinetics (2):
+        reaction_kinetics, cstr_kinetics
+
+    Process Control (1):
+        process_control
+
+Output:
+    data/physics.parquet
 
 Usage:
     python -m prism.entry_points.physics
     python -m prism.entry_points.physics --force
-
-Output:
-    data/physics.parquet
 """
 
 import argparse
 import logging
 import sys
 import time
+import json
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 
@@ -42,53 +68,102 @@ logger = logging.getLogger(__name__)
 
 
 # =============================================================================
-# ENGINE IMPORTS (direct imports for correct signatures)
+# ENGINE IMPORTS - All compute lives in engines
 # =============================================================================
 
 from prism.engines.physics import (
+    # Classical Mechanics
     compute_kinetic,
     compute_potential,
     compute_hamilton,
     compute_lagrange,
     compute_momentum,
-    compute_gibbs,
     compute_work_energy,
+    # Fluid Mechanics
+    compute_reynolds,
+    compute_pressure_drop,
+    # Heat Transfer
+    compute_heat_flux,
+    compute_conduction_slab,
+    # Mass Transfer
+    compute_molar_flux,
+    # Thermodynamics
+    compute_gibbs,
+    # Dimensionless Numbers
+    compute_all_dimensionless,
+    # Reaction Kinetics
+    analyze_cstr_kinetics,
+    # Process Control
+    first_order_response,
 )
+
+# Engine registry organized by category
+ENGINES = {
+    # Classical Mechanics
+    'kinetic': compute_kinetic,
+    'potential': compute_potential,
+    'hamiltonian': compute_hamilton,
+    'lagrangian': compute_lagrange,
+    'momentum': compute_momentum,
+    'work_energy': compute_work_energy,
+    # Fluid Mechanics
+    'reynolds': compute_reynolds,
+    'pressure_drop': compute_pressure_drop,
+    # Heat Transfer
+    'heat_flux': compute_heat_flux,
+    'conduction': compute_conduction_slab,
+    # Mass Transfer
+    'mass_flux': compute_molar_flux,
+    # Thermodynamics
+    'gibbs': compute_gibbs,
+    # Dimensionless Numbers
+    'dimensionless': compute_all_dimensionless,
+    # Reaction Kinetics
+    'cstr_kinetics': analyze_cstr_kinetics,
+    # Process Control
+    'process_dynamics': first_order_response,
+}
 
 
 # =============================================================================
 # SIGNAL TYPE DETECTION
 # =============================================================================
 
-# Keywords to identify signal types
-VELOCITY_KEYWORDS = ['velocity', 'speed', 'vel', 'v_', 'flow', 'rate', 'rpm', 'omega']
-POSITION_KEYWORDS = ['position', 'pos', 'displacement', 'x_', 'y_', 'z_', 'distance', 'height', 'depth', 'level']
-TEMPERATURE_KEYWORDS = ['temp', 'temperature', 't_', 'celsius', 'kelvin', 'fahrenheit']
-PRESSURE_KEYWORDS = ['pressure', 'pres', 'p_', 'psia', 'psig', 'bar', 'pascal', 'atm']
-FORCE_KEYWORDS = ['force', 'f_', 'load', 'thrust', 'torque', 'newton']
+SIGNAL_KEYWORDS = {
+    'velocity': ['velocity', 'speed', 'vel', 'v_', 'flow', 'rate', 'rpm', 'omega'],
+    'position': ['position', 'pos', 'displacement', 'x_', 'y_', 'z_', 'distance', 'height', 'depth', 'level'],
+    'temperature': ['temp', 'temperature', 't_', 'celsius', 'kelvin', 'fahrenheit'],
+    'pressure': ['pressure', 'pres', 'p_', 'psia', 'psig', 'bar', 'pascal', 'atm'],
+    'force': ['force', 'f_', 'load', 'thrust', 'torque', 'newton'],
+    'concentration': ['conc', 'concentration', 'c_', 'mol', 'ppm', 'percent'],
+    'density': ['density', 'rho', 'specific_gravity'],
+    'viscosity': ['viscosity', 'mu', 'nu', 'kinematic'],
+    'mass': ['mass', 'm_', 'weight', 'kg', 'lb'],
+    'energy': ['energy', 'power', 'watt', 'joule', 'btu'],
+}
 
 
 def classify_signal(signal_id: str) -> str:
     """Classify a signal based on its name."""
     signal_lower = signal_id.lower()
 
-    for kw in VELOCITY_KEYWORDS:
-        if kw in signal_lower:
-            return 'velocity'
-    for kw in POSITION_KEYWORDS:
-        if kw in signal_lower:
-            return 'position'
-    for kw in TEMPERATURE_KEYWORDS:
-        if kw in signal_lower:
-            return 'temperature'
-    for kw in PRESSURE_KEYWORDS:
-        if kw in signal_lower:
-            return 'pressure'
-    for kw in FORCE_KEYWORDS:
-        if kw in signal_lower:
-            return 'force'
+    for signal_type, keywords in SIGNAL_KEYWORDS.items():
+        for kw in keywords:
+            if kw in signal_lower:
+                return signal_type
 
     return 'unknown'
+
+
+def classify_signals(signals: List[str]) -> Dict[str, List[str]]:
+    """Classify all signals by type."""
+    by_type = {}
+    for sig in signals:
+        sig_type = classify_signal(sig)
+        if sig_type not in by_type:
+            by_type[sig_type] = []
+        by_type[sig_type].append(sig)
+    return by_type
 
 
 # =============================================================================
@@ -97,8 +172,6 @@ def classify_signal(signal_id: str) -> str:
 
 def load_config(data_path: Path) -> Dict[str, Any]:
     """Load config.json or config.yaml from data directory."""
-    import json
-
     config_path = data_path / 'config.json'
     if config_path.exists():
         with open(config_path) as f:
@@ -114,7 +187,7 @@ def load_config(data_path: Path) -> Dict[str, Any]:
 
 
 # =============================================================================
-# ORCHESTRATOR
+# DATA EXTRACTION
 # =============================================================================
 
 def extract_signal_values(
@@ -123,199 +196,362 @@ def extract_signal_values(
     signal_id: str,
 ) -> np.ndarray:
     """Extract sorted values for a specific entity/signal."""
+    # Determine index column
+    index_col = 'index' if 'index' in obs_df.columns else 'timestamp'
+
     filtered = obs_df.filter(
         (pl.col('entity_id') == entity_id) &
         (pl.col('signal_id') == signal_id)
-    ).sort('index')
+    ).sort(index_col)
 
     return filtered['value'].to_numpy()
 
 
+# =============================================================================
+# ORCHESTRATOR - Routes to engines, no compute
+# =============================================================================
+
 def run_physics_engines(
     obs_df: pl.DataFrame,
+    entity_id: str,
     config: Dict[str, Any],
-) -> pl.DataFrame:
+) -> Dict[str, Any]:
     """
-    Orchestrate physics engine execution.
+    Run all physics engines for one entity.
 
-    Reads raw observations and computes physics metrics per entity.
+    Pure orchestration - all compute is in engines.
     """
+    results = {'entity_id': entity_id}
+
+    # Get physics config
+    physics_config = config.get('physics', {})
+    enabled_engines = physics_config.get('enabled', list(ENGINES.keys()))
+    engine_params = physics_config.get('params', {})
+
     # Get constants from config
     constants = config.get('global_constants', {})
-    mass = constants.get('mass', constants.get('mass_kg'))
+    mass = constants.get('mass', constants.get('mass_kg', 1.0))
     spring_constant = constants.get('spring_constant', constants.get('k'))
 
-    # Get unique entities and signals
-    entities = obs_df['entity_id'].unique().to_list()
+    # Get entity signals
+    entity_obs = obs_df.filter(pl.col('entity_id') == entity_id)
+    signals = entity_obs['signal_id'].unique().to_list()
+    signal_types = classify_signals(signals)
 
-    results = []
+    # Extract signals by type
+    def get_signals_of_type(sig_type):
+        return signal_types.get(sig_type, [])
 
-    for entity_id in entities:
-        entity_obs = obs_df.filter(pl.col('entity_id') == entity_id)
-        signals = entity_obs['signal_id'].unique().to_list()
+    velocity_signals = get_signals_of_type('velocity')
+    position_signals = get_signals_of_type('position')
+    temperature_signals = get_signals_of_type('temperature')
+    pressure_signals = get_signals_of_type('pressure')
+    concentration_signals = get_signals_of_type('concentration')
 
-        # Classify signals for this entity
-        signal_types = {sig: classify_signal(sig) for sig in signals}
+    # === RUN ENGINES BY CATEGORY ===
 
-        # Find signals by type
-        velocity_signals = [s for s, t in signal_types.items() if t == 'velocity']
-        position_signals = [s for s, t in signal_types.items() if t == 'position']
-        temperature_signals = [s for s, t in signal_types.items() if t == 'temperature']
-        pressure_signals = [s for s, t in signal_types.items() if t == 'pressure']
+    # --- Classical Mechanics ---
+    if 'kinetic' in enabled_engines:
+        params = engine_params.get('kinetic', {})
+        # Prefer velocity signals, fall back to position (derive velocity)
+        target_signals = velocity_signals[:3] or position_signals[:3]
+        mode = 'velocity' if velocity_signals else 'position'
 
-        row = {'entity_id': entity_id}
-
-        # === KINETIC ENERGY ===
-        # Use velocity signals, or derive from position
-        for sig in velocity_signals[:3]:  # Limit to first 3
+        for sig in target_signals:
             values = extract_signal_values(obs_df, entity_id, sig)
             if len(values) >= 2:
                 try:
-                    result = compute_kinetic(values=values, mass=mass, mode='velocity')
-                    for k, v in result.items():
-                        if isinstance(v, (int, float)) and v is not None and np.isfinite(v):
-                            row[f"kinetic_{sig}_{k}"] = float(v)
+                    result = compute_kinetic(values=values, mass=mass, mode=mode, **params)
+                    _flatten_result(results, f"kinetic_{sig}", result)
                 except Exception as e:
-                    logger.warning(f"kinetic ({sig}): {e}")
+                    logger.debug(f"kinetic ({sig}): {e}")
 
-        # If no velocity signals, try deriving from position
-        if not velocity_signals and position_signals:
-            for sig in position_signals[:3]:
-                values = extract_signal_values(obs_df, entity_id, sig)
-                if len(values) >= 2:
-                    try:
-                        result = compute_kinetic(values=values, mass=mass, mode='position')
-                        for k, v in result.items():
-                            if isinstance(v, (int, float)) and v is not None and np.isfinite(v):
-                                row[f"kinetic_{sig}_{k}"] = float(v)
-                    except Exception as e:
-                        logger.warning(f"kinetic from position ({sig}): {e}")
-
-        # === POTENTIAL ENERGY ===
+    if 'potential' in enabled_engines:
+        params = engine_params.get('potential', {})
         for sig in position_signals[:3]:
             values = extract_signal_values(obs_df, entity_id, sig)
             if len(values) >= 2:
                 try:
-                    result = compute_potential(values=values, spring_constant=spring_constant, mass=mass)
-                    for k, v in result.items():
-                        if isinstance(v, (int, float)) and v is not None and np.isfinite(v):
-                            row[f"potential_{sig}_{k}"] = float(v)
+                    result = compute_potential(values=values, spring_constant=spring_constant, mass=mass, **params)
+                    _flatten_result(results, f"potential_{sig}", result)
                 except Exception as e:
-                    logger.warning(f"potential ({sig}): {e}")
+                    logger.debug(f"potential ({sig}): {e}")
 
-        # === HAMILTONIAN & LAGRANGIAN ===
-        # Need both position and velocity
-        if position_signals and velocity_signals:
-            pos_sig = position_signals[0]
-            vel_sig = velocity_signals[0]
-            pos_values = extract_signal_values(obs_df, entity_id, pos_sig)
-            vel_values = extract_signal_values(obs_df, entity_id, vel_sig)
+    if 'hamiltonian' in enabled_engines and position_signals and velocity_signals:
+        params = engine_params.get('hamiltonian', {})
+        pos_sig = position_signals[0]
+        vel_sig = velocity_signals[0]
+        pos_values = extract_signal_values(obs_df, entity_id, pos_sig)
+        vel_values = extract_signal_values(obs_df, entity_id, vel_sig)
 
-            # Align lengths
-            min_len = min(len(pos_values), len(vel_values))
-            if min_len >= 2:
-                pos_values = pos_values[:min_len]
-                vel_values = vel_values[:min_len]
+        min_len = min(len(pos_values), len(vel_values))
+        if min_len >= 2:
+            try:
+                result = compute_hamilton(
+                    position=pos_values[:min_len],
+                    velocity=vel_values[:min_len],
+                    mass=mass,
+                    spring_constant=spring_constant,
+                    **params
+                )
+                _flatten_result(results, "hamiltonian", result)
+            except Exception as e:
+                logger.debug(f"hamiltonian: {e}")
 
-                try:
-                    result = compute_hamilton(
-                        position=pos_values,
-                        velocity=vel_values,
-                        mass=mass,
-                        spring_constant=spring_constant
-                    )
-                    for k, v in result.items():
-                        if isinstance(v, (int, float)) and v is not None and np.isfinite(v):
-                            row[f"hamiltonian_{k}"] = float(v)
-                except Exception as e:
-                    logger.warning(f"hamiltonian: {e}")
+    if 'lagrangian' in enabled_engines and position_signals and velocity_signals:
+        params = engine_params.get('lagrangian', {})
+        pos_sig = position_signals[0]
+        vel_sig = velocity_signals[0]
+        pos_values = extract_signal_values(obs_df, entity_id, pos_sig)
+        vel_values = extract_signal_values(obs_df, entity_id, vel_sig)
 
-                try:
-                    result = compute_lagrange(
-                        position=pos_values,
-                        velocity=vel_values,
-                        mass=mass,
-                        spring_constant=spring_constant
-                    )
-                    for k, v in result.items():
-                        if isinstance(v, (int, float)) and v is not None and np.isfinite(v):
-                            row[f"lagrangian_{k}"] = float(v)
-                except Exception as e:
-                    logger.warning(f"lagrangian: {e}")
+        min_len = min(len(pos_values), len(vel_values))
+        if min_len >= 2:
+            try:
+                result = compute_lagrange(
+                    position=pos_values[:min_len],
+                    velocity=vel_values[:min_len],
+                    mass=mass,
+                    spring_constant=spring_constant,
+                    **params
+                )
+                _flatten_result(results, "lagrangian", result)
+            except Exception as e:
+                logger.debug(f"lagrangian: {e}")
 
-        # === MOMENTUM ===
+    if 'momentum' in enabled_engines:
+        params = engine_params.get('momentum', {})
         for sig in velocity_signals[:3]:
             values = extract_signal_values(obs_df, entity_id, sig)
             if len(values) >= 2:
                 try:
-                    result = compute_momentum(velocity=values, mass=mass)
-                    for k, v in result.items():
-                        if isinstance(v, (int, float)) and v is not None and np.isfinite(v):
-                            row[f"momentum_{sig}_{k}"] = float(v)
+                    result = compute_momentum(velocity=values, mass=mass, **params)
+                    _flatten_result(results, f"momentum_{sig}", result)
                 except Exception as e:
-                    logger.warning(f"momentum ({sig}): {e}")
+                    logger.debug(f"momentum ({sig}): {e}")
 
-        # === GIBBS FREE ENERGY ===
-        if temperature_signals:
-            temp_sig = temperature_signals[0]
-            temp_values = extract_signal_values(obs_df, entity_id, temp_sig)
-
-            pres_values = None
-            if pressure_signals:
-                pres_sig = pressure_signals[0]
-                pres_values = extract_signal_values(obs_df, entity_id, pres_sig)
-                # Align lengths
-                min_len = min(len(temp_values), len(pres_values))
-                temp_values = temp_values[:min_len]
-                pres_values = pres_values[:min_len]
-
-            if len(temp_values) >= 2:
+    if 'work_energy' in enabled_engines and position_signals:
+        params = engine_params.get('work_energy', {})
+        for sig in position_signals[:2]:
+            values = extract_signal_values(obs_df, entity_id, sig)
+            if len(values) >= 2:
                 try:
-                    result = compute_gibbs(temperature=temp_values, pressure=pres_values)
-                    for k, v in result.items():
-                        if isinstance(v, (int, float)) and v is not None and np.isfinite(v):
-                            row[f"gibbs_{k}"] = float(v)
+                    # Derive force from position (F = -k*x for harmonic)
+                    force = -spring_constant * values if spring_constant else np.gradient(values)
+                    result = compute_work_energy(position=values, force=force, mass=mass, **params)
+                    _flatten_result(results, f"work_energy_{sig}", result)
                 except Exception as e:
-                    logger.warning(f"gibbs: {e}")
+                    logger.debug(f"work_energy ({sig}): {e}")
 
-        # === FALLBACK: Use any signal as generic position/velocity ===
-        # If no classified signals, treat first signal as position-like
-        if len(row) == 1:  # Only entity_id
-            logger.info(f"  {entity_id}: No classified signals, using generic physics")
-            all_signals = signals[:5]  # First 5 signals
+    # --- Fluid Mechanics ---
+    if 'reynolds' in enabled_engines and velocity_signals:
+        params = engine_params.get('reynolds', {})
+        rho = constants.get('density', constants.get('rho', 1000.0))  # Default water
+        mu = constants.get('viscosity', constants.get('mu', 0.001))
+        L = constants.get('characteristic_length', constants.get('diameter', 0.1))
 
-            for sig in all_signals:
-                values = extract_signal_values(obs_df, entity_id, sig)
-                if len(values) >= 2:
-                    # Treat as position, derive velocity
-                    try:
-                        result = compute_kinetic(values=values, mass=mass, mode='position')
-                        for k, v in result.items():
-                            if isinstance(v, (int, float)) and v is not None and np.isfinite(v):
-                                row[f"kinetic_{sig}_{k}"] = float(v)
-                    except Exception as e:
-                        logger.warning(f"generic kinetic ({sig}): {e}")
+        for sig in velocity_signals[:2]:
+            values = extract_signal_values(obs_df, entity_id, sig)
+            if len(values) >= 2:
+                try:
+                    result = compute_reynolds(velocity=values, density=rho, viscosity=mu, length=L, **params)
+                    _flatten_result(results, f"reynolds_{sig}", result)
+                except Exception as e:
+                    logger.debug(f"reynolds ({sig}): {e}")
 
-                    try:
-                        result = compute_potential(values=values, spring_constant=spring_constant, mass=mass)
-                        for k, v in result.items():
-                            if isinstance(v, (int, float)) and v is not None and np.isfinite(v):
-                                row[f"potential_{sig}_{k}"] = float(v)
-                    except Exception as e:
-                        logger.warning(f"generic potential ({sig}): {e}")
+    if 'pressure_drop' in enabled_engines and velocity_signals and pressure_signals:
+        params = engine_params.get('pressure_drop', {})
+        vel_sig = velocity_signals[0]
+        pres_sig = pressure_signals[0]
+        vel_values = extract_signal_values(obs_df, entity_id, vel_sig)
+        pres_values = extract_signal_values(obs_df, entity_id, pres_sig)
 
-                    try:
-                        result = compute_momentum(velocity=np.gradient(values), mass=mass)
-                        for k, v in result.items():
-                            if isinstance(v, (int, float)) and v is not None and np.isfinite(v):
-                                row[f"momentum_{sig}_{k}"] = float(v)
-                    except Exception as e:
-                        logger.warning(f"generic momentum ({sig}): {e}")
+        min_len = min(len(vel_values), len(pres_values))
+        if min_len >= 2:
+            try:
+                result = compute_pressure_drop(
+                    velocity=vel_values[:min_len],
+                    pressure_in=pres_values[0],
+                    pressure_out=pres_values[-1],
+                    **params
+                )
+                _flatten_result(results, "pressure_drop", result)
+            except Exception as e:
+                logger.debug(f"pressure_drop: {e}")
 
+    # --- Heat Transfer ---
+    if 'heat_flux' in enabled_engines and temperature_signals:
+        params = engine_params.get('heat_flux', {})
+        k = constants.get('thermal_conductivity', constants.get('k_thermal', 0.6))  # Default water
+
+        for sig in temperature_signals[:2]:
+            values = extract_signal_values(obs_df, entity_id, sig)
+            if len(values) >= 2:
+                try:
+                    dT_dx = np.gradient(values)
+                    result = compute_heat_flux(k=k, dT_dx=dT_dx, **params)
+                    _flatten_result(results, f"heat_flux_{sig}", result)
+                except Exception as e:
+                    logger.debug(f"heat_flux ({sig}): {e}")
+
+    # --- Thermodynamics ---
+    if 'gibbs' in enabled_engines and temperature_signals:
+        params = engine_params.get('gibbs', {})
+        temp_sig = temperature_signals[0]
+        temp_values = extract_signal_values(obs_df, entity_id, temp_sig)
+
+        pres_values = None
+        if pressure_signals:
+            pres_sig = pressure_signals[0]
+            pres_values = extract_signal_values(obs_df, entity_id, pres_sig)
+            min_len = min(len(temp_values), len(pres_values))
+            temp_values = temp_values[:min_len]
+            pres_values = pres_values[:min_len]
+
+        if len(temp_values) >= 2:
+            try:
+                result = compute_gibbs(temperature=temp_values, pressure=pres_values, **params)
+                _flatten_result(results, "gibbs", result)
+            except Exception as e:
+                logger.debug(f"gibbs: {e}")
+
+    # --- Dimensionless Numbers ---
+    if 'dimensionless' in enabled_engines:
+        params = engine_params.get('dimensionless', {})
+        # Need various properties
+        rho = constants.get('density', 1000.0)
+        mu = constants.get('viscosity', 0.001)
+        cp = constants.get('specific_heat', 4180.0)
+        k = constants.get('thermal_conductivity', 0.6)
+        D = constants.get('diffusivity', 1e-9)
+        L = constants.get('characteristic_length', 0.1)
+
+        if velocity_signals:
+            vel_sig = velocity_signals[0]
+            vel_values = extract_signal_values(obs_df, entity_id, vel_sig)
+            if len(vel_values) >= 2:
+                try:
+                    v_mean = float(np.mean(np.abs(vel_values)))
+                    result = compute_all_dimensionless(
+                        velocity=v_mean,
+                        density=rho,
+                        viscosity=mu,
+                        specific_heat=cp,
+                        thermal_conductivity=k,
+                        diffusivity=D,
+                        length=L,
+                        **params
+                    )
+                    _flatten_result(results, "dimensionless", result)
+                except Exception as e:
+                    logger.debug(f"dimensionless: {e}")
+
+    # --- Reaction Kinetics ---
+    if 'cstr_kinetics' in enabled_engines and concentration_signals and temperature_signals:
+        params = engine_params.get('cstr_kinetics', {})
+        conc_sig = concentration_signals[0]
+        temp_sig = temperature_signals[0]
+        conc_values = extract_signal_values(obs_df, entity_id, conc_sig)
+        temp_values = extract_signal_values(obs_df, entity_id, temp_sig)
+
+        min_len = min(len(conc_values), len(temp_values))
+        if min_len >= 2:
+            try:
+                result = analyze_cstr_kinetics(
+                    concentrations=conc_values[:min_len],
+                    temperatures=temp_values[:min_len],
+                    **params
+                )
+                _flatten_result(results, "cstr_kinetics", result)
+            except Exception as e:
+                logger.debug(f"cstr_kinetics: {e}")
+
+    # --- Fallback: Generic Physics for Unclassified Signals ---
+    if len(results) == 1:  # Only entity_id
+        logger.info(f"  {entity_id}: No classified signals, using generic physics")
+        all_signals = signals[:5]
+
+        for sig in all_signals:
+            values = extract_signal_values(obs_df, entity_id, sig)
+            if len(values) >= 2:
+                # Treat as position, derive velocity
+                try:
+                    result = compute_kinetic(values=values, mass=mass, mode='position')
+                    _flatten_result(results, f"kinetic_{sig}", result)
+                except Exception as e:
+                    logger.debug(f"generic kinetic ({sig}): {e}")
+
+                try:
+                    result = compute_potential(values=values, spring_constant=spring_constant, mass=mass)
+                    _flatten_result(results, f"potential_{sig}", result)
+                except Exception as e:
+                    logger.debug(f"generic potential ({sig}): {e}")
+
+                try:
+                    velocity = np.gradient(values)
+                    result = compute_momentum(velocity=velocity, mass=mass)
+                    _flatten_result(results, f"momentum_{sig}", result)
+                except Exception as e:
+                    logger.debug(f"generic momentum ({sig}): {e}")
+
+    return results
+
+
+def _flatten_result(results: Dict, prefix: str, result: Any):
+    """Flatten engine result into results dict."""
+    if isinstance(result, dict):
+        for k, v in result.items():
+            if isinstance(v, (int, float, np.integer, np.floating)):
+                if v is not None and np.isfinite(v):
+                    results[f"{prefix}_{k}"] = float(v)
+            elif isinstance(v, str):
+                results[f"{prefix}_{k}"] = v
+    elif isinstance(result, (int, float, np.integer, np.floating)):
+        if result is not None and np.isfinite(result):
+            results[prefix] = float(result)
+
+
+# =============================================================================
+# MAIN COMPUTATION
+# =============================================================================
+
+def compute_physics(
+    obs_df: pl.DataFrame,
+    config: Dict[str, Any],
+) -> pl.DataFrame:
+    """
+    Compute physics metrics for all entities.
+
+    Output: ONE ROW PER ENTITY
+    """
+    entities = obs_df['entity_id'].unique().to_list()
+    n_entities = len(entities)
+
+    # Show signal classification summary
+    signals = obs_df['signal_id'].unique().to_list()
+    signal_types = classify_signals(signals)
+
+    logger.info(f"Computing physics for {n_entities} entities")
+    logger.info(f"Engines: {list(ENGINES.keys())}")
+    logger.info("Signal classification:")
+    for sig_type, sigs in signal_types.items():
+        logger.info(f"  {sig_type}: {sigs[:5]}{'...' if len(sigs) > 5 else ''}")
+
+    results = []
+
+    for i, entity_id in enumerate(entities):
+        row = run_physics_engines(obs_df, entity_id, config)
+
+        n_metrics = len(row) - 1  # Exclude entity_id
         results.append(row)
-        logger.info(f"  {entity_id}: {len(row) - 1} physics metrics")
 
-    return pl.DataFrame(results)
+        if (i + 1) % 50 == 0 or n_metrics > 0:
+            logger.info(f"  {entity_id}: {n_metrics} physics metrics")
+
+    df = pl.DataFrame(results)
+    logger.info(f"Physics: {len(df)} rows, {len(df.columns)} columns")
+
+    return df
 
 
 # =============================================================================
@@ -353,20 +589,9 @@ def main():
     n_signals = obs_df['signal_id'].n_unique()
     logger.info(f"Observations: {len(obs_df)} rows, {n_entities} entities, {n_signals} signals")
 
-    # Show signal classification
-    signals = obs_df['signal_id'].unique().to_list()
-    classifications = {sig: classify_signal(sig) for sig in signals}
-    by_type = {}
-    for sig, typ in classifications.items():
-        by_type.setdefault(typ, []).append(sig)
-
-    logger.info("Signal classification:")
-    for typ, sigs in by_type.items():
-        logger.info(f"  {typ}: {sigs[:5]}{'...' if len(sigs) > 5 else ''}")
-
     # Run physics engines
     start = time.time()
-    physics_df = run_physics_engines(obs_df, config)
+    physics_df = compute_physics(obs_df, config)
 
     logger.info(f"Complete: {time.time() - start:.1f}s")
     logger.info(f"Output: {len(physics_df)} rows, {len(physics_df.columns)} columns")
