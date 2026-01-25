@@ -4,27 +4,28 @@ PRISM API - Compute interface for ORTHON.
 ORTHON commands → PRISM computes → ORTHON SQL
 
 Endpoints:
-    POST /compute     - Run discipline-specific computation
+    POST /compute     - Run computation (synchronous, blocks until complete)
     GET  /health      - Status check
     GET  /files       - List available parquet files
-    GET  /read/{file} - Read parquet as JSON
+    GET  /read        - Read parquet as JSON (query param: path)
     GET  /disciplines - List available disciplines
 """
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from pathlib import Path
 from typing import Optional, Dict, Any, List
 from datetime import datetime
+import time
 import io
 import json
 import subprocess
 import sys
 import os
 
-app = FastAPI(title="PRISM", version="0.2.0", description="Compute engine for ORTHON")
+app = FastAPI(title="PRISM", version="0.3.0", description="Compute engine for ORTHON")
 
 app.add_middleware(
     CORSMiddleware,
@@ -39,21 +40,35 @@ app.add_middleware(
 # =============================================================================
 
 class ComputeRequest(BaseModel):
-    """Request from ORTHON to run computation."""
-    discipline: str
-    input_path: Optional[str] = None
-    config: Optional[Dict[str, Any]] = None
-    output_dir: Optional[str] = None
+    """Request from ORTHON to run computation.
+
+    ORTHON sends:
+        config: dict with 'discipline' key and computation parameters
+        observations_path: path to observations.parquet
+    """
+    config: Dict[str, Any]
+    observations_path: str
 
 
 class ComputeResponse(BaseModel):
-    """Response after computation."""
-    status: str
-    job_id: str
-    discipline: str
-    output_path: Optional[str] = None
+    """Response after computation completes.
+
+    PRISM returns:
+        status: 'complete' or 'error'
+        results_path: directory containing output parquets
+        parquets: list of parquet filenames created
+        duration_seconds: computation time
+        message: error message if status='error'
+        hint: helpful hint for fixing errors
+        engine: which engine failed (if error)
+    """
+    status: str  # 'complete' or 'error'
+    results_path: Optional[str] = None
+    parquets: Optional[List[str]] = None
+    duration_seconds: Optional[float] = None
     message: Optional[str] = None
-    timestamp: str
+    hint: Optional[str] = None
+    engine: Optional[str] = None
 
 
 class JobStatus(BaseModel):
@@ -94,49 +109,92 @@ def _generate_job_id() -> str:
     return str(uuid.uuid4())[:8]
 
 
-def _run_compute(job_id: str, discipline: str, input_path: str, config: Dict, output_dir: str):
-    """Run computation in background."""
-    _jobs[job_id].status = "running"
-    _jobs[job_id].started_at = datetime.now().isoformat()
+def _run_compute_sync(config: Dict, observations_path: str) -> ComputeResponse:
+    """Run computation synchronously. Returns when complete."""
+    start_time = time.time()
+
+    discipline = config.get("discipline")
+    if not discipline:
+        return ComputeResponse(
+            status="error",
+            message="Missing 'discipline' in config",
+            hint="Add discipline: 'reaction', 'transport', 'electrochemistry', etc."
+        )
+
+    output_dir = _get_data_dir()
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     try:
         # Write config to temp file
-        config_path = _get_inbox_dir() / f"config_{job_id}.yaml"
         import yaml
+        config_path = _get_inbox_dir() / f"config_{int(time.time())}.yaml"
+        _get_inbox_dir().mkdir(parents=True, exist_ok=True)
         with open(config_path, 'w') as f:
-            yaml.dump({"discipline": discipline, **config}, f)
+            yaml.dump(config, f)
 
         # Run PRISM compute
         cmd = [
             sys.executable, "-m", "prism.entry_points.compute",
             "--discipline", discipline,
             "--config", str(config_path),
+            "--input", observations_path,
+            "--output", str(output_dir),
         ]
-        if input_path:
-            cmd.extend(["--input", input_path])
-        if output_dir:
-            cmd.extend(["--output", output_dir])
 
-        result = subprocess.run(cmd, capture_output=True, text=True, cwd=str(Path(__file__).parent.parent.parent))
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            cwd=str(Path(__file__).parent.parent.parent)
+        )
+
+        duration = time.time() - start_time
 
         if result.returncode != 0:
-            _jobs[job_id].status = "failed"
-            _jobs[job_id].error = result.stderr
-        else:
-            _jobs[job_id].status = "completed"
-            _jobs[job_id].output_path = output_dir or str(_get_data_dir())
+            # Parse error for helpful hints
+            error_msg = result.stderr or result.stdout or "Unknown error"
+            hint = None
+            engine = None
 
-        _jobs[job_id].completed_at = datetime.now().isoformat()
+            # Try to extract engine name from error
+            if "Missing required" in error_msg:
+                hint = "Check config has all required constants for this discipline"
+            if "viscosity" in error_msg.lower():
+                hint = "Add to config: global_constants.viscosity_Pa_s = 0.001"
 
-        # Write status for ORTHON
-        status_file = _get_data_dir() / "job_status.json"
+            return ComputeResponse(
+                status="error",
+                message=error_msg[:500],  # Truncate long errors
+                hint=hint,
+                engine=engine,
+                duration_seconds=round(duration, 2),
+            )
+
+        # Find created parquet files
+        parquets = [f.name for f in output_dir.glob("*.parquet")]
+
+        # Write completion status
+        status_file = output_dir / "job_status.json"
         with open(status_file, 'w') as f:
-            json.dump(_jobs[job_id].dict(), f)
+            json.dump({
+                "status": "complete",
+                "discipline": discipline,
+                "timestamp": datetime.now().isoformat(),
+            }, f)
+
+        return ComputeResponse(
+            status="complete",
+            results_path=str(output_dir),
+            parquets=parquets,
+            duration_seconds=round(duration, 2),
+        )
 
     except Exception as e:
-        _jobs[job_id].status = "failed"
-        _jobs[job_id].error = str(e)
-        _jobs[job_id].completed_at = datetime.now().isoformat()
+        return ComputeResponse(
+            status="error",
+            message=str(e),
+            duration_seconds=round(time.time() - start_time, 2),
+        )
 
 
 # =============================================================================
@@ -181,44 +239,44 @@ async def get_discipline(discipline: str):
 
 
 @app.post("/compute", response_model=ComputeResponse)
-async def compute(request: ComputeRequest, background_tasks: BackgroundTasks):
+async def compute(request: ComputeRequest):
     """
-    Run PRISM computation.
+    Run PRISM computation (synchronous).
 
-    ORTHON sends discipline + config, PRISM computes, returns job ID.
-    Poll /jobs/{job_id} for status.
+    ORTHON sends:
+        config: dict with 'discipline' and parameters
+        observations_path: path to observations.parquet
+
+    PRISM returns when complete:
+        status: 'complete' or 'error'
+        results_path: directory with output parquets
+        parquets: list of created files
+        duration_seconds: how long it took
+
+    Example request:
+        {
+            "config": {
+                "discipline": "reaction",
+                "entities": ["run_1", "run_2"],
+                "global_constants": {"reactor_volume_L": 2.5}
+            },
+            "observations_path": "/path/to/observations.parquet"
+        }
     """
     from prism.disciplines import DISCIPLINES
 
+    discipline = request.config.get("discipline")
+
     # Validate discipline
-    if request.discipline not in DISCIPLINES:
-        raise HTTPException(400, f"Unknown discipline: {request.discipline}")
+    if discipline and discipline not in DISCIPLINES:
+        return ComputeResponse(
+            status="error",
+            message=f"Unknown discipline: {discipline}",
+            hint=f"Available: {', '.join(DISCIPLINES.keys())}",
+        )
 
-    # Create job
-    job_id = _generate_job_id()
-    _jobs[job_id] = JobStatus(
-        job_id=job_id,
-        status="pending",
-        discipline=request.discipline,
-    )
-
-    # Run in background
-    background_tasks.add_task(
-        _run_compute,
-        job_id,
-        request.discipline,
-        request.input_path,
-        request.config or {},
-        request.output_dir,
-    )
-
-    return ComputeResponse(
-        status="accepted",
-        job_id=job_id,
-        discipline=request.discipline,
-        message="Computation started. Poll /jobs/{job_id} for status.",
-        timestamp=datetime.now().isoformat(),
-    )
+    # Run synchronously (blocks until complete)
+    return _run_compute_sync(request.config, request.observations_path)
 
 
 @app.get("/jobs/{job_id}")
@@ -253,8 +311,8 @@ async def list_files():
 
 
 @app.get("/read/{filename}")
-async def read_file(filename: str, limit: int = 100, offset: int = 0):
-    """Read a parquet file and return as JSON."""
+async def read_file_by_name(filename: str, limit: int = 100, offset: int = 0):
+    """Read a parquet file by name and return as JSON."""
     import polars as pl
 
     if not filename.endswith('.parquet'):
@@ -267,6 +325,34 @@ async def read_file(filename: str, limit: int = 100, offset: int = 0):
     df = pl.read_parquet(path)
     return {
         "file": filename,
+        "total_rows": len(df),
+        "columns": df.columns,
+        "offset": offset,
+        "limit": limit,
+        "data": df.slice(offset, limit).to_dicts(),
+    }
+
+
+@app.get("/read")
+async def read_file_by_path(path: str = Query(..., description="Path to parquet file"), limit: int = 100, offset: int = 0):
+    """Read a parquet file by full path and return as JSON.
+
+    ORTHON uses this to read results after compute completes.
+    """
+    import polars as pl
+    from pathlib import Path as P
+
+    file_path = P(path)
+    if not file_path.exists():
+        raise HTTPException(404, f"File not found: {path}")
+
+    if not path.endswith('.parquet'):
+        raise HTTPException(400, "Only .parquet files supported")
+
+    df = pl.read_parquet(file_path)
+    return {
+        "file": file_path.name,
+        "path": str(file_path),
         "total_rows": len(df),
         "columns": df.columns,
         "offset": offset,
@@ -305,6 +391,8 @@ async def trigger_github(request: ComputeRequest):
     if not token:
         raise HTTPException(500, "GITHUB_TOKEN not configured")
 
+    discipline = request.config.get("discipline", "reaction")
+
     async with httpx.AsyncClient() as client:
         response = await client.post(
             "https://api.github.com/repos/prism-engines/prism/dispatches",
@@ -315,9 +403,9 @@ async def trigger_github(request: ComputeRequest):
             json={
                 "event_type": "compute",
                 "client_payload": {
-                    "discipline": request.discipline,
-                    "config_path": request.input_path,
-                    "input_path": request.input_path,
+                    "discipline": discipline,
+                    "config": request.config,
+                    "observations_path": request.observations_path,
                 }
             }
         )
@@ -342,8 +430,15 @@ def main():
     parser.add_argument("--reload", action="store_true", help="Auto-reload on changes")
     args = parser.parse_args()
 
-    print(f"Starting PRISM API at http://{args.host}:{args.port}")
-    print(f"Docs at http://{args.host}:{args.port}/docs")
+    print("=" * 60)
+    print("PRISM API - Compute Engine for ORTHON")
+    print("=" * 60)
+    print(f"Server:  http://{args.host}:{args.port}")
+    print(f"Docs:    http://{args.host}:{args.port}/docs")
+    print(f"Health:  http://{args.host}:{args.port}/health")
+    print("=" * 60)
+    print("\nORTHON connects to: http://localhost:8100")
+    print("POST /compute with {config, observations_path}\n")
 
     uvicorn.run(
         "prism.entry_points.api:app",
