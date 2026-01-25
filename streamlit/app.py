@@ -85,6 +85,21 @@ st.set_page_config(
 # Compact layout CSS
 st.markdown("""
 <style>
+    /* Reset bold fonts to normal weight */
+    * {
+        font-weight: normal !important;
+    }
+
+    /* Keep headers appropriately weighted */
+    h1, h2, h3, h4, h5, h6 {
+        font-weight: 600 !important;
+    }
+
+    /* Buttons can stay medium weight */
+    button, .stButton > button {
+        font-weight: 500 !important;
+    }
+
     /* Sidebar navigation */
     [data-testid="stSidebar"] .stRadio > div {
         gap: 0.2rem !important;
@@ -92,6 +107,7 @@ st.markdown("""
     [data-testid="stSidebar"] .stRadio label {
         padding: 0.4rem 0.6rem !important;
         margin: 0 !important;
+        font-weight: normal !important;
     }
 
     /* Metrics compact */
@@ -99,10 +115,15 @@ st.markdown("""
         padding: 0 !important;
         gap: 0 !important;
     }
-    [data-testid="stMetricLabel"],
+    [data-testid="stMetricLabel"] {
+        padding: 0 !important;
+        margin: 0 !important;
+        font-weight: normal !important;
+    }
     [data-testid="stMetricValue"] {
         padding: 0 !important;
         margin: 0 !important;
+        font-weight: 500 !important;
     }
 
     /* General spacing */
@@ -110,7 +131,13 @@ st.markdown("""
         gap: 0.3rem !important;
     }
     p, span, li {
-        line-height: 1.2 !important;
+        line-height: 1.4 !important;
+        font-weight: normal !important;
+    }
+
+    /* Dataframe and table text */
+    .stDataFrame, [data-testid="stDataFrame"] {
+        font-weight: normal !important;
     }
 
     /* Hide streamlit branding */

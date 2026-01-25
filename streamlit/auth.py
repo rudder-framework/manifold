@@ -247,7 +247,9 @@ def render_upload_form():
     if not st.session_state.get('show_upload_form'):
         return
 
-    with st.sidebar.expander("📤 Upload", expanded=True):
+    import pandas as pd
+
+    with st.sidebar.expander("📤 Upload Data", expanded=True):
         uploaded_file = st.file_uploader(
             "CSV, Parquet, or Excel",
             type=['csv', 'parquet', 'xlsx'],
@@ -263,19 +265,52 @@ def render_upload_form():
                 st.caption(f"Trial: {remaining} uploads left")
             else:
                 st.warning("Trial limit reached")
+                return
+
+        if uploaded_file:
+            st.caption(f"File: {uploaded_file.name}")
 
         col1, col2 = st.columns(2)
         with col1:
-            if st.button("Upload", type="primary", key="do_upload"):
+            if st.button("Load Data", type="primary", key="do_upload"):
                 if uploaded_file:
-                    st.session_state.trial_uploads = trial_used + 1
-                    if user:
-                        user.record_upload()
-                    st.session_state.show_upload_form = False
-                    st.success("Uploaded!")
-                    st.rerun()
+                    try:
+                        # Load the file based on type
+                        if uploaded_file.name.endswith('.csv'):
+                            df = pd.read_csv(uploaded_file)
+                        elif uploaded_file.name.endswith('.parquet'):
+                            df = pd.read_parquet(uploaded_file)
+                        elif uploaded_file.name.endswith('.xlsx'):
+                            df = pd.read_excel(uploaded_file)
+                        else:
+                            st.error("Unsupported file type")
+                            return
+
+                        # Store in session state
+                        st.session_state.signals_data = df
+                        st.session_state.typology_data = None
+                        st.session_state.geometry_data = None
+                        st.session_state.dynamics_data = None
+                        st.session_state.mechanics_data = None
+                        st.session_state.current_example = uploaded_file.name.replace('.csv', '').replace('.parquet', '').replace('.xlsx', '')
+                        st.session_state.example_meta = {
+                            'name': uploaded_file.name,
+                            'source': 'User upload',
+                            'signals': f"{len(df.columns)} columns, {len(df)} rows",
+                        }
+
+                        # Record upload
+                        st.session_state.trial_uploads = trial_used + 1
+                        if user:
+                            user.record_upload()
+
+                        st.session_state.show_upload_form = False
+                        st.cache_data.clear()
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error loading file: {e}")
                 else:
-                    st.error("Select a file")
+                    st.error("Select a file first")
         with col2:
             if st.button("Cancel", key="cancel_upload"):
                 st.session_state.show_upload_form = False

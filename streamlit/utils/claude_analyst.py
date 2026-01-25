@@ -3,6 +3,8 @@ Claude integration for ORTHON narrative generation.
 
 Transforms computed metrics into human insight using a comprehensive
 domain-agnostic analyst prompt.
+
+Includes FindingsEngine integration for smart pre-analysis.
 """
 
 import json
@@ -15,6 +17,19 @@ try:
 except ImportError:
     ANTHROPIC_AVAILABLE = False
     anthropic = None
+
+# Import the findings engine for smart analysis
+try:
+    from utils.findings_engine import (
+        FindingsEngine,
+        generate_smart_report,
+        build_smart_prompt,
+        Finding,
+        Severity,
+    )
+    FINDINGS_ENGINE_AVAILABLE = True
+except ImportError:
+    FINDINGS_ENGINE_AVAILABLE = False
 
 
 # =============================================================================
@@ -350,13 +365,14 @@ def get_client():
         return None
 
 
-def generate_analysis(results: dict, domain_hint: str = None) -> str:
+def generate_analysis(results: dict, domain_hint: str = None, use_smart_prompt: bool = True) -> str:
     """
     Generate narrative analysis of computed results.
 
     Args:
         results: Dict with typology, groups, dynamics, mechanics
         domain_hint: Optional domain context ("hydraulic", "cardio", etc.)
+        use_smart_prompt: Use FindingsEngine for pre-analyzed smart prompts
 
     Returns:
         2-3 paragraph analysis
@@ -366,7 +382,11 @@ def generate_analysis(results: dict, domain_hint: str = None) -> str:
     if client is None:
         return generate_fallback_analysis(results, domain_hint)
 
-    prompt = format_results_for_prompt(results, domain_hint)
+    # Use smart prompt with pre-analyzed findings if available
+    if use_smart_prompt and FINDINGS_ENGINE_AVAILABLE:
+        prompt = build_smart_prompt(results)
+    else:
+        prompt = format_results_for_prompt(results, domain_hint)
 
     try:
         response = client.messages.create(
@@ -376,7 +396,7 @@ def generate_analysis(results: dict, domain_hint: str = None) -> str:
             messages=[{"role": "user", "content": prompt}]
         )
         return response.content[0].text
-    except Exception as e:
+    except Exception:
         return generate_fallback_analysis(results, domain_hint)
 
 
@@ -665,11 +685,56 @@ def generate_insight_cards(results: dict) -> List[Dict[str, Any]]:
     """
     Generate structured insight cards for UI display.
 
+    Uses FindingsEngine when available for smarter insights.
+
     Returns:
         List of insight cards with type, headline, detail, chart_type
     """
     cards = []
 
+    # Try to use FindingsEngine for smarter cards
+    if FINDINGS_ENGINE_AVAILABLE:
+        try:
+            report = generate_smart_report(results)
+            findings = report.get('findings', [])
+
+            # Convert top findings to cards
+            for finding in findings[:4]:
+                severity_icons = {
+                    Severity.CRITICAL: '🚨',
+                    Severity.IMPORTANT: '⚠️',
+                    Severity.NOTABLE: '📊',
+                    Severity.INFO: 'ℹ️',
+                }
+
+                # Map finding type to page
+                type_to_page = {
+                    'outlier': 'Typology',
+                    'pattern': 'Typology',
+                    'relationship': 'Mechanics',
+                    'transition': 'Dynamics',
+                    'hidden': 'Mechanics',
+                    'threshold': 'Dynamics',
+                    'contradiction': 'Mechanics',
+                }
+
+                cards.append({
+                    'type': finding.type.value,
+                    'icon': severity_icons.get(finding.severity, '📊'),
+                    'headline': finding.headline,
+                    'detail': finding.detail[:100] + '...' if len(finding.detail) > 100 else finding.detail,
+                    'chart_type': 'line',
+                    'link_to': type_to_page.get(finding.type.value, 'Typology'),
+                    'severity': finding.severity.value,
+                    'action': finding.action,
+                })
+
+            if cards:
+                return cards[:4]  # Max 4 cards
+        except Exception:
+            pass  # Fall through to default card generation
+
+    # Default card generation (fallback)
     # Groups card
     n_groups = results.get('groups', {}).get('n_clusters', 0)
     if n_groups > 1:
@@ -743,7 +808,7 @@ def generate_insight_cards(results: dict) -> List[Dict[str, Any]]:
                 'link_to': 'Dynamics',
             })
 
-    return cards[:3]  # Max 3 cards on discovery page
+    return cards[:4]  # Max 4 cards on discovery page
 
 
 def describe_groups_brief(groups: dict) -> str:
@@ -803,3 +868,260 @@ def get_chat_suggestions(results: dict) -> List[str]:
     ])
 
     return suggestions[:4]
+
+
+# =============================================================================
+# FINDINGS ENGINE INTERFACE
+# =============================================================================
+
+def get_findings(results: dict, max_findings: int = 10) -> List[Dict[str, Any]]:
+    """
+    Get pre-analyzed findings from FindingsEngine.
+
+    Args:
+        results: ORTHON analysis results
+        max_findings: Maximum findings to return
+
+    Returns:
+        List of finding dicts with headline, detail, severity, action, etc.
+    """
+    if not FINDINGS_ENGINE_AVAILABLE:
+        return []
+
+    try:
+        engine = FindingsEngine(results)
+        findings = engine.analyze()
+
+        return [
+            {
+                'type': f.type.value,
+                'severity': f.severity.value,
+                'headline': f.headline,
+                'detail': f.detail,
+                'evidence': f.evidence,
+                'signals_involved': f.signals_involved,
+                'action': f.action,
+            }
+            for f in findings[:max_findings]
+        ]
+    except Exception:
+        return []
+
+
+def get_executive_summary(results: dict) -> str:
+    """
+    Get a one-paragraph executive summary from FindingsEngine.
+
+    Args:
+        results: ORTHON analysis results
+
+    Returns:
+        Executive summary string
+    """
+    if not FINDINGS_ENGINE_AVAILABLE:
+        # Fallback summary
+        n_signals = results.get('metadata', {}).get('n_signals', 0)
+        coherence = results.get('dynamics', {}).get('mean_coherence', 0)
+        return f"Analyzed {n_signals} signals. System coherence: {coherence:.2f}."
+
+    try:
+        report = generate_smart_report(results)
+        return report.get('summary', 'Analysis complete.')
+    except Exception:
+        return "Analysis complete. See findings for details."
+
+
+# =============================================================================
+# ANALYSIS CONTEXT FOR AI CONVERSATION
+# =============================================================================
+
+METHODOLOGY_SECTION = '''
+# ORTHON Analysis Methodology
+
+## Signal Typology (9 Axes)
+Each signal is scored 0-1 on behavioral characteristics:
+
+| Axis          | Low (0)       | High (1)      | Measures                    |
+|---------------|---------------|---------------|-----------------------------|
+| Memory        | Forgetful     | Persistent    | Hurst exponent, ACF decay   |
+| Information   | Predictable   | Entropic      | Permutation/sample entropy  |
+| Frequency     | Aperiodic     | Periodic      | Spectral peaks, wavelet     |
+| Volatility    | Stable        | Clustered     | GARCH persistence           |
+| Dynamics      | Deterministic | Chaotic       | Lyapunov exponent           |
+| Recurrence    | Wandering     | Returning     | RQA metrics                 |
+| Discontinuity | Continuous    | Step-like     | CUSUM, level shifts         |
+| Derivatives   | Smooth        | Spiky         | Derivative kurtosis         |
+| Momentum      | Reverting     | Trending      | Directional persistence     |
+
+## System Coherence
+- **> 0.7**: Tightly coupled, healthy
+- **0.5-0.7**: Moderate coupling, normal
+- **0.3-0.5**: Loose coupling, watch closely
+- **< 0.3**: Decoupled, DANGER - often precedes failures
+
+## Causal Analysis
+- **Granger Causality**: X predicts Y (F-stat, p-value)
+- **Transfer Entropy**: Information flow in bits
+- **Drivers**: High outgoing, low incoming causality
+- **Followers**: High incoming, low outgoing causality
+'''
+
+SUGGESTED_QUESTIONS = '''
+# Questions You Can Ask
+
+## About Signal Behavior
+- "Why does [signal] have high memory?"
+- "What makes [signal] an outlier?"
+- "Which signals are most volatile?"
+
+## About System Health
+- "Is this system healthy or stressed?"
+- "What does the coherence trend tell us?"
+- "Are there any warning signs?"
+
+## About Causality
+- "What drives [signal]?"
+- "Which signal should I monitor for early warning?"
+- "Is there a feedback loop?"
+
+## About Groups
+- "Why are these signals in the same group?"
+- "What distinguishes group 1 from group 2?"
+
+## About Actions
+- "What should I do based on these results?"
+- "What would you monitor?"
+- "Is intervention needed?"
+'''
+
+
+def format_results_section(results: dict) -> str:
+    """Format the results into a readable section."""
+    metadata = results.get('metadata', {})
+    typology = results.get('typology', [])
+    groups = results.get('groups', {})
+    dynamics = results.get('dynamics', {})
+    mechanics = results.get('mechanics', {})
+
+    lines = ['# Analysis Results\n']
+
+    # Dataset info
+    lines.append(f"## Dataset: {metadata.get('name', 'Unknown')}")
+    lines.append(f"- Signals: {metadata.get('n_signals', len(typology))}")
+    lines.append(f"- Samples: {metadata.get('n_samples', 0)}")
+    lines.append('')
+
+    # Typology summary
+    lines.append('## Signal Typology')
+    if typology:
+        lines.append('| Signal | Memory | Info | Freq | Volatility | Dynamics |')
+        lines.append('|--------|--------|------|------|------------|----------|')
+        for sig in typology[:15]:
+            sid = sig.get('signal_id', sig.get('signal', '?'))
+            mem = sig.get('memory', 0)
+            info = sig.get('information', 0)
+            freq = sig.get('frequency', 0)
+            vol = sig.get('volatility', 0)
+            dyn = sig.get('dynamics', 0)
+            lines.append(f"| {sid} | {mem:.2f} | {info:.2f} | {freq:.2f} | {vol:.2f} | {dyn:.2f} |")
+        if len(typology) > 15:
+            lines.append(f"| ... and {len(typology) - 15} more signals |")
+    lines.append('')
+
+    # Groups
+    lines.append('## Signal Groups')
+    n_clusters = groups.get('n_clusters', 0)
+    silhouette = groups.get('silhouette', 0)
+    lines.append(f"- Clusters: {n_clusters}")
+    lines.append(f"- Silhouette: {silhouette:.2f}")
+    for cluster in groups.get('clusters', []):
+        members = cluster.get('members', [])
+        trait = cluster.get('dominant_trait', 'mixed')
+        lines.append(f"- Group {cluster.get('id', '?')}: {', '.join(members[:5])} — {trait}")
+    lines.append('')
+
+    # Dynamics
+    lines.append('## System Dynamics')
+    lines.append(f"- Mean coherence: {dynamics.get('mean_coherence', 0):.2f}")
+    lines.append(f"- Coherence range: {dynamics.get('coherence_min', 0):.2f} - {dynamics.get('coherence_max', 1):.2f}")
+    transitions = dynamics.get('transitions', [])
+    if transitions:
+        lines.append('- Transitions detected:')
+        for t in transitions[:3]:
+            lines.append(f"  - t={t.get('time', '?')}: {t.get('from_coherence', 0):.2f} → {t.get('to_coherence', 0):.2f}")
+    else:
+        lines.append('- No significant transitions detected')
+    lines.append('')
+
+    # Causality
+    lines.append('## Causal Structure')
+    drivers = mechanics.get('drivers', [])
+    followers = mechanics.get('followers', [])
+    lines.append(f"- Drivers: {', '.join(drivers) if drivers else 'None identified'}")
+    lines.append(f"- Followers: {', '.join(followers) if followers else 'None identified'}")
+    lines.append(f"- Causal density: {mechanics.get('causal_density', 0):.2f}")
+
+    top_links = mechanics.get('top_links', [])
+    if top_links:
+        lines.append('- Top causal links:')
+        for link in top_links[:5]:
+            src = link.get('source', '?')
+            tgt = link.get('target', '?')
+            f_stat = link.get('granger_f', 0)
+            te = link.get('transfer_entropy', 0)
+            lines.append(f"  - {src} → {tgt} (F={f_stat:.1f}, TE={te:.3f})")
+
+    return '\n'.join(lines)
+
+
+def format_findings_section(results: dict) -> str:
+    """Format findings from FindingsEngine into readable section."""
+    lines = ['# Key Findings\n']
+
+    findings = get_findings(results, max_findings=10)
+
+    if not findings:
+        lines.append('No pre-analyzed findings available.')
+        return '\n'.join(lines)
+
+    severity_emoji = {
+        'critical': '🚨',
+        'important': '⚠️',
+        'notable': '📊',
+        'info': 'ℹ️',
+    }
+
+    for i, f in enumerate(findings, 1):
+        emoji = severity_emoji.get(f.get('severity', 'info'), '•')
+        lines.append(f"## {i}. {emoji} {f.get('headline', 'Finding')}")
+        lines.append(f"{f.get('detail', '')}")
+        lines.append(f"**Action:** {f.get('action', 'Review this finding.')}")
+        lines.append('')
+
+    return '\n'.join(lines)
+
+
+def generate_analysis_context(results: dict) -> str:
+    """
+    Generate the complete context file for AI conversation.
+
+    This creates a comprehensive markdown document that can be:
+    1. Sent to Claude as context for chat
+    2. Downloaded by users as a report
+    3. Used as memory for ongoing analysis sessions
+
+    Args:
+        results: ORTHON analysis results dict
+
+    Returns:
+        Complete markdown context string
+    """
+    return f"""
+{METHODOLOGY_SECTION}
+
+{format_results_section(results)}
+
+{format_findings_section(results)}
+
+{SUGGESTED_QUESTIONS}
+"""
