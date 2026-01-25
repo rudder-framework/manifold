@@ -3,7 +3,14 @@
 PRISM Vector Entry Point
 ========================
 
-Computes signal-level metrics using ALL vector engines with proper windowing.
+Computes signal-level metrics using ALL vector engines with index-based windowing.
+
+ORTHON Canonical Spec v1.0.0:
+    Window k contains all rows where:
+        x₀ + k*stride ≤ index < x₀ + k*stride + window_size
+
+    CRITICAL: window_size and stride are in INDEX UNITS (seconds, meters, cycles),
+              NOT row counts.
 
 Engines (28 total):
     Memory (4): hurst_dfa, hurst_rs, acf_decay, spectral_slope
@@ -20,7 +27,7 @@ Engines (28 total):
 Usage:
     python -m prism.entry_points.vector
     python -m prism.entry_points.vector --force
-    python -m prism.entry_points.vector --window 100 --stride 20
+    python -m prism.entry_points.vector --window 100.0 --stride 50.0
 
 Output:
     data/vector.parquet - One row per (entity, signal, window)
@@ -245,9 +252,13 @@ def load_config(data_path: Path) -> Dict[str, Any]:
     """
     Load config from data directory.
 
-    REQUIRED config values (no defaults):
-        window.size  - Window size for temporal analysis
-        window.stride - Stride between windows
+    ORTHON Canonical Spec v1.0.0:
+        window.size  - Window width in INDEX UNITS (e.g., seconds, meters, cycles)
+        window.stride - Step between windows in INDEX UNITS
+
+    CRITICAL: size and stride are in INDEX UNITS, not row counts.
+        Window k contains all rows where:
+            x₀ + k*stride ≤ index < x₀ + k*stride + size
 
     Raises:
         ConfigurationError: If window.size or window.stride not set
@@ -263,8 +274,10 @@ def load_config(data_path: Path) -> Dict[str, Any]:
             f"PRISM requires explicit windowing configuration.\n"
             f"Create config.yaml with:\n\n"
             f"  window:\n"
-            f"    size: 50      # samples per window\n"
-            f"    stride: 25    # samples between windows\n\n"
+            f"    size: 50.0      # Window width in INDEX UNITS (not row count)\n"
+            f"    stride: 25.0    # Step between windows in INDEX UNITS\n"
+            f"    min_observations: 10  # Minimum rows per window\n\n"
+            f"CRITICAL: size/stride are in INDEX UNITS (seconds, meters, cycles)\n"
             f"NO DEFAULTS. NO FALLBACKS. Configure your domain.\n"
             f"{'='*60}"
         )
@@ -272,25 +285,11 @@ def load_config(data_path: Path) -> Dict[str, Any]:
     with open(config_path) as f:
         user_config = yaml.safe_load(f) or {}
 
-    # REQUIRED: min_samples
-    if 'min_samples' not in user_config:
-        raise ConfigurationError(
-            f"\n{'='*60}\n"
-            f"CONFIGURATION ERROR: min_samples not set\n"
-            f"{'='*60}\n"
-            f"File: {config_path}\n\n"
-            f"min_samples is REQUIRED. Example:\n\n"
-            f"  min_samples: 50\n\n"
-            f"NO DEFAULTS. NO FALLBACKS. Configure your domain.\n"
-            f"{'='*60}"
-        )
-
     config = {
-        'min_samples': user_config['min_samples'],
         'engines': user_config.get('engines', {}),
     }
 
-    # REQUIRED: window section
+    # REQUIRED: window section (ORTHON Canonical Spec v1.0.0)
     if 'window' not in user_config:
         raise ConfigurationError(
             f"\n{'='*60}\n"
@@ -300,8 +299,10 @@ def load_config(data_path: Path) -> Dict[str, Any]:
             f"PRISM requires explicit windowing configuration.\n"
             f"Add to config.yaml:\n\n"
             f"  window:\n"
-            f"    size: 50      # samples per window\n"
-            f"    stride: 25    # samples between windows\n\n"
+            f"    size: 50.0           # Window width in INDEX UNITS\n"
+            f"    stride: 25.0         # Step between windows in INDEX UNITS\n"
+            f"    min_observations: 10 # Minimum rows per window\n\n"
+            f"CRITICAL: size/stride are in INDEX UNITS (not row counts)\n"
             f"NO DEFAULTS. NO FALLBACKS. Configure your domain.\n"
             f"{'='*60}"
         )
@@ -314,10 +315,11 @@ def load_config(data_path: Path) -> Dict[str, Any]:
             f"CONFIGURATION ERROR: window.size not set\n"
             f"{'='*60}\n"
             f"File: {config_path}\n\n"
-            f"window.size is REQUIRED. Example:\n\n"
+            f"window.size is REQUIRED (in INDEX UNITS). Example:\n\n"
             f"  window:\n"
-            f"    size: 50      # samples per window\n"
-            f"    stride: 25    # samples between windows\n\n"
+            f"    size: 50.0           # Window width in INDEX UNITS\n"
+            f"    stride: 25.0         # Step between windows in INDEX UNITS\n"
+            f"    min_observations: 10 # Minimum rows per window\n\n"
             f"NO DEFAULTS. NO FALLBACKS. Configure your domain.\n"
             f"{'='*60}"
         )
@@ -328,70 +330,93 @@ def load_config(data_path: Path) -> Dict[str, Any]:
             f"CONFIGURATION ERROR: window.stride not set\n"
             f"{'='*60}\n"
             f"File: {config_path}\n\n"
-            f"window.stride is REQUIRED. Example:\n\n"
+            f"window.stride is REQUIRED (in INDEX UNITS). Example:\n\n"
             f"  window:\n"
-            f"    size: 50      # samples per window\n"
-            f"    stride: 25    # 50% overlap\n\n"
+            f"    size: 50.0           # Window width in INDEX UNITS\n"
+            f"    stride: 25.0         # Step between windows in INDEX UNITS\n"
+            f"    min_observations: 10 # Minimum rows per window\n\n"
             f"NO DEFAULTS. NO FALLBACKS. Configure your domain.\n"
             f"{'='*60}"
         )
 
-    config['window_size'] = window_cfg['size']
-    config['stride'] = window_cfg['stride']
+    # Use float for index-based windowing
+    config['window_size'] = float(window_cfg['size'])
+    config['stride'] = float(window_cfg['stride'])
+    # Default min_observations = 10 per ORTHON spec
+    config['min_observations'] = window_cfg.get('min_observations', 10)
 
-    if window_cfg.get('min_samples') is not None:
-        config['min_samples'] = window_cfg['min_samples']
-
-    logger.info(f"Loaded config: window_size={config['window_size']}, stride={config['stride']}, min_samples={config['min_samples']}")
+    logger.info(f"Loaded config: window_size={config['window_size']}, stride={config['stride']}, min_observations={config['min_observations']} (INDEX UNITS)")
 
     return config
 
 
 # =============================================================================
-# WINDOWING
+# WINDOWING (ORTHON Canonical Spec v1.0.0)
 # =============================================================================
 
 def generate_windows(
     values: np.ndarray,
     indices: np.ndarray,
-    window_size: int,
-    stride: int,
-    min_samples: int,
+    window_size: float,
+    stride: float,
+    min_observations: int,
 ) -> List[Dict]:
     """
-    Generate overlapping windows from a signal.
+    Generate overlapping windows from a signal using INDEX-BASED windowing.
+
+    ORTHON Canonical Spec v1.0.0:
+        Window k contains all rows where:
+            x₀ + k*S ≤ index < x₀ + k*S + W
+
+        Where:
+            x₀ = first index value
+            W  = window_size (in INDEX UNITS, not row count)
+            S  = stride (in INDEX UNITS, not row count)
 
     Args:
         values: Signal values
         indices: Corresponding sequence indices (time, depth, cycle, etc.)
-        window_size: Window size (REQUIRED)
-        stride: Stride between windows (REQUIRED)
-        min_samples: Minimum samples per window (REQUIRED)
+        window_size: Window width in INDEX UNITS (not row count)
+        stride: Step between windows in INDEX UNITS (not row count)
+        min_observations: Minimum rows required per window
 
     Yields:
         Dict with window_idx, window_start, window_end, values, indices
     """
-    n = len(values)
+    if len(values) == 0:
+        return
 
-    # If signal is shorter than window, skip it entirely
-    if n < window_size:
+    # Get index range
+    x0 = float(indices[0])      # First index value
+    x_max = float(indices[-1])  # Last index value
+
+    # If total index span is less than window size, skip
+    if (x_max - x0) < window_size:
         return
 
     window_idx = 0
-    for start in range(0, n - window_size + 1, stride):
-        end = start + window_size
-        window_values = values[start:end]
-        window_indices = indices[start:end]
+    window_start = x0
 
-        if len(window_values) >= min_samples:
+    while window_start + window_size <= x_max + stride:  # Allow last partial window
+        window_end = window_start + window_size
+
+        # Select rows in this window: window_start ≤ index < window_end
+        mask = (indices >= window_start) & (indices < window_end)
+        window_values = values[mask]
+        window_indices = indices[mask]
+
+        # Only yield if we have enough observations
+        if len(window_values) >= min_observations:
             yield {
                 'window_idx': window_idx,
-                'window_start': float(window_indices[0]),
-                'window_end': float(window_indices[-1]),
+                'window_start': window_start,
+                'window_end': window_end,
                 'values': window_values,
                 'indices': window_indices,
             }
             window_idx += 1
+
+        window_start += stride
 
 
 # =============================================================================
@@ -444,19 +469,24 @@ def compute_vector(
     """
     Compute vector metrics for all signals.
 
+    ORTHON Canonical Spec v1.0.0:
+        Windows are defined in INDEX UNITS (not row counts).
+        Window k contains all rows where:
+            x₀ + k*stride ≤ index < x₀ + k*stride + window_size
+
     Args:
         observations: Raw observations DataFrame
-        config: Domain configuration
+        config: Domain configuration (window_size, stride in INDEX UNITS)
         engines: Dict of engine_name -> compute function
         force: Recompute all
 
     Returns:
         DataFrame with one row per (entity, signal, window)
     """
-    # All values validated in load_config - no defaults
-    min_samples = config['min_samples']
-    window_size = config['window_size']
-    stride = config['stride']
+    # All values validated in load_config
+    min_observations = config['min_observations']
+    window_size = config['window_size']  # INDEX UNITS
+    stride = config['stride']            # INDEX UNITS
 
     # Determine index column (accept both 'index' and 'timestamp')
     if 'index' in observations.columns:
@@ -495,11 +525,11 @@ def compute_vector(
         values = values[valid]
         indices = indices[valid]
 
-        if len(values) < min_samples:
+        if len(values) < min_observations:
             continue
 
-        # Generate windows
-        for window in generate_windows(values, indices, window_size, stride, min_samples):
+        # Generate windows (ORTHON Canonical Spec - index-based)
+        for window in generate_windows(values, indices, window_size, stride, min_observations):
             window_values = window['values']
 
             row_data = {
@@ -547,12 +577,11 @@ def main():
     )
     parser.add_argument('--force', '-f', action='store_true',
                         help='Recompute even if output exists')
-    # Window/stride OVERRIDE config but don't provide defaults
-    # Config must have these set, CLI just allows temporary override
-    parser.add_argument('--window', type=int,
-                        help='Override window.size from config')
-    parser.add_argument('--stride', type=int,
-                        help='Override window.stride from config')
+    # Window/stride in INDEX UNITS - override config (ORTHON Canonical Spec)
+    parser.add_argument('--window', type=float,
+                        help='Override window.size from config (in INDEX UNITS)')
+    parser.add_argument('--stride', type=float,
+                        help='Override window.stride from config (in INDEX UNITS)')
 
     args = parser.parse_args()
 

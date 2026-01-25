@@ -54,11 +54,63 @@ DOMAINS = DOMAIN_TO_DISCIPLINE  # Alias for backwards compatibility
 DomainType = DisciplineType     # Alias for backwards compatibility
 
 
+# =============================================================================
+# INDEX TYPES (ORTHON Canonical Spec v1.0.0)
+# =============================================================================
+
+IndexType = Literal["temporal", "spatial", "ordinal", "spectral", "continuous"]
+MonotonicType = Literal["increasing", "decreasing", "none"]
+BoundaryType = Literal["truncate", "pad", "error"]
+
+
+class IndexConfig(BaseModel):
+    """
+    Index configuration - the foundational axis for all ORTHON/PRISM analysis.
+
+    The index defines:
+    - The independent variable (x-axis) for all signals
+    - The unit of measurement for windows and stride
+    - The join key across all analytical layers
+
+    ORTHON Canonical Spec v1.0.0
+    """
+    # REQUIRED FIELDS
+    column: str = Field(..., description="Column name in source data")
+    type: IndexType = Field(..., description="Semantic type: temporal|spatial|ordinal|spectral|continuous")
+    unit: str = Field(..., description="Physical or logical unit (e.g., 'seconds', 'meters', 'cycles')")
+
+    # OPTIONAL FIELDS
+    monotonic: MonotonicType = Field(default="increasing", description="Index direction")
+    nullable: bool = Field(default=False, description="Allow null/NaN index values")
+    display_name: Optional[str] = Field(default=None, description="Human-readable name")
+    display_format: Optional[str] = Field(default=None, description="Format string for display")
+
+    # VALIDATION
+    min_value: Optional[float] = Field(default=None, description="Minimum valid index value")
+    max_value: Optional[float] = Field(default=None, description="Maximum valid index value")
+
+
 class WindowConfig(BaseModel):
-    """Window/stride configuration for PRISM computation"""
-    size: int = Field(..., description="Window size in observations")
-    stride: int = Field(..., description="Stride between windows in observations")
-    min_samples: int = Field(default=50, description="Minimum samples required for computation")
+    """
+    Window/stride configuration for PRISM computation.
+
+    CRITICAL: size and stride are in INDEX UNITS, not row counts.
+
+    Window k contains all rows where:
+        index_start + k*stride ≤ index_value < index_start + k*stride + size
+
+    ORTHON Canonical Spec v1.0.0
+    """
+    size: float = Field(..., description="Window width in INDEX UNITS (not row count)")
+    stride: float = Field(..., description="Step between windows in INDEX UNITS (not row count)")
+    min_observations: int = Field(default=10, description="Minimum rows required per window")
+    boundary: BoundaryType = Field(default="truncate", description="How to handle incomplete windows")
+
+    # Backwards compatibility alias
+    @property
+    def min_samples(self) -> int:
+        """Alias for min_observations (backwards compatibility)"""
+        return self.min_observations
 
     # Optional metadata from ORTHON auto-detection
     auto_detected: Optional[bool] = Field(
