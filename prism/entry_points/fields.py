@@ -55,7 +55,7 @@ logger = logging.getLogger(__name__)
 # ENGINE IMPORTS - All compute lives in engines
 # =============================================================================
 
-from prism.engines.laplace import (
+from prism.engines.core.laplace import (
     compute_laplace_for_series,
     compute_gradient,
     compute_laplacian,

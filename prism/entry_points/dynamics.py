@@ -58,7 +58,7 @@ logger = logging.getLogger(__name__)
 # ENGINE IMPORTS - All compute lives in engines
 # =============================================================================
 
-from prism.engines.dynamics import (
+from prism.engines.core.dynamics import (
     compute_hd_slope,
     compute_lyapunov,
     compute_embedding,

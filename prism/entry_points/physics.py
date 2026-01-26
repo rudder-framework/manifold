@@ -71,29 +71,50 @@ logger = logging.getLogger(__name__)
 # ENGINE IMPORTS - All compute lives in engines
 # =============================================================================
 
-from prism.engines.physics import (
-    # Classical Mechanics
+# Core Physics - Classical Mechanics
+from prism.engines.core.physics import (
     compute_kinetic,
     compute_potential,
     compute_hamilton,
     compute_lagrange,
     compute_momentum,
     compute_work_energy,
-    # Fluid Mechanics
+)
+
+# Domain engines - Fluid Mechanics
+from prism.engines.domains.fluid import (
     compute_reynolds,
     compute_pressure_drop,
-    # Heat Transfer
+)
+
+# Domain engines - Heat Transfer
+from prism.engines.domains.heat_transfer import (
     compute_heat_flux,
     compute_conduction_slab,
-    # Mass Transfer
+)
+
+# Domain engines - Mass Transfer
+from prism.engines.domains.mass_transfer import (
     compute_molar_flux,
-    # Thermodynamics
+)
+
+# Domain engines - Thermodynamics
+from prism.engines.domains.thermodynamics import (
     compute_gibbs,
-    # Dimensionless Numbers
+)
+
+# Domain engines - Engineering
+from prism.engines.domains.engineering import (
     compute_all_dimensionless,
-    # Reaction Kinetics
+)
+
+# Domain engines - Chemical
+from prism.engines.domains.chemical import (
     analyze_cstr_kinetics,
-    # Process Control
+)
+
+# Domain engines - Control
+from prism.engines.domains.control import (
     first_order_response,
 )
 

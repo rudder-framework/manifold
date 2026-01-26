@@ -57,7 +57,8 @@ logger = logging.getLogger(__name__)
 # ENGINE IMPORTS - All compute lives in engines
 # =============================================================================
 
-from prism.engines.geometry import (
+# Core geometry engines
+from prism.engines.core.geometry import (
     # Class-based engines
     PCAEngine,
     MSTEngine,
@@ -67,7 +68,6 @@ from prism.engines.geometry import (
     ConvexHullEngine,
     CopulaEngine,
     MutualInformationEngine,
-    BarycenterEngine,
     # Function-based engines
     compute_coupling_matrix,
     compute_divergence,
@@ -79,6 +79,9 @@ from prism.engines.geometry import (
     compute_baseline_distance,
     compute_correlation_structure,
 )
+
+# PRISM domain engine (degradation model)
+from prism.engines.domains.prism import BarycenterEngine
 
 # Engine registry
 CLASS_ENGINES = {

@@ -29,17 +29,17 @@ from prism.engines.engine_base import BaseEngine, EngineResult, get_window_dates
 from prism.engines.metadata import EngineMetadata
 
 # =============================================================================
-# Vector Engines (functional interface)
+# Vector Engines (functional interface) - Core engines
 # =============================================================================
-from prism.engines.windowed.hurst import compute_hurst, HurstEngine
-from prism.engines.windowed.entropy import compute_entropy
-from prism.engines.windowed.wavelet import compute_wavelets, WaveletEngine
-from prism.engines.windowed.spectral import compute_spectral, SpectralEngine
-from prism.engines.windowed.garch import compute_garch, GARCHEngine
-from prism.engines.windowed.rqa import compute_rqa, RQAEngine
-from prism.engines.windowed.lyapunov import compute_lyapunov, LyapunovEngine
-from prism.engines.windowed.realized_vol import compute_realized_vol, RealizedVolEngine
-from prism.engines.pointwise.hilbert import (
+from prism.engines.core.windowed.hurst import compute_hurst, HurstEngine
+from prism.engines.core.windowed.entropy import compute_entropy
+from prism.engines.core.windowed.wavelet import compute_wavelets, WaveletEngine
+from prism.engines.core.windowed.spectral import compute_spectral, SpectralEngine
+from prism.engines.core.windowed.garch import compute_garch, GARCHEngine
+from prism.engines.core.windowed.rqa import compute_rqa, RQAEngine
+from prism.engines.core.windowed.lyapunov import compute_lyapunov, LyapunovEngine
+from prism.engines.core.windowed.realized_vol import compute_realized_vol, RealizedVolEngine
+from prism.engines.core.pointwise.hilbert import (
     HilbertEngine,
     compute_hilbert_amplitude,
     compute_hilbert_phase,
@@ -47,38 +47,40 @@ from prism.engines.pointwise.hilbert import (
 )
 
 # =============================================================================
-# Geometry Engines (class interface)
+# Geometry Engines (class interface) - Core engines
 # =============================================================================
-from prism.engines.geometry.pca import PCAEngine
-from prism.engines.geometry.distance import DistanceEngine
-from prism.engines.geometry.clustering import ClusteringEngine
-from prism.engines.geometry.mutual_information import MutualInformationEngine
-from prism.engines.geometry.copula import CopulaEngine
-from prism.engines.geometry.mst import MSTEngine
-from prism.engines.geometry.lof import LOFEngine
-from prism.engines.geometry.convex_hull import ConvexHullEngine
-from prism.engines.geometry.barycenter import BarycenterEngine, compute_barycenter
+from prism.engines.core.geometry.pca import PCAEngine
+from prism.engines.core.geometry.distance import DistanceEngine
+from prism.engines.core.geometry.clustering import ClusteringEngine
+from prism.engines.core.geometry.mutual_information import MutualInformationEngine
+from prism.engines.core.geometry.copula import CopulaEngine
+from prism.engines.core.geometry.mst import MSTEngine
+from prism.engines.core.geometry.lof import LOFEngine
+from prism.engines.core.geometry.convex_hull import ConvexHullEngine
+
+# Domain-specific geometry (PRISM degradation model)
+from prism.engines.domains.prism.barycenter import BarycenterEngine, compute_barycenter
 
 # =============================================================================
-# State Engines (class interface)
+# State Engines (class interface) - Core engines
 # =============================================================================
-from prism.engines.state.cointegration import CointegrationEngine
-from prism.engines.state.cross_correlation import CrossCorrelationEngine
-from prism.engines.state.dmd import DMDEngine
-from prism.engines.state.dtw import DTWEngine
-from prism.engines.state.granger import GrangerEngine
-from prism.engines.state.transfer_entropy import TransferEntropyEngine
-from prism.engines.state.coupled_inertia import CoupledInertiaEngine
+from prism.engines.core.state.cointegration import CointegrationEngine
+from prism.engines.core.state.cross_correlation import CrossCorrelationEngine
+from prism.engines.core.state.dmd import DMDEngine
+from prism.engines.core.state.dtw import DTWEngine
+from prism.engines.core.state.granger import GrangerEngine
+from prism.engines.core.state.transfer_entropy import TransferEntropyEngine
+from prism.engines.core.state.coupled_inertia import CoupledInertiaEngine
 
 # =============================================================================
-# Temporal Dynamics Engines (analyze geometry evolution)
+# Temporal Dynamics Engines (PRISM domain - analyze geometry evolution)
 # =============================================================================
-from prism.engines.state.energy_dynamics import EnergyDynamicsEngine, compute_energy_dynamics
-from prism.engines.state.tension_dynamics import TensionDynamicsEngine, compute_tension_dynamics
+from prism.engines.domains.prism.energy_dynamics import EnergyDynamicsEngine, compute_energy_dynamics
+from prism.engines.domains.prism.tension_dynamics import TensionDynamicsEngine, compute_tension_dynamics
 
-# Detection engines (honestly named)
-from prism.engines.detection.step_detector import compute as compute_step
-from prism.engines.detection.spike_detector import compute as compute_spike
+# Detection engines (honestly named) - Core engines
+from prism.engines.core.detection.step_detector import compute as compute_step
+from prism.engines.core.detection.spike_detector import compute as compute_spike
 
 # Backwards compatibility aliases (deprecated)
 compute_heaviside = compute_step
@@ -265,6 +267,86 @@ def get_all_state_engines() -> Dict[str, Type[BaseEngine]]:
 
 
 # =============================================================================
+# Domain Engine Loading API
+# =============================================================================
+
+from prism.engines.core import CORE_ENGINE_CATEGORIES
+from prism.engines.domains import AVAILABLE_DOMAINS
+
+
+def get_domain_engines(domain: str) -> Dict[str, Any]:
+    """
+    Get engines from a specific domain.
+
+    Args:
+        domain: Domain name (e.g., 'prism', 'battery', 'fluid', 'chemical')
+
+    Returns:
+        Dict mapping engine names to engine functions/classes
+
+    Raises:
+        ValueError: If domain not recognized
+    """
+    if domain not in AVAILABLE_DOMAINS:
+        raise ValueError(
+            f"Unknown domain: {domain}. "
+            f"Available: {', '.join(AVAILABLE_DOMAINS)}"
+        )
+
+    # Dynamic import of domain module
+    import importlib
+    module = importlib.import_module(f'prism.engines.domains.{domain}')
+
+    # Extract all exportable items from domain
+    engines = {}
+    for name in getattr(module, '__all__', []):
+        engines[name] = getattr(module, name)
+
+    return engines
+
+
+def list_domain_engines(domain: str) -> List[str]:
+    """List engine names available in a domain."""
+    engines = get_domain_engines(domain)
+    return sorted(engines.keys())
+
+
+def list_available_domains() -> List[str]:
+    """List all available domain names."""
+    return AVAILABLE_DOMAINS.copy()
+
+
+def load_engines_for_config(config: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Load engines based on configuration.
+
+    Always loads core engines. Optionally loads domain engines
+    if config specifies a domain.
+
+    Args:
+        config: Configuration dict with optional 'domain' key
+
+    Returns:
+        Dict mapping engine names to engine functions/classes
+
+    Example:
+        config = {'domain': 'prism'}
+        engines = load_engines_for_config(config)
+        # Returns all core engines + prism domain engines
+    """
+    # Start with all currently registered engines (core)
+    engines = ENGINES.copy()
+
+    # Optionally add domain-specific engines
+    domain = config.get('domain')
+    if domain:
+        domain_engines = get_domain_engines(domain)
+        engines.update(domain_engines)
+
+    return engines
+
+
+# =============================================================================
 # Backwards Compatibility (deprecated - use new API)
 # =============================================================================
 
@@ -328,6 +410,14 @@ __all__ = [
     "get_geometry_engines",
     "get_behavioral_engines",
     "get_state_engines",
+
+    # Domain engine API
+    "CORE_ENGINE_CATEGORIES",
+    "AVAILABLE_DOMAINS",
+    "get_domain_engines",
+    "list_domain_engines",
+    "list_available_domains",
+    "load_engines_for_config",
 
     # Vector engine functions (9 canonical)
     "compute_hurst",

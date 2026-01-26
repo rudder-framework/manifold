@@ -14,7 +14,7 @@ import numpy as np
 from pathlib import Path
 from typing import Dict, Any, Optional, List
 
-from prism.engines.fields.navier_stokes import (
+from prism.engines.core.fields.navier_stokes import (
     VelocityField,
     analyze_velocity_field,
 )

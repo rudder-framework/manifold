@@ -66,20 +66,22 @@ logger = logging.getLogger(__name__)
 # ENGINE IMPORTS - All compute lives in engines
 # =============================================================================
 
-# Class-based engines
-from prism.engines.state.transfer_entropy import TransferEntropyEngine
-from prism.engines.state.granger import GrangerEngine
-from prism.engines.state.coupled_inertia import CoupledInertiaEngine
-from prism.engines.state.tension_dynamics import TensionDynamicsEngine
-from prism.engines.state.energy_dynamics import EnergyDynamicsEngine
-from prism.engines.state.cointegration import CointegrationEngine
-from prism.engines.state.cross_correlation import CrossCorrelationEngine
-from prism.engines.state.dtw import DTWEngine
-from prism.engines.state.dmd import DMDEngine
+# Class-based engines - Core
+from prism.engines.core.state.transfer_entropy import TransferEntropyEngine
+from prism.engines.core.state.granger import GrangerEngine
+from prism.engines.core.state.coupled_inertia import CoupledInertiaEngine
+from prism.engines.core.state.cointegration import CointegrationEngine
+from prism.engines.core.state.cross_correlation import CrossCorrelationEngine
+from prism.engines.core.state.dtw import DTWEngine
+from prism.engines.core.state.dmd import DMDEngine
+
+# Class-based engines - PRISM domain
+from prism.engines.domains.prism.tension_dynamics import TensionDynamicsEngine
+from prism.engines.domains.prism.energy_dynamics import EnergyDynamicsEngine
 
 # Function-based engines
-from prism.engines.state.trajectory import compute_state_trajectory, compute_state_metrics
-from prism.engines.state.cohort import run_cohort_state
+from prism.engines.core.state.trajectory import compute_state_trajectory, compute_state_metrics
+from prism.engines.domains.prism.cohort import run_cohort_state
 
 
 # Engine registry - class-based
