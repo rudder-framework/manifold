@@ -93,7 +93,13 @@ def cstr_rate_constant(
         k: Rate constant [L/(mol·time) for 2nd order, 1/time for 1st order]
     """
     if X >= 1:
-        return {'error': 'Conversion cannot be >= 1', 'k': float('inf')}
+        return {
+            'k': float('nan'),
+            'order': order,
+            'conversion': X,
+            'reaction_rate': float('nan'),
+            'error': 'Conversion cannot be >= 1'
+        }
 
     if order == 2 and equimolar:
         # k = X / (τ × C_A0 × (1-X)²)
@@ -108,7 +114,13 @@ def cstr_rate_constant(
         k = C_A0 * X / tau
         units = 'mol/(L·time)'
     else:
-        return {'error': f'Order {order} not implemented'}
+        return {
+            'k': float('nan'),
+            'order': order,
+            'conversion': X,
+            'reaction_rate': float('nan'),
+            'error': f'Order {order} not implemented'
+        }
 
     # Also calculate reaction rate
     C_A = C_A0 * (1 - X)
@@ -577,4 +589,10 @@ def compute(signal: np.ndarray = None, **kwargs) -> Dict[str, Any]:
     if all(k in kwargs for k in ['T', 'k']) and isinstance(kwargs['T'], (list, np.ndarray)):
         return arrhenius_regression(kwargs['T'], kwargs['k'])
 
-    return {'error': 'Insufficient parameters for CSTR kinetics analysis'}
+    return {
+        'conversion': float('nan'),
+        'k': float('nan'),
+        'activation_energy_J_mol': float('nan'),
+        'pre_exponential': float('nan'),
+        'error': 'Insufficient parameters for CSTR kinetics analysis'
+    }

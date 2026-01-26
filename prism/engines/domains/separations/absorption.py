@@ -68,7 +68,11 @@ def ntu(y_in: float, y_out: float, y_eq_func, L_over_G: float = None,
 
         NTU_val, _ = quad(integrand, y_out, y_in)
     else:
-        return {'error': 'Insufficient parameters for NTU calculation'}
+        return {
+            'NTU': float('nan'),
+            'removal_efficiency': float('nan'),
+            'error': 'Insufficient parameters for NTU calculation'
+        }
 
     return {
         'NTU': float(NTU_val),
@@ -393,4 +397,10 @@ def compute(signal: np.ndarray = None, **kwargs) -> Dict[str, Any]:
     if 'NTU' in kwargs and 'HTU' in kwargs:
         return packed_height(kwargs['NTU'], kwargs['HTU'])
 
-    return {'error': 'Insufficient parameters'}
+    return {
+        'NTU': float('nan'),
+        'HTU': float('nan'),
+        'Z': float('nan'),
+        'N': float('nan'),
+        'error': 'Insufficient parameters for absorption calculation'
+    }

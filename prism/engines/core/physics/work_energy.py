@@ -34,13 +34,14 @@ def compute_work(
 
     if len(F) < 2 or len(x) < 2:
         return {
-            'work_incremental': None,
-            'work_cumulative': None,
-            'work_total': None,
-            'mean_force': None,
-            'total_displacement': None,
+            'work_incremental': float('nan'),
+            'work_cumulative': float('nan'),
+            'work_total': float('nan'),
+            'mean_force': float('nan'),
+            'total_displacement': float('nan'),
             'units': 'J',
             'equation': 'W = ∫F·dx',
+            'error': 'Insufficient data points (need >= 2)',
         }
 
     # Compute displacement increments
@@ -93,11 +94,12 @@ def compute_power(
 
     if np.all(np.isnan(F)) or np.all(np.isnan(v)):
         return {
-            'power': None,
-            'mean_power': None,
-            'max_power': None,
+            'power': float('nan'),
+            'mean_power': float('nan'),
+            'max_power': float('nan'),
             'units': 'W',
             'equation': 'P = F·v',
+            'error': 'All force or velocity values are NaN',
         }
 
     if F.ndim > 1 and v.ndim > 1:
@@ -154,14 +156,18 @@ def compute_conservative_force_test(
 
     if F.shape[-1] != 3:
         return {
-            'is_conservative': None,
+            'is_conservative': float('nan'),
+            'curl_magnitude': float('nan'),
+            'force_magnitude': float('nan'),
             'error': 'Conservative test requires 3D force vectors',
             'equation': '∇ × F = 0 for conservative forces',
         }
 
     if len(F) < 3:
         return {
-            'is_conservative': None,
+            'is_conservative': float('nan'),
+            'curl_magnitude': float('nan'),
+            'force_magnitude': float('nan'),
             'error': 'Insufficient data points for curl calculation',
             'equation': '∇ × F = 0 for conservative forces',
         }

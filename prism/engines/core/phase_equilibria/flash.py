@@ -331,6 +331,9 @@ def three_phase_flash(z: np.ndarray, T: float, P: float,
     except:
         # Fall back to two-phase
         return {
+            'V_over_F': float('nan'),
+            'L1_over_F': float('nan'),
+            'L2_over_F': float('nan'),
             'phase_state': 'calculation-failed',
             'error': 'Three-phase flash did not converge',
         }
@@ -378,4 +381,11 @@ def compute(signal: np.ndarray = None, z: np.ndarray = None,
     if z is not None and T is not None and P is not None and antoine_params is not None:
         return isothermal_flash(z, T, P, antoine_params, kwargs.get('gamma'))
 
-    return {'error': 'Insufficient parameters for flash calculation'}
+    return {
+        'V_over_F': float('nan'),
+        'x': float('nan'),
+        'y': float('nan'),
+        'T_flash': float('nan'),
+        'P_flash': float('nan'),
+        'error': 'Insufficient parameters for flash calculation'
+    }

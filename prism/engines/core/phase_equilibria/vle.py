@@ -631,4 +631,11 @@ def compute(signal: np.ndarray = None, **kwargs) -> Dict[str, Any]:
                                   kwargs['antoine_params'],
                                   kwargs.get('gamma'))
 
-    return {'error': 'Insufficient parameters for VLE calculation'}
+    return {
+        'vapor_pressure': float('nan'),
+        'y': float('nan'),
+        'K_values': float('nan'),
+        'T_bubble': float('nan'),
+        'T_dew': float('nan'),
+        'error': 'Insufficient parameters for VLE calculation'
+    }

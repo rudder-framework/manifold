@@ -536,7 +536,7 @@ def compute(x: np.ndarray = None, model: str = 'ideal', **kwargs) -> Dict[str, A
         model: Model used
     """
     if x is None:
-        return {'error': 'Mole fractions required'}
+        return {'gamma': float('nan'), 'error': 'Mole fractions required'}
 
     x = np.asarray(x)
 
@@ -546,19 +546,19 @@ def compute(x: np.ndarray = None, model: str = 'ideal', **kwargs) -> Dict[str, A
     elif model == 'margules':
         if len(x) == 2:
             return margules(x[0], kwargs.get('A12', 0), kwargs.get('A21'))
-        return {'error': 'Margules requires binary mixture'}
+        return {'gamma': float('nan'), 'error': 'Margules requires binary mixture'}
 
     elif model == 'van_laar':
         if len(x) == 2:
             return van_laar(x[0], kwargs.get('A', 0), kwargs.get('B', 0))
-        return {'error': 'Van Laar requires binary mixture'}
+        return {'gamma': float('nan'), 'error': 'Van Laar requires binary mixture'}
 
     elif model == 'wilson':
         if 'Lambda' in kwargs:
             return wilson(x, kwargs['Lambda'])
         elif len(x) == 2 and 'Lambda12' in kwargs:
             return wilson_binary(x[0], kwargs['Lambda12'], kwargs.get('Lambda21', 1))
-        return {'error': 'Wilson requires Lambda matrix or Lambda12/Lambda21'}
+        return {'gamma': float('nan'), 'error': 'Wilson requires Lambda matrix or Lambda12/Lambda21'}
 
     elif model == 'nrtl':
         if 'tau' in kwargs and 'alpha' in kwargs:
@@ -566,7 +566,7 @@ def compute(x: np.ndarray = None, model: str = 'ideal', **kwargs) -> Dict[str, A
         elif len(x) == 2:
             return nrtl_binary(x[0], kwargs.get('tau12', 0), kwargs.get('tau21', 0),
                               kwargs.get('alpha', 0.3))
-        return {'error': 'NRTL requires tau and alpha matrices'}
+        return {'gamma': float('nan'), 'error': 'NRTL requires tau and alpha matrices'}
 
     elif model == 'uniquac':
         return uniquac(x, kwargs['r'], kwargs['q'], kwargs['tau'])
@@ -574,4 +574,4 @@ def compute(x: np.ndarray = None, model: str = 'ideal', **kwargs) -> Dict[str, A
     elif model == 'unifac':
         return unifac(x, kwargs.get('groups', []), kwargs.get('T', 298.15))
 
-    return {'error': f'Unknown model: {model}'}
+    return {'gamma': float('nan'), 'error': f'Unknown model: {model}'}

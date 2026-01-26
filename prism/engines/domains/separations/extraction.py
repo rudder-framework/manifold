@@ -353,4 +353,10 @@ def compute(signal: np.ndarray = None, **kwargs) -> Dict[str, Any]:
                                           kwargs['S'], kwargs.get('x_S', 0),
                                           kwargs['K_D'])
 
-    return {'error': 'Insufficient parameters'}
+    return {
+        'x_R': float('nan'),
+        'x_E': float('nan'),
+        'extraction_efficiency': float('nan'),
+        'E_factor': float('nan'),
+        'error': 'Insufficient parameters for extraction calculation'
+    }

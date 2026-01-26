@@ -47,7 +47,11 @@ def compute_gibbs_free_energy(
     # Validate temperature
     if np.any(T <= 0):
         return {
-            'gibbs_free_energy': None,
+            'gibbs_free_energy': float('nan'),
+            'mean_G': float('nan'),
+            'mean_H': float('nan'),
+            'mean_S': float('nan'),
+            'is_spontaneous': False,
             'error': 'Temperature must be positive [K]',
             'equation': 'G = H - TS',
         }
@@ -117,13 +121,21 @@ def compute_gibbs_ideal_gas(
     # Validate
     if np.any(T <= 0):
         return {
-            'gibbs_free_energy': None,
+            'gibbs_free_energy': float('nan'),
+            'mean_G': float('nan'),
+            'mean_H': float('nan'),
+            'mean_S': float('nan'),
+            'is_spontaneous': False,
             'error': 'Temperature must be positive [K]',
             'equation': 'G = H - TS (ideal gas)',
         }
     if np.any(P <= 0):
         return {
-            'gibbs_free_energy': None,
+            'gibbs_free_energy': float('nan'),
+            'mean_G': float('nan'),
+            'mean_H': float('nan'),
+            'mean_S': float('nan'),
+            'is_spontaneous': False,
             'error': 'Pressure must be positive [Pa]',
             'equation': 'G = H - TS (ideal gas)',
         }
@@ -209,7 +221,8 @@ def compute_chemical_potential(
 
     if np.any(T <= 0) or np.any(P <= 0):
         return {
-            'chemical_potential': None,
+            'chemical_potential': float('nan'),
+            'mean_chemical_potential': float('nan'),
             'error': 'Temperature and pressure must be positive',
             'equation': 'μ = μ° + RT·ln(P/P°)',
         }
@@ -267,7 +280,11 @@ def compute(
         )
 
     return {
-        'gibbs_free_energy': None,
+        'gibbs_free_energy': float('nan'),
+        'mean_G': float('nan'),
+        'mean_H': float('nan'),
+        'mean_S': float('nan'),
+        'is_spontaneous': False,
         'error': 'Need either (enthalpy, entropy) or (pressure) with temperature',
         'equation': 'G = H - TS',
     }

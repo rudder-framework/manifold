@@ -448,4 +448,10 @@ def compute(signal: np.ndarray = None, Q_remaining: float = None,
     if 'I' in kwargs and 'Q_nominal' in kwargs:
         return c_rate(kwargs['I'], kwargs['Q_nominal'])
 
-    return {'error': 'Insufficient parameters'}
+    return {
+        'SOC': float('nan'),
+        'SOC_percent': float('nan'),
+        'SOH_capacity': float('nan'),
+        'C_rate': float('nan'),
+        'error': 'Insufficient parameters for battery calculation'
+    }

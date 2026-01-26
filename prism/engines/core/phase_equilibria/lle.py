@@ -360,4 +360,11 @@ def compute(signal: np.ndarray = None, **kwargs) -> Dict[str, Any]:
     if 'C_extract' in kwargs and 'C_raffinate' in kwargs:
         return distribution_coefficient(kwargs['C_extract'], kwargs['C_raffinate'])
 
-    return {'error': 'Insufficient parameters'}
+    return {
+        'x_I': float('nan'),
+        'x_II': float('nan'),
+        'K_D': float('nan'),
+        'alpha_I': float('nan'),
+        'alpha_II': float('nan'),
+        'error': 'Insufficient parameters for LLE calculation'
+    }

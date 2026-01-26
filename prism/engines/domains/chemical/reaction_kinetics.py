@@ -119,7 +119,12 @@ def arrhenius_two_temperatures(
             'ratio_k2_k1': k2 / k1
         }
     else:
-        return {'error': 'Provide (k1, T1, k2, T2) or (k1, T1, T2, Ea)'}
+        return {
+            'activation_energy': float('nan'),
+            'pre_exponential': float('nan'),
+            'k2': float('nan'),
+            'error': 'Provide (k1, T1, k2, T2) or (k1, T1, T2, Ea)'
+        }
 
 
 def power_law_rate(
@@ -383,7 +388,12 @@ def batch_reactor_time(
     elif order == 2:
         t = (1 / (k * C_A0)) * X_final / (1 - X_final)
     else:
-        return {'error': 'Only orders 0, 1, 2 implemented'}
+        return {
+            'time': float('nan'),
+            'C_A0': float('nan'),
+            'conversion': float('nan'),
+            'error': 'Only orders 0, 1, 2 implemented'
+        }
 
     return {
         'time': t,
@@ -435,7 +445,14 @@ def cstr_volume(
     elif order == 0:
         r_A = k
     else:
-        return {'error': 'Only orders 0, 1, 2 implemented'}
+        return {
+            'volume': float('nan'),
+            'space_time': float('nan'),
+            'exit_concentration': float('nan'),
+            'rate': float('nan'),
+            'conversion': float('nan'),
+            'error': 'Only orders 0, 1, 2 implemented'
+        }
 
     V = F_A0 * X / r_A if r_A > 0 else np.inf
     tau = V * C_A0 / F_A0  # Space time
@@ -492,7 +509,13 @@ def pfr_volume(
     elif order == 0:
         integral = C_A0 * X_final / k
     else:
-        return {'error': 'Only orders 0, 1, 2 implemented'}
+        return {
+            'volume': float('nan'),
+            'space_time': float('nan'),
+            'volumetric_flow': float('nan'),
+            'conversion': float('nan'),
+            'error': 'Only orders 0, 1, 2 implemented'
+        }
 
     V = F_A0 * integral
     tau = V / v_0

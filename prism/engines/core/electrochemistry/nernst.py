@@ -286,6 +286,13 @@ def temperature_coefficient(E1: float, T1: float, E2: float, T2: float,
     }
 
 
+def _nan_result(reason: str, keys: list) -> Dict[str, Any]:
+    """Return NaN result with error reason."""
+    result = {k: float('nan') for k in keys}
+    result['error'] = reason
+    return result
+
+
 def compute(signal: np.ndarray = None, E0: float = None, n: int = None,
             Q: float = None, T: float = 298.15, **kwargs) -> Dict[str, Any]:
     """
@@ -300,4 +307,7 @@ def compute(signal: np.ndarray = None, E0: float = None, n: int = None,
     if 'E' in kwargs and n is not None:
         return gibbs_electrochemical(kwargs['E'], n, T)
 
-    return {'error': 'Insufficient parameters'}
+    return _nan_result(
+        'Insufficient parameters for electrochemical calculation',
+        ['E', 'E0', 'E_cell', 'delta_G', 'K']
+    )

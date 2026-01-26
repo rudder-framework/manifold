@@ -487,4 +487,10 @@ def compute(signal: np.ndarray = None, **kwargs) -> Dict[str, Any]:
     if 'n' in kwargs and 'Cp' in kwargs and 'T1' in kwargs and 'T2' in kwargs:
         return sensible_heat(kwargs['n'], kwargs['Cp'], kwargs['T1'], kwargs['T2'])
 
-    return {'error': 'Insufficient parameters'}
+    return {
+        'Q': float('nan'),
+        'W': float('nan'),
+        'delta_H': float('nan'),
+        'balance_error': float('nan'),
+        'error': 'Insufficient parameters for energy balance'
+    }

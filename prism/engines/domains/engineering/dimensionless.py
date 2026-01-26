@@ -58,7 +58,7 @@ def compute_prandtl(
     elif dynamic_viscosity is not None and heat_capacity is not None and thermal_conductivity is not None:
         Pr = (heat_capacity * dynamic_viscosity) / thermal_conductivity
     else:
-        return {'prandtl': None, 'error': 'Need (ν, α) or (μ, Cp, k)'}
+        return {'prandtl': float('nan'), 'error': 'Need (ν, α) or (μ, Cp, k)'}
 
     return {
         'prandtl': float(Pr),
@@ -87,7 +87,7 @@ def compute_schmidt(
         Liquids: 100-10000
     """
     if kinematic_viscosity is None or mass_diffusivity is None:
-        return {'schmidt': None, 'error': 'Need ν and D'}
+        return {'schmidt': float('nan'), 'error': 'Need ν and D'}
 
     Sc = kinematic_viscosity / mass_diffusivity
 
@@ -118,7 +118,7 @@ def compute_nusselt(
     Nu > 1 means convection enhances heat transfer.
     """
     if None in [heat_transfer_coeff, characteristic_length, thermal_conductivity]:
-        return {'nusselt': None, 'error': 'Need h, L, and k'}
+        return {'nusselt': float('nan'), 'error': 'Need h, L, and k'}
 
     Nu = (heat_transfer_coeff * characteristic_length) / thermal_conductivity
 
@@ -146,7 +146,7 @@ def compute_sherwood(
         mass_diffusivity: D [m²/s]
     """
     if None in [mass_transfer_coeff, characteristic_length, mass_diffusivity]:
-        return {'sherwood': None, 'error': 'Need k, L, and D'}
+        return {'sherwood': float('nan'), 'error': 'Need k, L, and D'}
 
     Sh = (mass_transfer_coeff * characteristic_length) / mass_diffusivity
 
@@ -176,7 +176,7 @@ def compute_peclet(
         peclet_type: 'thermal' or 'mass'
     """
     if None in [velocity, characteristic_length, diffusivity]:
-        return {'peclet': None, 'error': 'Need v, L, and diffusivity'}
+        return {'peclet': float('nan'), 'error': 'Need v, L, and diffusivity'}
 
     Pe = (velocity * characteristic_length) / diffusivity
 
@@ -215,7 +215,7 @@ def compute_damkohler(
     elif residence_time is not None and rate_constant is not None:
         Da = rate_constant * residence_time
     else:
-        return {'damkohler': None, 'error': 'Need (reaction_rate, transport_rate) or (k, τ)'}
+        return {'damkohler': float('nan'), 'error': 'Need (reaction_rate, transport_rate) or (k, τ)'}
 
     return {
         'damkohler': float(Da),
@@ -247,7 +247,7 @@ def compute_weber(
     We << 1: Surface tension dominates, stable droplets
     """
     if None in [density, velocity, characteristic_length, surface_tension]:
-        return {'weber': None, 'error': 'Need ρ, v, L, and σ'}
+        return {'weber': float('nan'), 'error': 'Need ρ, v, L, and σ'}
 
     We = (density * velocity**2 * characteristic_length) / surface_tension
 
@@ -281,7 +281,7 @@ def compute_froude(
     Fr > 1: Supercritical (rapid) flow
     """
     if None in [velocity, characteristic_length]:
-        return {'froude': None, 'error': 'Need v and L'}
+        return {'froude': float('nan'), 'error': 'Need v and L'}
 
     Fr = velocity / np.sqrt(gravity * characteristic_length)
 
@@ -317,7 +317,7 @@ def compute_grashof(
     For ideal gas: β = 1/T (absolute temperature)
     """
     if None in [beta, delta_T, characteristic_length, kinematic_viscosity]:
-        return {'grashof': None, 'error': 'Need β, ΔT, L, and ν'}
+        return {'grashof': float('nan'), 'error': 'Need β, ΔT, L, and ν'}
 
     Gr = (gravity * beta * delta_T * characteristic_length**3) / kinematic_viscosity**2
 
@@ -357,7 +357,7 @@ def compute_rayleigh(
     elif all(v is not None for v in [beta, delta_T, characteristic_length, kinematic_viscosity, thermal_diffusivity]):
         Ra = (gravity * beta * delta_T * characteristic_length**3) / (kinematic_viscosity * thermal_diffusivity)
     else:
-        return {'rayleigh': None, 'error': 'Need (Gr, Pr) or (β, ΔT, L, ν, α)'}
+        return {'rayleigh': float('nan'), 'error': 'Need (Gr, Pr) or (β, ΔT, L, ν, α)'}
 
     return {
         'rayleigh': float(Ra),
@@ -388,7 +388,7 @@ def compute_biot(
     Bi > 0.1: Internal temperature gradients matter
     """
     if None in [heat_transfer_coeff, characteristic_length, thermal_conductivity_solid]:
-        return {'biot': None, 'error': 'Need h, L, and k_solid'}
+        return {'biot': float('nan'), 'error': 'Need h, L, and k_solid'}
 
     Bi = (heat_transfer_coeff * characteristic_length) / thermal_conductivity_solid
 
@@ -428,7 +428,7 @@ def compute_lewis(
     elif schmidt is not None and prandtl is not None:
         Le = schmidt / prandtl
     else:
-        return {'lewis': None, 'error': 'Need (α, D) or (Sc, Pr)'}
+        return {'lewis': float('nan'), 'error': 'Need (α, D) or (Sc, Pr)'}
 
     return {
         'lewis': float(Le),
@@ -463,12 +463,12 @@ def compute_stanton(
     """
     if nusselt is not None and reynolds is not None and prandtl is not None:
         if reynolds * prandtl == 0:
-            return {'stanton': None, 'error': 'Re·Pr cannot be zero'}
+            return {'stanton': float('nan'), 'error': 'Re·Pr cannot be zero'}
         St = nusselt / (reynolds * prandtl)
     elif all(v is not None for v in [heat_transfer_coeff, density, velocity, heat_capacity]):
         St = heat_transfer_coeff / (density * velocity * heat_capacity)
     else:
-        return {'stanton': None, 'error': 'Need (Nu, Re, Pr) or (h, ρ, v, Cp)'}
+        return {'stanton': float('nan'), 'error': 'Need (Nu, Re, Pr) or (h, ρ, v, Cp)'}
 
     return {
         'stanton': float(St),

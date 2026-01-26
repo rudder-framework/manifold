@@ -434,4 +434,9 @@ def compute(signal: np.ndarray = None, **kwargs) -> Dict[str, Any]:
     if all(k in kwargs for k in ['N_min', 'R_min', 'R']):
         return gilliland(kwargs['N_min'], kwargs['R_min'], kwargs['R'])
 
-    return {'error': 'Insufficient parameters'}
+    return {
+        'N_stages': float('nan'),
+        'N_min': float('nan'),
+        'R_min': float('nan'),
+        'error': 'Insufficient parameters for distillation calculation'
+    }

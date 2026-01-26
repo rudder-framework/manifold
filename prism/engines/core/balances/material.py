@@ -433,4 +433,10 @@ def compute(signal: np.ndarray = None, **kwargs) -> Dict[str, Any]:
     if 'flows' in kwargs and 'compositions' in kwargs:
         return mixing_balance(kwargs['flows'], kwargs['compositions'])
 
-    return {'error': 'Insufficient parameters'}
+    return {
+        'm_in': float('nan'),
+        'm_out': float('nan'),
+        'balance_error': float('nan'),
+        'closure_percent': float('nan'),
+        'error': 'Insufficient parameters for material balance'
+    }

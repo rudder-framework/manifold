@@ -326,6 +326,13 @@ def exchange_current_density(i0_ref: float, T_ref: float, T: float,
     }
 
 
+def _nan_result(reason: str, keys: list) -> Dict[str, Any]:
+    """Return NaN result with error reason."""
+    result = {k: float('nan') for k in keys}
+    result['error'] = reason
+    return result
+
+
 def compute(signal: np.ndarray = None, eta: float = None, i0: float = None,
             alpha: float = 0.5, n: int = 1, T: float = 298.15,
             **kwargs) -> Dict[str, Any]:
@@ -340,4 +347,7 @@ def compute(signal: np.ndarray = None, eta: float = None, i0: float = None,
                               kwargs.get('i0_a', 1e-6), kwargs.get('i0_c', 1e-9),
                               kwargs.get('b_a', 0.06), kwargs.get('b_c', 0.12))
 
-    return {'error': 'Insufficient parameters'}
+    return _nan_result(
+        'Insufficient parameters for kinetics calculation',
+        ['i', 'i_anodic', 'i_cathodic', 'E_corr', 'i_corr']
+    )

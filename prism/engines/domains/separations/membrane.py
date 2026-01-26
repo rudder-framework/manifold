@@ -388,4 +388,10 @@ def compute(signal: np.ndarray = None, **kwargs) -> Dict[str, Any]:
     if 'C_f' in kwargs and 'C_p' in kwargs:
         return rejection_coefficient(kwargs['C_f'], kwargs['C_p'])
 
-    return {'error': 'Insufficient parameters'}
+    return {
+        'J': float('nan'),
+        'alpha': float('nan'),
+        'R': float('nan'),
+        'permeance': float('nan'),
+        'error': 'Insufficient parameters for membrane calculation'
+    }
