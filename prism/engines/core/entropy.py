@@ -7,10 +7,14 @@ Information-theoretic complexity measures:
 - Permutation Entropy (PE)
 - Entropy Rate
 
-Stream mode: Accumulate signal, compute when complete.
+CANONICAL INTERFACE:
+    def compute(observations: pd.DataFrame) -> pd.DataFrame
+    Input:  [entity_id, signal_id, I, y]
+    Output: [entity_id, signal_id, sample_entropy, permutation_entropy]
 """
 
 import numpy as np
+import pandas as pd
 from typing import Dict, Any
 from math import factorial
 
@@ -98,17 +102,56 @@ def compute_permutation_entropy(y: np.ndarray, order: int = 3, delay: int = 1) -
     }
 
 
-def compute(y: np.ndarray, method: str = 'sample', **kwargs) -> Dict[str, Any]:
-    """
-    Compute entropy measure.
-    
-    Args:
-        y: Signal array
-        method: 'sample' or 'permutation'
-    """
+def _compute_array(y: np.ndarray, method: str = 'sample', **kwargs) -> Dict[str, Any]:
+    """Internal: compute entropy from numpy array."""
     if method == 'sample':
         return compute_sample_entropy(y, **kwargs)
     elif method == 'permutation':
         return compute_permutation_entropy(y, **kwargs)
     else:
         raise ValueError(f"Unknown method: {method}")
+
+
+def compute(observations: pd.DataFrame, method: str = 'both', **kwargs) -> pd.DataFrame:
+    """
+    Compute entropy measures.
+
+    CANONICAL INTERFACE:
+        Input:  observations [entity_id, signal_id, I, y]
+        Output: primitives [entity_id, signal_id, sample_entropy, permutation_entropy]
+
+    Args:
+        observations: DataFrame with columns [entity_id, signal_id, I, y]
+        method: 'sample', 'permutation', or 'both' (default)
+
+    Returns:
+        DataFrame with entropy values per entity/signal
+    """
+    results = []
+
+    for (entity_id, signal_id), group in observations.groupby(['entity_id', 'signal_id']):
+        y = group.sort_values('I')['y'].values
+
+        row = {
+            'entity_id': entity_id,
+            'signal_id': signal_id,
+        }
+
+        try:
+            if method in ('sample', 'both'):
+                result = compute_sample_entropy(y, **kwargs)
+                row['sample_entropy'] = result.get('sample_entropy', np.nan)
+
+            if method in ('permutation', 'both'):
+                result = compute_permutation_entropy(y, **kwargs)
+                row['permutation_entropy'] = result.get('permutation_entropy', np.nan)
+
+        except Exception:
+            if method in ('sample', 'both'):
+                row['sample_entropy'] = np.nan
+            if method in ('permutation', 'both'):
+                row['permutation_entropy'] = np.nan
+
+        results.append(row)
+
+    return pd.DataFrame(results)

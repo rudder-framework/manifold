@@ -8,6 +8,11 @@ separation of infinitesimally close trajectories.
     lambda = 0: Edge of chaos (critical point)
     lambda < 0: Stable attractor (converging trajectories)
 
+CANONICAL INTERFACE:
+    def compute(observations: pd.DataFrame) -> pd.DataFrame
+    Input:  [entity_id, signal_id, I, y]
+    Output: [entity_id, signal_id, lyapunov, is_chaotic, ...]
+
 REAL implementation using nolds package with:
 - Rosenstein et al. (1993) algorithm for lambda estimation
 - Grassberger-Procaccia (1983) for correlation dimension
@@ -29,6 +34,7 @@ References:
 
 import os
 import numpy as np
+import pandas as pd
 from scipy import stats
 from scipy.spatial.distance import cdist
 from scipy.signal import correlate
@@ -44,7 +50,7 @@ except ImportError:
     HAS_NOLDS = False
 
 
-def compute(
+def _compute_array(
     series: np.ndarray,
     mode: str = 'static',
     t: Optional[int] = None,
@@ -55,28 +61,7 @@ def compute(
     min_tsep: int = None,
     trajectory_len: int = None,
 ) -> Dict[str, Any]:
-    """
-    Estimate largest Lyapunov exponent.
-
-    Uses nolds package for REAL implementation.
-    Falls back to simplified method only if nolds unavailable.
-
-    Args:
-        series: 1D numpy array of observations
-        mode: 'static', 'windowed', or 'point'
-        t: Time index for point mode
-        window_size: Window size for windowed/point modes
-        step_size: Step between windows for windowed mode
-        embedding_dim: Phase space embedding dimension (auto if None)
-        delay: Time delay for embedding (auto if None)
-        min_tsep: Theiler window - minimum temporal separation
-        trajectory_len: Length over which to track divergence
-
-    Returns:
-        mode='static': {'lyapunov_exponent': float, 'is_chaotic': bool, ...}
-        mode='windowed': {'lyapunov_exponent': array, 't': array, ...}
-        mode='point': {'lyapunov_exponent': float, 't': int, ...}
-    """
+    """Internal: estimate largest Lyapunov exponent from numpy array."""
     series = np.asarray(series).flatten()
 
     if mode == 'static':
@@ -498,3 +483,47 @@ def compute_sample_entropy(
             'sample_entropy': None,
             'error': str(e),
         }
+
+
+def compute(observations: pd.DataFrame) -> pd.DataFrame:
+    """
+    Compute largest Lyapunov exponent.
+
+    CANONICAL INTERFACE:
+        Input:  observations [entity_id, signal_id, I, y]
+        Output: primitives [entity_id, signal_id, lyapunov, is_chaotic, ...]
+
+    Args:
+        observations: DataFrame with columns [entity_id, signal_id, I, y]
+
+    Returns:
+        DataFrame with Lyapunov exponent per entity/signal
+    """
+    results = []
+
+    for (entity_id, signal_id), group in observations.groupby(['entity_id', 'signal_id']):
+        y = group.sort_values('I')['y'].values
+
+        try:
+            result = _compute_array(y, mode='static')
+            results.append({
+                'entity_id': entity_id,
+                'signal_id': signal_id,
+                'lyapunov': result.get('lyapunov_exponent', np.nan),
+                'is_chaotic': result.get('is_chaotic', False),
+                'embedding_dim': result.get('embedding_dim', np.nan),
+                'delay': result.get('delay', np.nan),
+                'lyapunov_method': result.get('method', 'unknown'),
+            })
+        except Exception:
+            results.append({
+                'entity_id': entity_id,
+                'signal_id': signal_id,
+                'lyapunov': np.nan,
+                'is_chaotic': False,
+                'embedding_dim': np.nan,
+                'delay': np.nan,
+                'lyapunov_method': 'error',
+            })
+
+    return pd.DataFrame(results)

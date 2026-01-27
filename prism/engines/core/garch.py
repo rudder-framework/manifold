@@ -5,6 +5,11 @@ REAL implementation using arch package with Maximum Likelihood Estimation.
 
     sigma^2_t = omega + sum_i(alpha_i * epsilon^2_{t-i}) + sum_j(beta_j * sigma^2_{t-j})
 
+CANONICAL INTERFACE:
+    def compute(observations: pd.DataFrame) -> pd.DataFrame
+    Input:  [entity_id, signal_id, I, y]
+    Output: [entity_id, signal_id, garch_alpha, garch_beta, garch_persistence, ...]
+
 Key parameters:
     - omega: Long-run variance contribution
     - alpha: ARCH effect (shock impact)
@@ -26,6 +31,7 @@ References:
 """
 
 import numpy as np
+import pandas as pd
 from typing import Dict, Any, Optional
 import warnings
 
@@ -37,7 +43,7 @@ except ImportError:
     HAS_ARCH = False
 
 
-def compute(
+def _compute_array(
     series: np.ndarray,
     mode: str = 'static',
     t: Optional[int] = None,
@@ -47,27 +53,7 @@ def compute(
     q: int = 1,
     dist: str = 'normal',
 ) -> Dict[str, Any]:
-    """
-    Fit GARCH(p,q) model using Maximum Likelihood Estimation.
-
-    Uses the arch package for proper MLE estimation.
-    Falls back to method-of-moments only if arch is unavailable.
-
-    Args:
-        series: 1D numpy array of observations
-        mode: 'static', 'windowed', or 'point'
-        t: Time index for point mode
-        window_size: Window size for windowed/point modes
-        step_size: Step between windows for windowed mode
-        p: GARCH lag order (sigma^2 lags)
-        q: ARCH lag order (epsilon^2 lags)
-        dist: Error distribution ('normal', 't', 'skewt', 'ged')
-
-    Returns:
-        mode='static': {'alpha': float, 'beta': float, 'persistence': float, ...}
-        mode='windowed': {'alpha': array, 'beta': array, 't': array, ...}
-        mode='point': {'alpha': float, 'beta': float, 't': int, ...}
-    """
+    """Internal: fit GARCH(p,q) model from numpy array."""
     series = np.asarray(series).flatten()
 
     if mode == 'static':
@@ -369,3 +355,51 @@ def _compute_point(
     result['window_end'] = end
 
     return result
+
+
+def compute(observations: pd.DataFrame, p: int = 1, q: int = 1) -> pd.DataFrame:
+    """
+    Compute GARCH(p,q) model parameters.
+
+    CANONICAL INTERFACE:
+        Input:  observations [entity_id, signal_id, I, y]
+        Output: primitives [entity_id, signal_id, garch_alpha, garch_beta, garch_persistence, ...]
+
+    Args:
+        observations: DataFrame with columns [entity_id, signal_id, I, y]
+        p: GARCH lag order (default: 1)
+        q: ARCH lag order (default: 1)
+
+    Returns:
+        DataFrame with GARCH parameters per entity/signal
+    """
+    results = []
+
+    for (entity_id, signal_id), group in observations.groupby(['entity_id', 'signal_id']):
+        y = group.sort_values('I')['y'].values
+
+        try:
+            result = _compute_array(y, mode='static', p=p, q=q)
+            results.append({
+                'entity_id': entity_id,
+                'signal_id': signal_id,
+                'garch_omega': result.get('omega', np.nan),
+                'garch_alpha': result.get('alpha', np.nan),
+                'garch_beta': result.get('beta', np.nan),
+                'garch_persistence': result.get('persistence', np.nan),
+                'garch_unconditional_var': result.get('unconditional_variance', np.nan),
+                'garch_method': result.get('method', 'unknown'),
+            })
+        except Exception:
+            results.append({
+                'entity_id': entity_id,
+                'signal_id': signal_id,
+                'garch_omega': np.nan,
+                'garch_alpha': np.nan,
+                'garch_beta': np.nan,
+                'garch_persistence': np.nan,
+                'garch_unconditional_var': np.nan,
+                'garch_method': 'error',
+            })
+
+    return pd.DataFrame(results)

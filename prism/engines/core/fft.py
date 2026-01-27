@@ -13,15 +13,19 @@ These distinguish:
     - Broadband: Energy spread (noise-like)
     - 1/f: Power-law spectrum (complex)
 
-Calculus approach: Operates on entire signal, no windows.
+CANONICAL INTERFACE:
+    def compute(observations: pd.DataFrame) -> pd.DataFrame
+    Input:  [entity_id, signal_id, I, y]
+    Output: [entity_id, signal_id, spectral_centroid, bandwidth, dominant_freq, ...]
 """
 
 import numpy as np
+import pandas as pd
 from scipy.fft import fft, fftfreq
 from typing import Dict, Any
 
 
-def compute(series: np.ndarray) -> Dict[str, Any]:
+def _compute_array(series: np.ndarray) -> Dict[str, Any]:
     """
     Compute spectral features on entire signal.
 
@@ -103,3 +107,49 @@ def _nan_result(reason: str) -> Dict[str, Any]:
         'n_samples': 0,
         'error': reason,
     }
+
+
+def compute(observations: pd.DataFrame) -> pd.DataFrame:
+    """
+    Compute spectral features.
+
+    CANONICAL INTERFACE:
+        Input:  observations [entity_id, signal_id, I, y]
+        Output: primitives [entity_id, signal_id, spectral_centroid, bandwidth, ...]
+
+    Args:
+        observations: DataFrame with columns [entity_id, signal_id, I, y]
+
+    Returns:
+        DataFrame with spectral features per entity/signal
+    """
+    results = []
+
+    for (entity_id, signal_id), group in observations.groupby(['entity_id', 'signal_id']):
+        y = group.sort_values('I')['y'].values
+
+        try:
+            result = _compute_array(y)
+            results.append({
+                'entity_id': entity_id,
+                'signal_id': signal_id,
+                'spectral_centroid': result.get('centroid', np.nan),
+                'spectral_bandwidth': result.get('bandwidth', np.nan),
+                'spectral_rolloff': result.get('rolloff', np.nan),
+                'dominant_frequency': result.get('dominant_freq', np.nan),
+                'low_high_ratio': result.get('low_high_ratio', np.nan),
+                'total_power': result.get('total_power', np.nan),
+            })
+        except Exception:
+            results.append({
+                'entity_id': entity_id,
+                'signal_id': signal_id,
+                'spectral_centroid': np.nan,
+                'spectral_bandwidth': np.nan,
+                'spectral_rolloff': np.nan,
+                'dominant_frequency': np.nan,
+                'low_high_ratio': np.nan,
+                'total_power': np.nan,
+            })
+
+    return pd.DataFrame(results)

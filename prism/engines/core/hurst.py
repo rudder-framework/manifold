@@ -11,10 +11,14 @@ Interpretation:
     H = 0.5: Random walk (no memory)
     H > 0.5: Persistent (trending)
 
-Stream mode: Accumulate signal, compute when complete.
+CANONICAL INTERFACE:
+    def compute(observations: pd.DataFrame) -> pd.DataFrame
+    Input:  [entity_id, signal_id, I, y]
+    Output: [entity_id, signal_id, hurst, hurst_r2, hurst_method]
 """
 
 import numpy as np
+import pandas as pd
 from scipy import stats
 from typing import Dict, Any
 
@@ -128,24 +132,54 @@ def compute_dfa(y: np.ndarray, min_window: int = 10) -> Dict[str, Any]:
     }
 
 
-def compute(y: np.ndarray, method: str = 'dfa') -> Dict[str, Any]:
-    """
-    Compute Hurst exponent.
-    
-    Args:
-        y: 1D signal array
-        method: 'dfa' (default, robust) or 'rs' (classical)
-    
-    Returns:
-        hurst: Hurst exponent [0, 1]
-        r2: Goodness of fit
-        method: Method used
-    """
+def _compute_array(y: np.ndarray, method: str = 'dfa') -> Dict[str, Any]:
+    """Internal: compute Hurst from numpy array."""
     y = np.asarray(y).flatten()
-    
+
     if method == 'dfa':
         return compute_dfa(y)
     elif method == 'rs':
         return compute_rs(y)
     else:
         raise ValueError(f"Unknown method: {method}")
+
+
+def compute(observations: pd.DataFrame, method: str = 'dfa') -> pd.DataFrame:
+    """
+    Compute Hurst exponent.
+
+    CANONICAL INTERFACE:
+        Input:  observations [entity_id, signal_id, I, y]
+        Output: primitives [entity_id, signal_id, hurst, hurst_r2, hurst_method]
+
+    Args:
+        observations: DataFrame with columns [entity_id, signal_id, I, y]
+        method: 'dfa' (default, robust) or 'rs' (classical)
+
+    Returns:
+        DataFrame with Hurst exponent per entity/signal
+    """
+    results = []
+
+    for (entity_id, signal_id), group in observations.groupby(['entity_id', 'signal_id']):
+        y = group.sort_values('I')['y'].values
+
+        try:
+            result = _compute_array(y, method=method)
+            results.append({
+                'entity_id': entity_id,
+                'signal_id': signal_id,
+                'hurst': result['hurst'],
+                'hurst_r2': result['r2'],
+                'hurst_method': result['method'],
+            })
+        except Exception:
+            results.append({
+                'entity_id': entity_id,
+                'signal_id': signal_id,
+                'hurst': np.nan,
+                'hurst_r2': np.nan,
+                'hurst_method': method,
+            })
+
+    return pd.DataFrame(results)
