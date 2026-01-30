@@ -113,6 +113,7 @@ pump_1    | 1 | pressure  | 101.5
 3. No domain-specific logic in PRISM
 4. No interpretation in PRISM
 5. RAM managed via batching (see ram_manager.py)
+6. **Slow compute is fine.** Rolling Lyapunov, Hurst, entropy are O(n²). Hours/days acceptable for publication-grade results.
 
 ---
 
