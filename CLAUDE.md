@@ -132,11 +132,13 @@ pump_1    | 1 | pressure  | 101.5
 
 | File | Purpose |
 |------|---------|
-| `prism/runner.py` | Main runner (Geometry→Dynamics→Energy→SQL) |
-| `prism/python_runner.py` | Signal/pair/windowed engines |
-| `prism/sql_runner.py` | SQL reconciliation engines |
-| `prism/ram_manager.py` | RAM-optimized batch processing |
-| `prism/cli.py` | CLI entry point |
+| `~/prism/prism/runner.py` | Main runner (Geometry→Dynamics→Energy→SQL) |
+| `~/prism/prism/python_runner.py` | Signal/pair/windowed engines |
+| `~/prism/prism/sql_runner.py` | SQL reconciliation engines |
+| `~/prism/prism/ram_manager.py` | RAM-optimized batch processing |
+| `~/prism/prism/cli.py` | CLI entry point |
+| `~/prism/data/observations.parquet` | Input (ORTHON creates) |
+| `~/prism/data/manifest.yaml` | Config (ORTHON creates) |
 
 ---
 
@@ -150,17 +152,35 @@ pump_1    | 1 | pressure  | 101.5
 
 ---
 
+## Directory Structure
+
+```
+~/prism/
+├── CLAUDE.md
+├── venv/
+├── data/
+│   ├── observations.parquet   ← ORTHON creates
+│   └── manifest.yaml          ← ORTHON creates
+└── prism/
+    ├── __init__.py
+    ├── __main__.py
+    ├── cli.py
+    ├── runner.py
+    ├── python_runner.py
+    ├── sql_runner.py
+    ├── ram_manager.py
+    └── engines/
+```
+
 ## Session Recovery
 
 ```bash
-# Start PRISM API (MUST use venv)
+# Start PRISM (from repo root, using venv)
 cd ~/prism
+./venv/bin/python -m prism data/manifest.yaml
+
+# Or via API:
 ./venv/bin/python -m prism.entry_points.api --port 8100
-
-# Or background:
-nohup ./venv/bin/python -m prism.entry_points.api --port 8100 > /tmp/prism-api.log 2>&1 &
-
-# Verify
 curl http://localhost:8100/health
 ```
 
