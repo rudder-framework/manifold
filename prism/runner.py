@@ -1,23 +1,27 @@
 """
-PRISM Manifest Runner (Orchestrator)
+PRISM Runner
 
-Reads manifest from ORTHON and runs ALL engines.
+One command. All engines. No logic.
+Read manifest. Compute everything. Write parquets.
 
 FULL COMPUTE. RAM OPTIMIZED. NO EXCEPTIONS.
 
-- ALL engines run, always
-- Insufficient data → NaN, never skip
-- RAM managed via entity batching
-- Parallel execution controlled here (not in individual runners)
-- Writes directly to data/ directory
+Data lives in data/
+- observations.parquet (ORTHON creates, PRISM reads)
+- manifest.yaml (ORTHON creates, PRISM reads)
+- *.parquet (PRISM writes, overwrites if exists)
+
+Framework:
+    GEOMETRY    → What is the structure?
+    DYNAMICS    → How is structure changing?
+    ENERGY      → What drives the change?
+    SQL         → Normalize and summarize
 """
 
 import json
 import gc
-import os
 from pathlib import Path
-from typing import Dict, Any, List
-import numpy as np
+from typing import Dict, Any
 import pandas as pd
 import polars as pl
 
@@ -33,520 +37,319 @@ try:
 except ImportError:
     HAS_PSUTIL = False
 
-try:
-    from joblib import Parallel, delayed
-    HAS_JOBLIB = True
-except ImportError:
-    HAS_JOBLIB = False
-
 from prism.python_runner import PythonRunner, SIGNAL_ENGINES, PAIR_ENGINES, SYMMETRIC_PAIR_ENGINES, WINDOWED_ENGINES
 from prism.sql_runner import SQLRunner, SQL_ENGINES
+from prism.ram_manager import RAMManager, MemoryStats, streaming_parquet_writer, combine_parquet_batches
+
+# Canonical data directory
+DATA_DIR = Path(__file__).parent.parent / 'data'
 
 
-# ALL engines - always enabled, no exceptions
-ALL_SIGNAL_ENGINES = SIGNAL_ENGINES
-ALL_PAIR_ENGINES = PAIR_ENGINES
-ALL_SYMMETRIC_PAIR_ENGINES = SYMMETRIC_PAIR_ENGINES
-ALL_WINDOWED_ENGINES = WINDOWED_ENGINES
-ALL_SQL_ENGINES = SQL_ENGINES
-
-
-def load_manifest(manifest_path: str) -> dict:
+def run(manifest_path: Path = None) -> dict:
     """
-    Load manifest from YAML or JSON file.
+    Run PRISM from manifest.
 
-    Supports both ORTHON format (YAML) and legacy format (JSON).
+    No CLI flags.
+    No conditional logic.
+    Just compute everything.
+
+    All data lives in data/
     """
-    manifest_path = Path(manifest_path)
 
-    with open(manifest_path) as f:
-        content = f.read()
+    # Use canonical data directory
+    data_dir = DATA_DIR
+    data_dir.mkdir(parents=True, exist_ok=True)
 
-    # Try YAML first (ORTHON format), fall back to JSON (legacy)
+    # Load manifest from data/
+    if manifest_path is None:
+        manifest_path = data_dir / 'manifest.yaml'
+    else:
+        manifest_path = Path(manifest_path)
+
+    if not manifest_path.exists():
+        raise FileNotFoundError(f"Manifest not found: {manifest_path}")
+
     if manifest_path.suffix in ['.yaml', '.yml']:
         if not HAS_YAML:
-            raise ImportError("PyYAML required for YAML manifests: pip install pyyaml")
-        manifest = yaml.safe_load(content)
-    elif manifest_path.suffix == '.json':
-        manifest = json.loads(content)
+            raise ImportError("PyYAML required: pip install pyyaml")
+        manifest = yaml.safe_load(manifest_path.read_text())
     else:
-        # Try both
-        try:
-            if HAS_YAML:
-                manifest = yaml.safe_load(content)
-            else:
-                manifest = json.loads(content)
-        except:
-            manifest = json.loads(content)
+        manifest = json.loads(manifest_path.read_text())
 
-    return normalize_manifest(manifest, manifest_path.parent)
+    # Observations always in data/
+    observations_path = data_dir / 'observations.parquet'
 
+    if not observations_path.exists():
+        raise FileNotFoundError(
+            f"observations.parquet not found in {data_dir}\n"
+            "ORTHON must create observations.parquet before running PRISM."
+        )
 
-def normalize_manifest(manifest: dict, manifest_dir: Path) -> dict:
-    """
-    Normalize manifest to internal format.
+    # Output goes to data/ (same directory, overwrites existing)
+    output_dir = data_dir
 
-    Handles both ORTHON format and legacy format.
-    Always enables ALL engines.
-    """
-
-    # Check if this is ORTHON format (has 'data' and/or 'prism' keys)
-    if 'data' in manifest or 'prism' in manifest:
-        return _normalize_orthon_manifest(manifest, manifest_dir)
-    else:
-        # Legacy format - normalize and enable all engines
-        return _normalize_legacy_manifest(manifest)
-
-
-def _normalize_orthon_manifest(manifest: dict, manifest_dir: Path) -> dict:
-    """Normalize ORTHON YAML manifest to internal format."""
-
-    data_config = manifest.get('data', {})
+    # Extract params from manifest
     prism_config = manifest.get('prism', {})
-
-    # Resolve observations path
-    obs_path = data_config.get('observations_path', data_config.get('output_path', 'observations.parquet'))
-    if not Path(obs_path).is_absolute():
-        obs_path = manifest_dir / obs_path
-    obs_path = Path(obs_path)
-
-    # Output directory is same as observations directory
-    output_dir = obs_path.parent
-
-    # Window/stride params
-    window_size = prism_config.get('window_size', 100)
-    stride = prism_config.get('stride', window_size)
-
-    # Build params dict
     params = {
-        'window_size': window_size,
-        'stride': stride,
+        'window_size': prism_config.get('window_size', prism_config.get('windows', {}).get('default', 100)),
+        'stride': prism_config.get('stride', prism_config.get('windows', {}).get('stride', 50)),
     }
 
-    # Add any engine-specific params from prism config
-    for key, value in prism_config.items():
-        if key not in ['engines', 'ram', 'parallel', 'window_size', 'stride', 'compute']:
-            params[key] = value
-
-    # RAM and parallel config
+    # RAM config
     ram_config = prism_config.get('ram', {})
-    parallel_config = prism_config.get('parallel', {})
+    ram_manager = RAMManager(
+        max_memory_pct=ram_config.get('max_memory_pct', 0.8),
+        min_batch_size=ram_config.get('min_batch_size', 10),
+        max_batch_size=ram_config.get('max_batch_size', 500),
+    )
 
-    # ALL ENGINES - NO EXCEPTIONS
-    normalized = {
-        'observations_path': str(obs_path),
-        'output_dir': str(output_dir),
-        'engines': {
-            'signal': ALL_SIGNAL_ENGINES,
-            'pair': ALL_PAIR_ENGINES,
-            'symmetric_pair': ALL_SYMMETRIC_PAIR_ENGINES,
-            'windowed': ALL_WINDOWED_ENGINES,
-            'sql': ALL_SQL_ENGINES,
-            'dynamics': True,
-            'topology': True,
-            'information_flow': True,
-            'physics': True,
-        },
-        'params': params,
-        'parallel': parallel_config,
-        'ram': ram_config,
-        'metadata': manifest.get('dataset', {}),
-    }
+    print("=" * 60)
+    print("PRISM - FULL COMPUTE")
+    print("=" * 60)
+    print(f"Data:   {data_dir}")
 
-    return normalized
-
-
-def _normalize_legacy_manifest(manifest: dict) -> dict:
-    """Normalize legacy JSON manifest to internal format."""
-
-    # Override engine config - ALL engines always
-    manifest['engines'] = {
-        'signal': ALL_SIGNAL_ENGINES,
-        'pair': ALL_PAIR_ENGINES,
-        'symmetric_pair': ALL_SYMMETRIC_PAIR_ENGINES,
-        'windowed': ALL_WINDOWED_ENGINES,
-        'sql': ALL_SQL_ENGINES,
-        'dynamics': True,
-        'topology': True,
-        'information_flow': True,
-        'physics': True,
-    }
-
-    if 'parallel' not in manifest:
-        manifest['parallel'] = {}
-    if 'ram' not in manifest:
-        manifest['ram'] = {}
-
-    return manifest
-
-
-def get_ram_stats() -> dict:
-    """Get current RAM statistics."""
     if HAS_PSUTIL:
-        mem = psutil.virtual_memory()
-        return {
-            'total_gb': mem.total / (1024**3),
-            'available_gb': mem.available / (1024**3),
-            'used_pct': mem.percent,
-        }
-    return {'total_gb': 0, 'available_gb': 0, 'used_pct': 0}
+        print(f"RAM:    {MemoryStats.current()}")
 
+    # Load observations (ORTHON created this)
+    print(f"\nLoading observations...")
+    obs_pd = pd.read_parquet(observations_path)
+    obs_pl = pl.from_pandas(obs_pd)
+    print(f"  {len(obs_pd):,} observations")
 
-class ManifestRunner:
-    """
-    Orchestrates manifest execution.
+    entities = obs_pl.select('entity_id').unique().to_series().to_list()
+    print(f"  {len(entities)} entities")
 
-    FULL COMPUTE. RAM OPTIMIZED. NO EXCEPTIONS.
+    results = {}
 
-    - Runs ALL engines
-    - Parallel execution controlled here (n_jobs parameter)
-    - Returns NaN for insufficient data, never skips
-    """
+    # ═══════════════════════════════════════════════════════════════
+    # GEOMETRY: What is the structure?
+    # ═══════════════════════════════════════════════════════════════
 
-    def __init__(self, manifest: dict):
-        self.manifest = manifest
-        self.observations_path = Path(manifest['observations_path'])
-        self.output_dir = Path(manifest['output_dir'])
-        self.output_dir.mkdir(parents=True, exist_ok=True)
+    print("\n" + "═" * 60)
+    print("GEOMETRY: What is the structure?")
+    print("═" * 60)
 
-        self.engine_config = manifest.get('engines', {})
-        self.params = manifest.get('params', {})
-        self.parallel_config = manifest.get('parallel', {})
+    # Signal engines → primitives.parquet
+    # Pair engines → primitives_pairs.parquet
+    # Symmetric engines → geometry.parquet
+    # Windowed engines → observations_enriched.parquet, manifold.parquet
+    python_runner = PythonRunner(
+        obs=obs_pd,
+        output_dir=output_dir,
+        engines={},  # PythonRunner runs ALL engines internally
+        params=params
+    )
+    results['python'] = python_runner.run()
+    _clear_ram()
 
-        # Parallel settings: -1 = all cores, 1 = sequential
-        self.n_jobs = self.parallel_config.get('n_jobs', 1)
-        if self.n_jobs == -1:
-            self.n_jobs = os.cpu_count() or 1
+    # Topology → topology.parquet
+    print("\n[TOPOLOGY]")
+    try:
+        from prism.engines.topology_runner import process_entity_topology
 
-        # Load observations
-        print(f"Loading observations from {self.observations_path}")
-        self.obs_pd = pd.read_parquet(self.observations_path)
-        self.obs_pl = pl.from_pandas(self.obs_pd)
-        print(f"  Loaded {len(self.obs_pd):,} observations")
+        batch_dir = output_dir / '_topology_batches'
+        batch_dir.mkdir(exist_ok=True)
 
-        # Get entities
-        self.entities = self.obs_pl.select('entity_id').unique().to_series().to_list()
-        self.n_entities = len(self.entities)
-        print(f"  Entities: {self.n_entities}")
-        print(f"  Parallel jobs: {self.n_jobs}")
+        def process_topology_batch(batch_entities):
+            batch_results = []
+            for entity_id in batch_entities:
+                entity_obs = obs_pl.filter(pl.col('entity_id') == entity_id)
+                entity_results = process_entity_topology(entity_id, entity_obs, params)
+                batch_results.extend(entity_results)
+            return batch_results
 
-        self._check_sampling()
-        self.results: Dict[str, Any] = {}
-
-    def _check_sampling(self):
-        """Check and report on sampling uniformity."""
-        try:
-            I_values = self.obs_pl.select('I').unique().sort('I').to_series().to_numpy()
-            if len(I_values) > 1:
-                dI = np.diff(I_values)
-                cv = np.std(dI) / (np.mean(dI) + 1e-10)
-                if cv > 0.1:
-                    print(f"  Note: Non-uniform sampling (CV={cv:.2f})")
-        except Exception:
-            pass
-
-    def _clear_ram(self):
-        """Clear RAM and report status."""
-        gc.collect()
-        if HAS_PSUTIL:
-            stats = get_ram_stats()
-            print(f"  RAM: {stats['used_pct']:.1f}% used ({stats['available_gb']:.1f}GB available)")
-
-    def run(self) -> dict:
-        """Execute the manifest - FULL COMPUTE, ALL ENGINES."""
-        print("=" * 60)
-        print("PRISM MANIFEST RUNNER - FULL COMPUTE")
-        print("=" * 60)
-        print(f"Input:  {self.observations_path}")
-        print(f"Output: {self.output_dir}")
-        print(f"Mode:   ALL engines, {'PARALLEL' if self.n_jobs > 1 else 'SEQUENTIAL'}")
-
-        if HAS_PSUTIL:
-            stats = get_ram_stats()
-            print(f"RAM:    {stats['available_gb']:.1f}GB available")
-
-        # 1. Python signal/pair engines
-        python_engines = {
-            'signal': self.engine_config.get('signal', ALL_SIGNAL_ENGINES),
-            'pair': self.engine_config.get('pair', ALL_PAIR_ENGINES),
-            'symmetric_pair': self.engine_config.get('symmetric_pair', ALL_SYMMETRIC_PAIR_ENGINES),
-            'windowed': self.engine_config.get('windowed', ALL_WINDOWED_ENGINES),
-        }
-
-        print("\n" + "-" * 60)
-        print("PYTHON RUNNER (ALL ENGINES)")
-        print("-" * 60)
-
-        python_runner = PythonRunner(
-            obs=self.obs_pd,
-            output_dir=self.output_dir,
-            engines=python_engines,
-            params=self.params
+        writer = streaming_parquet_writer(batch_dir, prefix='topology')
+        ram_manager.process_in_batches(
+            items=entities,
+            process_func=process_topology_batch,
+            write_func=writer,
+            bytes_per_item=5_000_000,
         )
-        self.results['python'] = python_runner.run()
-        self._clear_ram()
 
-        # 2. SQL engines
-        sql_engines = self.engine_config.get('sql', ALL_SQL_ENGINES)
+        output_path = output_dir / 'topology.parquet'
+        n_rows = combine_parquet_batches(batch_dir, output_path, prefix='topology')
+        results['topology'] = {'rows': n_rows}
+        if batch_dir.exists():
+            batch_dir.rmdir()
+    except Exception as e:
+        print(f"  Error: {e}")
+        results['topology'] = {'error': str(e)}
+    _clear_ram()
 
-        print("\n" + "-" * 60)
-        print("SQL RUNNER (ALL ENGINES)")
-        print("-" * 60)
+    # ═══════════════════════════════════════════════════════════════
+    # DYNAMICS: How is structure changing?
+    # ═══════════════════════════════════════════════════════════════
 
-        sql_runner = SQLRunner(
-            observations_path=self.observations_path,
-            output_dir=self.output_dir,
-            engines=sql_engines,
-            params=self.params
+    print("\n" + "═" * 60)
+    print("DYNAMICS: How is structure changing?")
+    print("═" * 60)
+
+    # Dynamics → dynamics.parquet (Lyapunov, RQA, Hurst)
+    print("\n[DYNAMICS - Lyapunov, RQA]")
+    try:
+        from prism.engines.dynamics_runner import process_entity_dynamics
+
+        batch_dir = output_dir / '_dynamics_batches'
+        batch_dir.mkdir(exist_ok=True)
+
+        def process_dynamics_batch(batch_entities):
+            batch_results = []
+            for entity_id in batch_entities:
+                entity_obs = obs_pl.filter(pl.col('entity_id') == entity_id)
+                entity_results = process_entity_dynamics(entity_id, entity_obs, params)
+                batch_results.extend(entity_results)
+            return batch_results
+
+        writer = streaming_parquet_writer(batch_dir, prefix='dynamics')
+        ram_manager.process_in_batches(
+            items=entities,
+            process_func=process_dynamics_batch,
+            write_func=writer,
+            bytes_per_item=5_000_000,
         )
-        self.results['sql'] = sql_runner.run()
-        self._clear_ram()
 
-        # 3. Dynamics (parallel in orchestrator)
-        self._run_dynamics_parallel()
-        self._clear_ram()
+        output_path = output_dir / 'dynamics.parquet'
+        n_rows = combine_parquet_batches(batch_dir, output_path, prefix='dynamics')
+        results['dynamics'] = {'rows': n_rows}
+        if batch_dir.exists():
+            batch_dir.rmdir()
+    except Exception as e:
+        print(f"  Error: {e}")
+        results['dynamics'] = {'error': str(e)}
+    _clear_ram()
 
-        # 4. Topology (parallel in orchestrator)
-        self._run_topology_parallel()
-        self._clear_ram()
+    # Information flow → information_flow.parquet
+    print("\n[INFORMATION FLOW - Transfer Entropy, Granger]")
+    try:
+        from prism.engines.information_flow_runner import process_entity_information_flow
 
-        # 5. Information flow (parallel in orchestrator)
-        self._run_information_flow_parallel()
-        self._clear_ram()
+        batch_dir = output_dir / '_info_flow_batches'
+        batch_dir.mkdir(exist_ok=True)
 
-        # 6. Physics
-        self._run_physics()
-        self._clear_ram()
+        def process_info_flow_batch(batch_entities):
+            batch_results = []
+            for entity_id in batch_entities:
+                entity_obs = obs_pl.filter(pl.col('entity_id') == entity_id)
+                entity_results = process_entity_information_flow(entity_id, entity_obs, params)
+                batch_results.extend(entity_results)
+            return batch_results
 
-        print("\n" + "=" * 60)
-        print("COMPLETE - FULL COMPUTE")
-        print("=" * 60)
-        self._print_summary()
+        writer = streaming_parquet_writer(batch_dir, prefix='info_flow')
+        ram_manager.process_in_batches(
+            items=entities,
+            process_func=process_info_flow_batch,
+            write_func=writer,
+            bytes_per_item=5_000_000,
+        )
 
-        return {
-            'status': 'complete',
-            'output_dir': str(self.output_dir),
-            'results': self.results
-        }
+        output_path = output_dir / 'information_flow.parquet'
+        n_rows = combine_parquet_batches(batch_dir, output_path, prefix='info_flow')
+        results['information_flow'] = {'rows': n_rows}
+        if batch_dir.exists():
+            batch_dir.rmdir()
+    except Exception as e:
+        print(f"  Error: {e}")
+        results['information_flow'] = {'error': str(e)}
+    _clear_ram()
 
-    def _run_dynamics_parallel(self):
-        """Compute dynamics with optional parallel execution."""
-        print("\n" + "-" * 60)
-        print(f"DYNAMICS ENGINE {'(PARALLEL)' if self.n_jobs > 1 else '(SEQUENTIAL)'}")
-        print("-" * 60)
+    # ═══════════════════════════════════════════════════════════════
+    # ENERGY: What drives the change?
+    # ═══════════════════════════════════════════════════════════════
 
-        try:
-            from prism.engines.dynamics_runner import process_entity_dynamics
+    print("\n" + "═" * 60)
+    print("ENERGY: What drives the change?")
+    print("═" * 60)
 
-            dynamics_params = self.params.get('dynamics', {})
-            print(f"  Processing {self.n_entities} entities on {self.n_jobs} workers...")
+    # Physics → physics.parquet
+    print("\n[PHYSICS - Entropy, Energy, Free Energy]")
+    try:
+        from prism.engines.signal.physics_stack import compute_physics_for_all_entities
 
-            if self.n_jobs > 1 and HAS_JOBLIB:
-                results_nested = Parallel(n_jobs=self.n_jobs)(
-                    delayed(process_entity_dynamics)(
-                        entity_id,
-                        self.obs_pl.filter(pl.col('entity_id') == entity_id),
-                        dynamics_params
-                    )
-                    for entity_id in self.entities
-                )
-                all_results = [r for entity_results in results_nested for r in entity_results]
-            else:
-                all_results = []
-                for entity_id in self.entities:
-                    entity_obs = self.obs_pl.filter(pl.col('entity_id') == entity_id)
-                    entity_results = process_entity_dynamics(entity_id, entity_obs, dynamics_params)
-                    all_results.extend(entity_results)
+        obs_enriched_path = output_dir / 'observations_enriched.parquet'
+        if obs_enriched_path.exists():
+            obs_enriched = pd.read_parquet(obs_enriched_path)
+        else:
+            obs_enriched = obs_pd.copy()
+            if 'y' not in obs_enriched.columns and 'value' in obs_enriched.columns:
+                obs_enriched['y'] = obs_enriched['value']
 
-            if not all_results:
-                print("  Warning: no dynamics data computed")
-                self.results['dynamics'] = {'rows': 0, 'cols': 0}
-                return
+        physics_df = compute_physics_for_all_entities(
+            obs_enriched=obs_enriched,
+            n_baseline=params.get('n_baseline', 100),
+            coherence_window=params.get('coherence_window', 50),
+        )
 
-            df = pl.DataFrame(all_results)
-            output_path = self.output_dir / 'dynamics.parquet'
-            df.write_parquet(output_path)
-            print(f"  dynamics.parquet: {len(df):,} rows x {len(df.columns)} cols")
-            self.results['dynamics'] = {'rows': len(df), 'cols': len(df.columns)}
+        if not physics_df.empty:
+            output_path = output_dir / 'physics.parquet'
+            physics_df.to_parquet(output_path, index=False)
+            print(f"  physics.parquet: {len(physics_df):,} rows")
+            results['physics'] = {'rows': len(physics_df)}
+        else:
+            results['physics'] = {'rows': 0}
+    except Exception as e:
+        print(f"  Error: {e}")
+        results['physics'] = {'error': str(e)}
+    _clear_ram()
 
-        except Exception as e:
-            print(f"  Error in dynamics engine: {e}")
-            self.results['dynamics'] = {'error': str(e)}
+    # ═══════════════════════════════════════════════════════════════
+    # SQL RECONCILIATION: Normalize and summarize
+    # ═══════════════════════════════════════════════════════════════
 
-    def _run_topology_parallel(self):
-        """Compute topology with optional parallel execution."""
-        print("\n" + "-" * 60)
-        print(f"TOPOLOGY ENGINE {'(PARALLEL)' if self.n_jobs > 1 else '(SEQUENTIAL)'}")
-        print("-" * 60)
+    print("\n" + "═" * 60)
+    print("SQL RECONCILIATION: Normalize and summarize")
+    print("═" * 60)
 
-        try:
-            from prism.engines.topology_runner import process_entity_topology
+    # SQL engines → zscore, statistics, correlation, regime_assignment
+    sql_runner = SQLRunner(
+        observations_path=observations_path,
+        output_dir=output_dir,
+        engines=SQL_ENGINES,
+        params=params
+    )
+    results['sql'] = sql_runner.run()
+    _clear_ram()
 
-            topology_params = self.params.get('topology', {})
-            print(f"  Processing {self.n_entities} entities on {self.n_jobs} workers...")
+    # ═══════════════════════════════════════════════════════════════
+    # COMPLETE
+    # ═══════════════════════════════════════════════════════════════
 
-            if self.n_jobs > 1 and HAS_JOBLIB:
-                results_nested = Parallel(n_jobs=self.n_jobs)(
-                    delayed(process_entity_topology)(
-                        entity_id,
-                        self.obs_pl.filter(pl.col('entity_id') == entity_id),
-                        topology_params
-                    )
-                    for entity_id in self.entities
-                )
-                all_results = [r for entity_results in results_nested for r in entity_results]
-            else:
-                all_results = []
-                for entity_id in self.entities:
-                    entity_obs = self.obs_pl.filter(pl.col('entity_id') == entity_id)
-                    entity_results = process_entity_topology(entity_id, entity_obs, topology_params)
-                    all_results.extend(entity_results)
+    print("\n" + "═" * 60)
+    print("✅ PRISM COMPLETE")
+    print("═" * 60)
 
-            if not all_results:
-                print("  Warning: no topology data computed")
-                self.results['topology'] = {'rows': 0, 'cols': 0}
-                return
+    _print_summary(output_dir)
 
-            df = pl.DataFrame(all_results)
-            output_path = self.output_dir / 'topology.parquet'
-            df.write_parquet(output_path)
-            print(f"  topology.parquet: {len(df):,} rows x {len(df.columns)} cols")
-            self.results['topology'] = {'rows': len(df), 'cols': len(df.columns)}
-
-        except Exception as e:
-            print(f"  Error in topology engine: {e}")
-            self.results['topology'] = {'error': str(e)}
-
-    def _run_information_flow_parallel(self):
-        """Compute information flow with optional parallel execution."""
-        print("\n" + "-" * 60)
-        print(f"INFORMATION FLOW ENGINE {'(PARALLEL)' if self.n_jobs > 1 else '(SEQUENTIAL)'}")
-        print("-" * 60)
-
-        try:
-            from prism.engines.information_flow_runner import process_entity_information_flow
-
-            info_params = self.params.get('information_flow', {})
-            print(f"  Processing {self.n_entities} entities on {self.n_jobs} workers...")
-
-            if self.n_jobs > 1 and HAS_JOBLIB:
-                results_nested = Parallel(n_jobs=self.n_jobs)(
-                    delayed(process_entity_information_flow)(
-                        entity_id,
-                        self.obs_pl.filter(pl.col('entity_id') == entity_id),
-                        info_params
-                    )
-                    for entity_id in self.entities
-                )
-                all_results = [r for entity_results in results_nested for r in entity_results]
-            else:
-                all_results = []
-                for entity_id in self.entities:
-                    entity_obs = self.obs_pl.filter(pl.col('entity_id') == entity_id)
-                    entity_results = process_entity_information_flow(entity_id, entity_obs, info_params)
-                    all_results.extend(entity_results)
-
-            if not all_results:
-                print("  Warning: no information flow data computed")
-                self.results['information_flow'] = {'rows': 0, 'cols': 0}
-                return
-
-            df = pl.DataFrame(all_results)
-            output_path = self.output_dir / 'information_flow.parquet'
-            df.write_parquet(output_path)
-            print(f"  information_flow.parquet: {len(df):,} rows x {len(df.columns)} cols")
-            self.results['information_flow'] = {'rows': len(df), 'cols': len(df.columns)}
-
-        except Exception as e:
-            print(f"  Error in information flow engine: {e}")
-            self.results['information_flow'] = {'error': str(e)}
-
-    def _run_physics(self):
-        """Compute physics stack."""
-        print("\n" + "-" * 60)
-        print("PHYSICS STACK")
-        print("-" * 60)
-
-        obs_enriched_path = self.output_dir / 'observations_enriched.parquet'
-
-        try:
-            from prism.engines.signal.physics_stack import compute_physics_for_all_entities
-
-            physics_params = self.params.get('physics', {})
-
-            if obs_enriched_path.exists():
-                obs_enriched = pd.read_parquet(obs_enriched_path)
-                print(f"  Using observations_enriched.parquet ({len(obs_enriched):,} rows)")
-            else:
-                print("  Using raw observations")
-                obs_enriched = self.obs_pd.copy()
-                if 'y' not in obs_enriched.columns and 'value' in obs_enriched.columns:
-                    obs_enriched['y'] = obs_enriched['value']
-
-            physics_df = compute_physics_for_all_entities(
-                obs_enriched=obs_enriched,
-                n_baseline=physics_params.get('n_baseline', 100),
-                coherence_window=physics_params.get('coherence_window', 50),
-            )
-
-            if not physics_df.empty:
-                output_path = self.output_dir / 'physics.parquet'
-                physics_df.to_parquet(output_path, index=False)
-                print(f"  physics.parquet: {len(physics_df):,} rows x {len(physics_df.columns)} cols")
-                self.results['physics'] = {'rows': len(physics_df), 'cols': len(physics_df.columns)}
-            else:
-                print("  Warning: no physics data computed")
-                self.results['physics'] = {'rows': 0, 'cols': 0}
-
-        except Exception as e:
-            print(f"  Error in physics engine: {e}")
-            self.results['physics'] = {'error': str(e)}
-
-    def _print_summary(self):
-        """Print summary of outputs."""
-        print("\nOutput files:")
-        for f in sorted(self.output_dir.glob('*.parquet')):
-            size = f.stat().st_size
-            if size > 1_000_000:
-                size_str = f"{size / 1_000_000:.1f} MB"
-            elif size > 1_000:
-                size_str = f"{size / 1_000:.1f} KB"
-            else:
-                size_str = f"{size} B"
-            print(f"  {f.name}: {size_str}")
+    return {
+        'status': 'complete',
+        'output_dir': str(output_dir),
+        'results': results
+    }
 
 
-def run_manifest(manifest_path: str) -> dict:
-    """Load and run a manifest from a YAML or JSON file."""
-    manifest = load_manifest(manifest_path)
-    runner = ManifestRunner(manifest)
-    return runner.run()
+def _clear_ram():
+    """Clear RAM and report status."""
+    gc.collect()
+    if HAS_PSUTIL:
+        print(f"  {MemoryStats.current()}")
 
 
-def run_manifest_dict(manifest: dict) -> dict:
-    """Run a manifest from a dictionary."""
-    if 'data' in manifest or 'prism' in manifest:
-        manifest = normalize_manifest(manifest, Path('.'))
-    else:
-        manifest = _normalize_legacy_manifest(manifest)
-    runner = ManifestRunner(manifest)
-    return runner.run()
+def _print_summary(output_dir: Path):
+    """Print summary of output files."""
+    print("\nOutput files:")
+    for f in sorted(output_dir.glob('*.parquet')):
+        if f.name == 'observations.parquet':
+            continue  # Don't list input file
+        size = f.stat().st_size
+        if size > 1_000_000:
+            size_str = f"{size / 1_000_000:.1f} MB"
+        elif size > 1_000:
+            size_str = f"{size / 1_000:.1f} KB"
+        else:
+            size_str = f"{size} B"
+        print(f"  {f.name}: {size_str}")
 
 
-__all__ = [
-    'ManifestRunner',
-    'run_manifest',
-    'run_manifest_dict',
-    'load_manifest',
-    'normalize_manifest',
-    'SIGNAL_ENGINES',
-    'PAIR_ENGINES',
-    'SYMMETRIC_PAIR_ENGINES',
-    'WINDOWED_ENGINES',
-    'SQL_ENGINES',
-    'ALL_SIGNAL_ENGINES',
-    'ALL_PAIR_ENGINES',
-    'ALL_SYMMETRIC_PAIR_ENGINES',
-    'ALL_WINDOWED_ENGINES',
-    'ALL_SQL_ENGINES',
-]
+# Direct execution
+if __name__ == "__main__":
+    run()

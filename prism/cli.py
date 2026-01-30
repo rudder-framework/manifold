@@ -1,168 +1,74 @@
 """
 PRISM CLI
 
-Command line interface for running PRISM manifests.
+FULL COMPUTE. NO EXCEPTIONS.
 
 Usage:
-    python -m prism run --manifest manifest.json
-    python -m prism run --data ./observations.parquet --output ./results --engines rms,kurtosis,hurst
+    python -m prism manifest.yaml
+    python -m prism observations.parquet
 
-Examples:
-    # Run from manifest file
-    python -m prism run --manifest /path/to/manifest.json
-
-    # Run with inline options
-    python -m prism run \\
-        --data /path/to/observations.parquet \\
-        --output /tmp/results \\
-        --engines rms,peak,kurtosis,hurst,entropy \\
-        --pair-engines granger \\
-        --symmetric-engines correlation,mutual_info \\
-        --sql-engines zscore,statistics
-
-    # List available engines
-    python -m prism list
+That's it. Everything runs. 100%.
 """
 
-import argparse
-import json
 import sys
 from pathlib import Path
 
 
-def cmd_run(args):
-    """Run engines on data."""
-    from prism.runner import ManifestRunner, run_manifest
+def main():
+    """Run PRISM. Full compute. No exceptions."""
 
-    if args.manifest:
-        # Run from manifest file
-        result = run_manifest(args.manifest)
-    else:
-        # Build manifest from CLI args
-        if not args.data:
-            print("Error: Either --manifest or --data is required")
-            sys.exit(1)
+    # Import here to avoid circular imports
+    from prism.runner import run, DATA_DIR
+
+    # No arguments = use canonical data/manifest.yaml
+    if len(sys.argv) < 2:
+        result = run()  # Uses DATA_DIR/manifest.yaml
+        print(f"\nResults written to: {result.get('output_dir', 'unknown')}")
+        return 0
+
+    input_path = Path(sys.argv[1])
+
+    if not input_path.exists():
+        print(f"Error: File not found: {input_path}")
+        sys.exit(1)
+
+    # Determine input type
+    if input_path.suffix in ['.yaml', '.yml', '.json']:
+        # Manifest file - run directly
+        result = run(input_path)
+    elif input_path.suffix == '.parquet':
+        # Direct parquet - create temp manifest and run
+        import json
+        import tempfile
+
+        output_dir = input_path.parent
 
         manifest = {
-            'observations_path': str(Path(args.data).resolve()),
-            'output_dir': str(Path(args.output).resolve()) if args.output else '/tmp/prism_output',
-            'engines': {
-                'signal': [],
-                'pair': [],
-                'symmetric_pair': [],
-                'windowed': ['derivatives'],  # Always run derivatives
-                'sql': [],
+            'dataset': {'name': input_path.stem},
+            'data': {
+                'observations_path': str(input_path.resolve()),
             },
-            'params': {}
+            'prism': {
+                'window_size': 100,
+                'stride': 50,
+            }
         }
 
-        # Parse engine lists
-        if args.engines:
-            manifest['engines']['signal'] = [e.strip() for e in args.engines.split(',')]
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+            json.dump(manifest, f)
+            temp_path = Path(f.name)
 
-        if args.pair_engines:
-            manifest['engines']['pair'] = [e.strip() for e in args.pair_engines.split(',')]
-
-        if args.symmetric_engines:
-            manifest['engines']['symmetric_pair'] = [e.strip() for e in args.symmetric_engines.split(',')]
-
-        if args.windowed_engines:
-            manifest['engines']['windowed'] = [e.strip() for e in args.windowed_engines.split(',')]
-
-        if args.sql_engines:
-            manifest['engines']['sql'] = [e.strip() for e in args.sql_engines.split(',')]
-
-        # Add manifold if requested
-        if args.manifold:
-            manifest['engines']['windowed'].append('manifold')
-
-        runner = ManifestRunner(manifest)
-        result = runner.run()
+        try:
+            result = run(temp_path)
+        finally:
+            temp_path.unlink()
+    else:
+        print(f"Error: Unknown file type: {input_path.suffix}")
+        print("Expected: .yaml, .yml, .json, or .parquet")
+        sys.exit(1)
 
     print(f"\nResults written to: {result.get('output_dir', 'unknown')}")
     return 0
-
-
-def cmd_list(args):
-    """List available engines."""
-    from prism.python_runner import SIGNAL_ENGINES, PAIR_ENGINES, SYMMETRIC_PAIR_ENGINES, WINDOWED_ENGINES
-    from prism.sql_runner import SQL_ENGINES
-
-    print("=" * 50)
-    print("PRISM AVAILABLE ENGINES")
-    print("=" * 50)
-
-    print("\n[SIGNAL ENGINES] (one value per signal)")
-    for eng in sorted(SIGNAL_ENGINES):
-        print(f"  - {eng}")
-
-    print("\n[PAIR ENGINES] (directional A→B)")
-    for eng in sorted(PAIR_ENGINES):
-        print(f"  - {eng}")
-
-    print("\n[SYMMETRIC PAIR ENGINES] (A↔B)")
-    for eng in sorted(SYMMETRIC_PAIR_ENGINES):
-        print(f"  - {eng}")
-
-    print("\n[WINDOWED ENGINES] (observation-level)")
-    for eng in sorted(WINDOWED_ENGINES):
-        print(f"  - {eng}")
-
-    print("\n[SQL ENGINES] (DuckDB)")
-    for eng in sorted(SQL_ENGINES):
-        print(f"  - {eng}")
-
-    return 0
-
-
-def cmd_validate(args):
-    """Validate output parquets."""
-    from prism.validate_outputs import validate_directory
-
-    if not args.output_dir:
-        print("Error: --output-dir is required")
-        sys.exit(1)
-
-    validate_directory(args.output_dir)
-    return 0
-
-
-def main():
-    parser = argparse.ArgumentParser(
-        prog='prism',
-        description='PRISM - Signal Analysis Engine Runner'
-    )
-    subparsers = parser.add_subparsers(dest='command', help='Commands')
-
-    # run command
-    run_parser = subparsers.add_parser('run', help='Run engines on data')
-    run_parser.add_argument('--manifest', '-m', help='Path to manifest JSON file')
-    run_parser.add_argument('--data', '-d', help='Path to observations.parquet')
-    run_parser.add_argument('--output', '-o', help='Output directory')
-    run_parser.add_argument('--engines', '-e', help='Comma-separated signal engines')
-    run_parser.add_argument('--pair-engines', help='Comma-separated pair engines')
-    run_parser.add_argument('--symmetric-engines', help='Comma-separated symmetric pair engines')
-    run_parser.add_argument('--windowed-engines', help='Comma-separated windowed engines')
-    run_parser.add_argument('--sql-engines', help='Comma-separated SQL engines (DuckDB)')
-    run_parser.add_argument('--manifold', action='store_true', help='Enable manifold computation')
-    run_parser.set_defaults(func=cmd_run)
-
-    # list command
-    list_parser = subparsers.add_parser('list', help='List available engines')
-    list_parser.set_defaults(func=cmd_list)
-
-    # validate command
-    validate_parser = subparsers.add_parser('validate', help='Validate output parquets')
-    validate_parser.add_argument('--output-dir', required=True, help='Directory to validate')
-    validate_parser.set_defaults(func=cmd_validate)
-
-    args = parser.parse_args()
-
-    if not args.command:
-        parser.print_help()
-        sys.exit(1)
-
-    return args.func(args)
 
 
 if __name__ == '__main__':

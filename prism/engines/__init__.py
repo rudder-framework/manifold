@@ -27,23 +27,4 @@ def __getattr__(name):
     elif name == 'sql':
         from . import sql
         return sql
-    # Legacy aliases for backwards compatibility
-    elif name == 'python':
-        import warnings
-        warnings.warn(
-            "prism.engines.python is deprecated, use prism.engines.signal",
-            DeprecationWarning,
-            stacklevel=2
-        )
-        from . import signal
-        return signal
-    elif name == 'python_windowed':
-        import warnings
-        warnings.warn(
-            "prism.engines.python_windowed is deprecated, use prism.engines.rolling",
-            DeprecationWarning,
-            stacklevel=2
-        )
-        from . import rolling
-        return rolling
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

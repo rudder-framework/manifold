@@ -109,11 +109,11 @@ class PythonRunner:
         print(f"  Indexed {len(self.signal_data)} signals across {len(self.entities)} entities")
 
     def run(self) -> dict:
-        """Execute all configured Python engines."""
-        self.run_windowed_engines()
-        self.run_signal_engines()
-        self.run_pair_engines()
-        self.run_symmetric_pair_engines()
+        """Execute ALL Python engines. Primitives first, then windowed."""
+        self.run_signal_engines()      # 1. Primitives (signal-level)
+        self.run_pair_engines()        # 2. Pair primitives
+        self.run_symmetric_pair_engines()  # 3. Symmetric pairs
+        self.run_windowed_engines()    # 4. Windowed (may need primitives)
         self.export()
 
         return {
@@ -124,12 +124,10 @@ class PythonRunner:
         }
 
     def run_signal_engines(self):
-        """Run signal-level engines (one value per signal)."""
-        engines_to_run = self.engines.get('signal', [])
-        if not engines_to_run:
-            return
+        """Run ALL signal-level engines. No exceptions."""
+        engines_to_run = SIGNAL_ENGINES  # ALL engines, always
 
-        print(f"\n[SIGNAL ENGINES] Running: {engines_to_run}")
+        print(f"\n[SIGNAL ENGINES] Running ALL: {engines_to_run}")
 
         # Load engine functions
         engine_funcs = {}
@@ -146,19 +144,15 @@ class PythonRunner:
             if len(y) < 10:
                 continue
 
-            # Base stats
+            # Identity only - no calculations in runner
             row = {
                 'entity_id': entity,
                 'signal_id': signal,
                 'unit': unit,
                 'n_points': len(y),
-                'mean': float(np.mean(y)),
-                'std': float(np.std(y)),
-                'min': float(np.min(y)),
-                'max': float(np.max(y)),
             }
 
-            # Run each engine
+            # Run each engine - engines compute everything
             for name, func in engine_funcs.items():
                 try:
                     params = self.params.get(name, {})
@@ -173,19 +167,17 @@ class PythonRunner:
 
                     row.update(result)
                 except Exception:
-                    pass  # Skip failed engines silently
+                    pass  # Engine failed → NaN implicitly
 
             self.primitives.append(row)
 
         print(f"  Processed {len(self.primitives)} signals")
 
     def run_pair_engines(self):
-        """Run pair-level engines (directional A→B)."""
-        engines_to_run = self.engines.get('pair', [])
-        if not engines_to_run:
-            return
+        """Run ALL pair-level engines. No exceptions."""
+        engines_to_run = PAIR_ENGINES  # ALL engines, always
 
-        print(f"\n[PAIR ENGINES] Running: {engines_to_run}")
+        print(f"\n[PAIR ENGINES] Running ALL: {engines_to_run}")
 
         # Load engine functions
         engine_funcs = {}
@@ -234,12 +226,10 @@ class PythonRunner:
         print(f"  Processed {len(self.primitives_pairs)} directional pairs")
 
     def run_symmetric_pair_engines(self):
-        """Run symmetric pair engines (A↔B same as B↔A)."""
-        engines_to_run = self.engines.get('symmetric_pair', [])
-        if not engines_to_run:
-            return
+        """Run ALL symmetric pair engines. No exceptions."""
+        engines_to_run = SYMMETRIC_PAIR_ENGINES  # ALL engines, always
 
-        print(f"\n[SYMMETRIC PAIR ENGINES] Running: {engines_to_run}")
+        print(f"\n[SYMMETRIC PAIR ENGINES] Running ALL: {engines_to_run}")
 
         # Load engine functions
         engine_funcs = {}
@@ -282,12 +272,10 @@ class PythonRunner:
         print(f"  Processed {len(self.geometry_pairs)} symmetric pairs")
 
     def run_windowed_engines(self):
-        """Run windowed engines (observation-level output)."""
-        engines_to_run = self.engines.get('windowed', [])
-        if not engines_to_run:
-            return
+        """Run ALL windowed engines. No exceptions."""
+        engines_to_run = list(WINDOWED_ENGINES)  # ALL engines, always
 
-        print(f"\n[WINDOWED ENGINES] Running: {engines_to_run}")
+        print(f"\n[WINDOWED ENGINES] Running ALL: {engines_to_run}")
 
         # Special case for manifold (cross-signal)
         if 'manifold' in engines_to_run:

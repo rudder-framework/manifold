@@ -49,11 +49,10 @@ class SQLRunner:
         self.conn = None
 
     def run(self) -> dict:
-        """Execute all configured SQL engines."""
-        if not self.engines:
-            return {'engines_run': 0}
+        """Execute ALL SQL engines. No exceptions."""
+        engines_to_run = SQL_ENGINES  # ALL engines, always
 
-        print(f"\n[SQL ENGINES] Running: {self.engines}")
+        print(f"\n[SQL ENGINES] Running ALL: {engines_to_run}")
 
         # Connect to DuckDB
         self.conn = duckdb.connect(':memory:')
@@ -67,7 +66,7 @@ class SQLRunner:
 
         # Run each engine
         results = {}
-        for engine_name in self.engines:
+        for engine_name in engines_to_run:
             try:
                 self._run_engine(engine_name)
                 results[engine_name] = 'success'
@@ -79,7 +78,7 @@ class SQLRunner:
         self.conn.close()
 
         return {
-            'engines_run': len(self.engines),
+            'engines_run': len(engines_to_run),
             'results': results
         }
 
