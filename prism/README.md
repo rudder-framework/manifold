@@ -154,8 +154,8 @@ data/{domain}/
 ```
 
 **Schema:**
-- `observations`: entity_id, signal_id, timestamp, value
-- `signals`: entity_id, signal_id, source_signal, engine, signal_type, timestamp, value, mode_id
+- `observations`: unit_id, signal_id, timestamp, value
+- `signals`: unit_id, signal_id, source_signal, engine, signal_type, timestamp, value, mode_id
 - `geometry`: System structure at each timestamp
 - `state`: Dynamics at each timestamp
 - `cohorts`: Discovered entity groupings

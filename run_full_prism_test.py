@@ -145,31 +145,31 @@ EXPECTED_OUTPUTS = {
     # Python runner outputs
     "observations_enriched.parquet": {
         "min_rows": 1000,
-        "required_columns": ["entity_id", "signal_id", "I", "y", "dy", "d2y", "curvature"],
+        "required_columns": ["unit_id", "signal_id", "I", "y", "dy", "d2y", "curvature"],
         "min_columns": 15,
         "description": "Observation-level: derivatives, rolling metrics"
     },
     "manifold.parquet": {
         "min_rows": 1000,
-        "required_columns": ["entity_id", "I", "manifold_x", "manifold_y", "manifold_z"],
+        "required_columns": ["unit_id", "I", "manifold_x", "manifold_y", "manifold_z"],
         "min_columns": 5,
         "description": "Cross-signal PCA projection"
     },
     "primitives.parquet": {
         "min_rows": 1,
-        "required_columns": ["entity_id", "signal_id", "hurst", "sample_entropy"],
+        "required_columns": ["unit_id", "signal_id", "hurst", "sample_entropy"],
         "min_columns": 30,
         "description": "Signal-level: all computed metrics"
     },
     "primitives_pairs.parquet": {
         "min_rows": 1,
-        "required_columns": ["entity_id", "source_signal", "target_signal", "granger_fstat"],
+        "required_columns": ["unit_id", "source_signal", "target_signal", "granger_fstat"],
         "min_columns": 5,
         "description": "Directional pairs: granger, transfer entropy"
     },
     "geometry.parquet": {
         "min_rows": 1,
-        "required_columns": ["entity_id", "signal_a", "signal_b", "correlation"],
+        "required_columns": ["unit_id", "signal_a", "signal_b", "correlation"],
         "min_columns": 5,
         "description": "Symmetric pairs: correlation, cointegration, mutual info"
     },
@@ -177,49 +177,49 @@ EXPECTED_OUTPUTS = {
     # SQL runner outputs
     "zscore.parquet": {
         "min_rows": 1000,
-        "required_columns": ["entity_id", "signal_id", "I", "z_score"],
+        "required_columns": ["unit_id", "signal_id", "I", "z_score"],
         "min_columns": 4,
         "description": "Z-scores at observation level"
     },
     "statistics.parquet": {
         "min_rows": 1,
-        "required_columns": ["entity_id", "signal_id", "mean", "std"],
+        "required_columns": ["unit_id", "signal_id", "mean", "std"],
         "min_columns": 5,
         "description": "Basic statistics per signal"
     },
     "correlation.parquet": {
         "min_rows": 1,
-        "required_columns": ["entity_id", "signal_a", "signal_b", "correlation"],
+        "required_columns": ["unit_id", "signal_a", "signal_b", "correlation"],
         "min_columns": 4,
         "description": "SQL correlation (may duplicate geometry)"
     },
     "regime_assignment.parquet": {
         "min_rows": 1000,
-        "required_columns": ["entity_id", "signal_id", "I", "regime_id"],
+        "required_columns": ["unit_id", "signal_id", "I", "regime_id"],
         "min_columns": 4,
         "description": "Regime labels at observation level"
     },
     "physics.parquet": {
         "min_rows": 10,
-        "required_columns": ["entity_id", "I", "state_distance", "coherence", "effective_dim", "energy_proxy"],
+        "required_columns": ["unit_id", "I", "state_distance", "coherence", "effective_dim", "energy_proxy"],
         "min_columns": 15,
         "description": "Physics stack L1-L4 metrics (eigenvalue-based coherence)"
     },
     "dynamics.parquet": {
         "min_rows": 10,
-        "required_columns": ["entity_id", "I", "lyapunov_max", "correlation_dim", "determinism", "recurrence_rate"],
+        "required_columns": ["unit_id", "I", "lyapunov_max", "correlation_dim", "determinism", "recurrence_rate"],
         "min_columns": 10,
         "description": "Dynamics: Lyapunov exponents, attractor dimension, RQA metrics"
     },
     "topology.parquet": {
         "min_rows": 10,
-        "required_columns": ["entity_id", "observation_idx", "betti_0", "betti_1", "topological_complexity"],
+        "required_columns": ["unit_id", "observation_idx", "betti_0", "betti_1", "topological_complexity"],
         "min_columns": 10,
         "description": "Topology: persistent homology, Betti numbers, topological complexity"
     },
     "information_flow.parquet": {
         "min_rows": 10,
-        "required_columns": ["entity_id", "I", "n_causal_edges", "hierarchy_score", "max_transfer_entropy"],
+        "required_columns": ["unit_id", "I", "n_causal_edges", "hierarchy_score", "max_transfer_entropy"],
         "min_columns": 10,
         "description": "Information flow: transfer entropy, causal network metrics"
     },
@@ -250,7 +250,7 @@ def run_test(observations_path: str, output_dir: str = None, quick: bool = False
     if quick:
         print("QUICK MODE: Slicing to 1,000 rows per signal...")
         obs = pl.read_parquet(observations_path)
-        obs = obs.group_by(["entity_id", "signal_id"]).head(1000)
+        obs = obs.group_by(["unit_id", "signal_id"]).head(1000)
         small_path = output_dir / "observations_small.parquet"
         obs.write_parquet(small_path)
         observations_path = small_path

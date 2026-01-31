@@ -505,14 +505,14 @@ Engines compose primitives into interpretable analyses with associated SQL views
 
 | File | Index | Contents |
 |------|-------|----------|
-| `observations.parquet` | entity_id, signal_id, I | Raw sensor data |
-| `vector.parquet` | entity_id, signal_id, window | Per-signal primitives (Y1) |
-| `pairs.parquet` | entity_id, signal_a, signal_b, window | Pairwise primitives (Y2) |
-| `geometry.parquet` | entity_id, window | Matrix primitives (Y3) + Structure engines (Y10) |
-| `dynamics.parquet` | entity_id, window | Embedding (Y4) + Dynamical (Y7) + Dynamics engines (Y12) |
-| `topology.parquet` | entity_id, window | Topology primitives (Y5) + engines (Y13) |
-| `information_flow.parquet` | entity_id, window | Network (Y6) + Information (Y9) + engines (Y13) |
-| `physics.parquet` | entity_id, window | Physics engines (Y11) + ORTHON interpretation |
+| `observations.parquet` | unit_id, signal_id, I | Raw sensor data |
+| `vector.parquet` | unit_id, signal_id, window | Per-signal primitives (Y1) |
+| `pairs.parquet` | unit_id, signal_a, signal_b, window | Pairwise primitives (Y2) |
+| `geometry.parquet` | unit_id, window | Matrix primitives (Y3) + Structure engines (Y10) |
+| `dynamics.parquet` | unit_id, window | Embedding (Y4) + Dynamical (Y7) + Dynamics engines (Y12) |
+| `topology.parquet` | unit_id, window | Topology primitives (Y5) + engines (Y13) |
+| `information_flow.parquet` | unit_id, window | Network (Y6) + Information (Y9) + engines (Y13) |
+| `physics.parquet` | unit_id, window | Physics engines (Y11) + ORTHON interpretation |
 
 ---
 
