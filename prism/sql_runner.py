@@ -96,6 +96,11 @@ class SQLRunner:
             SELECT * FROM read_parquet('{self.observations_path}')
         """)
 
+        # Add unit_id if missing (optional column in schema v2.0)
+        cols = [row[0] for row in self.conn.execute("DESCRIBE observations").fetchall()]
+        if 'unit_id' not in cols:
+            self.conn.execute("ALTER TABLE observations ADD COLUMN unit_id VARCHAR DEFAULT ''")
+
         count = self.conn.execute("SELECT COUNT(*) FROM observations").fetchone()[0]
         n_entities = self.conn.execute("SELECT COUNT(DISTINCT unit_id) FROM observations").fetchone()[0]
         n_signals = self.conn.execute("SELECT COUNT(DISTINCT signal_id) FROM observations").fetchone()[0]

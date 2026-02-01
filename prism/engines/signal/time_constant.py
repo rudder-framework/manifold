@@ -96,10 +96,12 @@ def compute(y: np.ndarray, I: np.ndarray = None) -> Dict[str, float]:
         ss_res = np.sum((y - y_pred) ** 2)
         ss_tot = np.sum((y - np.mean(y)) ** 2)
 
-        if ss_tot > 0:
+        if ss_tot > 1e-10:  # Prevent near-zero overflow
             r2 = 1 - ss_res / ss_tot
+            if not np.isfinite(r2):  # Belt and suspenders
+                r2 = np.nan
         else:
-            r2 = 1.0
+            r2 = np.nan  # Signal is essentially constant
 
         # Only accept fit if R^2 is reasonable
         if r2 >= 0.5:

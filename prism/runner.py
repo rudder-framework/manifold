@@ -89,7 +89,8 @@ def run(manifest_path: Path = None) -> dict:
         )
 
     # Validate observations against canonical schema (aborts if invalid)
-    abort_if_invalid(observations_path)
+    # Returns (CheckResult, DataFrame) - df may have unit_id added if missing
+    check_result, obs_pl = abort_if_invalid(observations_path)
 
     # Output goes to data/ (same directory, overwrites existing)
     output_dir = data_dir
@@ -117,10 +118,9 @@ def run(manifest_path: Path = None) -> dict:
     if HAS_PSUTIL:
         print(f"RAM:    {MemoryStats.current()}")
 
-    # Load observations (ORTHON created this)
+    # Use validated DataFrame from data_check (has unit_id added if was missing)
     print(f"\nLoading observations...")
-    obs_pd = pd.read_parquet(observations_path)
-    obs_pl = pl.from_pandas(obs_pd)
+    obs_pd = obs_pl.to_pandas()  # Convert Polars df to Pandas for PythonRunner
     print(f"  {len(obs_pd):,} observations")
 
     entities = obs_pl.select('unit_id').unique().to_series().to_list()

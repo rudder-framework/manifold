@@ -394,7 +394,8 @@ def rqa_metrics(
     delay: int = 1,
     threshold: float = None,
     threshold_percentile: float = 10.0,
-    min_line: int = 2
+    min_line: int = 2,
+    max_samples: int = 20000
 ) -> Dict[str, float]:
     """
     Compute all RQA metrics at once.
@@ -413,12 +414,22 @@ def rqa_metrics(
         Percentile for auto threshold
     min_line : int
         Minimum line length
+    max_samples : int
+        Maximum samples for RQA computation. Longer signals are uniformly
+        downsampled to this length. Default 20000. RQA is O(n²) complexity.
 
     Returns
     -------
     dict
         Dictionary of all RQA metrics
     """
+    signal = np.asarray(signal).flatten()
+
+    # Downsample long signals to keep RQA tractable (O(n²) complexity)
+    if len(signal) > max_samples:
+        step = len(signal) // max_samples
+        signal = signal[::step][:max_samples]
+
     R = recurrence_matrix(
         signal, dimension, delay, threshold, threshold_percentile
     )
