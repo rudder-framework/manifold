@@ -1,0 +1,543 @@
+"""
+PRISM Signal Pairwise Engine
+
+Signal pairwise computes relationships BETWEEN signals at each index.
+This captures the internal structure of the signal cloud.
+
+Computes per pair, per engine, per index:
+- Correlation (do they move together in feature space?)
+- Distance (how far apart?)
+- Cosine similarity (same direction?)
+
+REQUIRES: signal_vector.parquet + state_vector.parquet (for context)
+
+N signals → N²/2 unique pairs per index
+N ≈ 14 → ~91 pairs per index
+TRACTABLE (not the N² across time we avoided)
+
+Pipeline:
+    signal_vector + state_vector → signal_pairwise.parquet → dynamics.parquet
+"""
+
+import numpy as np
+import polars as pl
+import duckdb
+from pathlib import Path
+from typing import List, Dict, Optional, Any, Tuple
+from itertools import combinations
+
+
+# ============================================================
+# DEFAULT ENGINE FEATURE GROUPS
+# ============================================================
+
+DEFAULT_FEATURE_GROUPS = {
+    'shape': ['kurtosis', 'skewness', 'crest_factor'],
+    'complexity': ['entropy', 'hurst', 'autocorr'],
+    'spectral': ['spectral_entropy', 'spectral_centroid', 'band_ratio_low', 'band_ratio_mid', 'band_ratio_high'],
+}
+
+
+# ============================================================
+# PAIRWISE COMPUTATION (Python)
+# ============================================================
+
+def compute_pairwise_at_index(
+    signal_matrix: np.ndarray,
+    signal_names: List[str],
+    centroid: Optional[np.ndarray] = None
+) -> List[Dict[str, Any]]:
+    """
+    Compute pairwise relationships between all signals at single index.
+
+    Args:
+        signal_matrix: N_signals × D_features
+        signal_names: Names of signals
+        centroid: Optional centroid for relative metrics
+
+    Returns:
+        List of dicts, one per pair
+    """
+    N, D = signal_matrix.shape
+    results = []
+
+    # Precompute norms
+    norms = np.linalg.norm(signal_matrix, axis=1)
+
+    # Precompute distances to centroid if provided
+    if centroid is not None:
+        centroid_distances = np.linalg.norm(signal_matrix - centroid, axis=1)
+        centroid_norm = np.linalg.norm(centroid)
+        if centroid_norm > 1e-10:
+            # Projections onto centroid direction
+            projections = (signal_matrix @ centroid) / centroid_norm
+        else:
+            projections = np.zeros(N)
+    else:
+        centroid_distances = None
+        projections = None
+
+    # Compute all pairs
+    for i, j in combinations(range(N), 2):
+        signal_a = signal_matrix[i]
+        signal_b = signal_matrix[j]
+        name_a = signal_names[i]
+        name_b = signal_names[j]
+        norm_a = norms[i]
+        norm_b = norms[j]
+
+        # Skip if either signal is invalid
+        if not (np.isfinite(signal_a).all() and np.isfinite(signal_b).all()):
+            continue
+
+        # ─────────────────────────────────────────────────
+        # DISTANCE (Euclidean)
+        # ─────────────────────────────────────────────────
+        distance = np.linalg.norm(signal_a - signal_b)
+
+        # ─────────────────────────────────────────────────
+        # COSINE SIMILARITY
+        # ─────────────────────────────────────────────────
+        if norm_a > 1e-10 and norm_b > 1e-10:
+            cosine_similarity = np.dot(signal_a, signal_b) / (norm_a * norm_b)
+        else:
+            cosine_similarity = 0.0
+
+        # ─────────────────────────────────────────────────
+        # CORRELATION (Pearson on feature vectors)
+        # ─────────────────────────────────────────────────
+        if D > 1:
+            # Correlation of the two feature vectors
+            mean_a = np.mean(signal_a)
+            mean_b = np.mean(signal_b)
+            std_a = np.std(signal_a)
+            std_b = np.std(signal_b)
+
+            if std_a > 1e-10 and std_b > 1e-10:
+                correlation = np.mean((signal_a - mean_a) * (signal_b - mean_b)) / (std_a * std_b)
+            else:
+                correlation = 0.0
+        else:
+            correlation = cosine_similarity  # For 1D, same as cosine
+
+        # ─────────────────────────────────────────────────
+        # RELATIVE TO STATE (if centroid provided)
+        # ─────────────────────────────────────────────────
+        if centroid_distances is not None:
+            dist_a_to_state = centroid_distances[i]
+            dist_b_to_state = centroid_distances[j]
+
+            # Are both close to state?
+            mean_dist = np.mean(centroid_distances[np.isfinite(centroid_distances)])
+            both_close = (dist_a_to_state < mean_dist) and (dist_b_to_state < mean_dist)
+            both_far = (dist_a_to_state > mean_dist) and (dist_b_to_state > mean_dist)
+
+            # Same side of state? (same sign of projection)
+            if projections is not None:
+                same_side = (projections[i] * projections[j]) > 0
+            else:
+                same_side = None
+
+            # Distance difference to state
+            state_distance_diff = abs(dist_a_to_state - dist_b_to_state)
+        else:
+            both_close = None
+            both_far = None
+            same_side = None
+            state_distance_diff = None
+
+        results.append({
+            'signal_a': name_a,
+            'signal_b': name_b,
+            'distance': distance,
+            'cosine_similarity': cosine_similarity,
+            'correlation': correlation,
+            'both_close_to_state': both_close,
+            'both_far_from_state': both_far,
+            'same_side_of_state': same_side,
+            'state_distance_diff': state_distance_diff,
+        })
+
+    return results
+
+
+def compute_signal_pairwise(
+    signal_vector_path: str,
+    state_vector_path: str,
+    output_path: str = "signal_pairwise.parquet",
+    feature_groups: Optional[Dict[str, List[str]]] = None,
+    verbose: bool = True
+) -> pl.DataFrame:
+    """
+    Compute signal pairwise relationships.
+
+    Args:
+        signal_vector_path: Path to signal_vector.parquet
+        state_vector_path: Path to state_vector.parquet
+        output_path: Output path
+        feature_groups: Dict mapping engine names to feature lists
+        verbose: Print progress
+
+    Returns:
+        Signal pairwise DataFrame
+    """
+    if verbose:
+        print("=" * 70)
+        print("SIGNAL PAIRWISE ENGINE")
+        print("Signal-to-signal relationships")
+        print("=" * 70)
+
+    # Load data
+    signal_vector = pl.read_parquet(signal_vector_path)
+    state_vector = pl.read_parquet(state_vector_path)
+
+    # Identify features
+    meta_cols = ['unit_id', 'I', 'signal_name']
+    all_features = [c for c in signal_vector.columns if c not in meta_cols]
+
+    # Determine feature groups
+    if feature_groups is None:
+        feature_groups = {}
+        for name, features in DEFAULT_FEATURE_GROUPS.items():
+            available = [f for f in features if f in all_features]
+            if len(available) >= 2:
+                feature_groups[name] = available
+
+        if not feature_groups and len(all_features) >= 2:
+            feature_groups['full'] = all_features[:3]
+
+    if verbose:
+        print(f"Feature groups: {list(feature_groups.keys())}")
+
+        # Estimate output size
+        n_signals = signal_vector.select('signal_name').unique().height
+        n_pairs = n_signals * (n_signals - 1) // 2
+        n_indices = signal_vector.select(['unit_id', 'I']).unique().height
+        n_engines = len(feature_groups)
+        print(f"Signals: {n_signals} → Pairs: {n_pairs}")
+        print(f"Indices: {n_indices}")
+        print(f"Estimated rows: {n_pairs * n_indices * n_engines:,}")
+        print()
+
+    # Process each (unit_id, I)
+    results = []
+    groups = signal_vector.group_by(['unit_id', 'I'], maintain_order=True)
+    n_groups = signal_vector.select(['unit_id', 'I']).unique().height
+
+    if verbose:
+        print(f"Processing {n_groups} time points...")
+
+    for i, ((unit_id, I), group) in enumerate(groups):
+        # Get state vector for this (unit_id, I)
+        state_row = state_vector.filter(
+            (pl.col('unit_id') == unit_id) & (pl.col('I') == I)
+        )
+
+        signal_names = group['signal_name'].to_list()
+
+        # Compute pairwise for each engine
+        for engine_name, features in feature_groups.items():
+            available = [f for f in features if f in group.columns]
+            if len(available) < 2:
+                continue
+
+            # Get signal matrix
+            matrix = group.select(available).to_numpy()
+
+            # Get centroid from state_vector (if available)
+            centroid_cols = [f'state_{engine_name}_{f}' for f in available]
+            centroid_available = [c for c in centroid_cols if c in state_row.columns]
+
+            if len(state_row) > 0 and len(centroid_available) == len(available):
+                centroid = state_row.select(centroid_available).to_numpy().flatten()
+            else:
+                centroid = np.mean(matrix[np.isfinite(matrix).all(axis=1)], axis=0) if len(matrix) > 0 else None
+
+            # Compute pairwise
+            pairs = compute_pairwise_at_index(matrix, signal_names, centroid)
+
+            # Build result rows
+            for pair in pairs:
+                row = {
+                    'unit_id': unit_id,
+                    'I': I,
+                    'signal_a': pair['signal_a'],
+                    'signal_b': pair['signal_b'],
+                    'engine': engine_name,
+                    'distance': pair['distance'],
+                    'cosine_similarity': pair['cosine_similarity'],
+                    'correlation': pair['correlation'],
+                    'both_close_to_state': pair['both_close_to_state'],
+                    'both_far_from_state': pair['both_far_from_state'],
+                    'same_side_of_state': pair['same_side_of_state'],
+                    'state_distance_diff': pair['state_distance_diff'],
+                }
+                results.append(row)
+
+        if verbose and (i + 1) % 500 == 0:
+            print(f"  Processed {i + 1}/{n_groups}...")
+
+    # Build DataFrame
+    result = pl.DataFrame(results)
+    result.write_parquet(output_path)
+
+    if verbose:
+        print(f"\nSaved: {output_path}")
+        print(f"Shape: {result.shape}")
+
+        # Summary
+        if len(result) > 0:
+            print(f"\nCorrelation stats:")
+            print(f"  Mean: {result['correlation'].mean():.3f}")
+            print(f"  Std:  {result['correlation'].std():.3f}")
+
+            high_corr = (result['correlation'].abs() > 0.8).sum()
+            print(f"  High correlation pairs (|r|>0.8): {high_corr}")
+
+    return result
+
+
+# ============================================================
+# SQL VERSION (faster for basic metrics)
+# ============================================================
+
+SIGNAL_PAIRWISE_SQL = """
+-- Signal pairwise: signal-to-signal relationships
+-- Self-join on signal_vector
+
+CREATE OR REPLACE VIEW v_signal_pairwise_shape AS
+WITH signal_features AS (
+    SELECT
+        unit_id,
+        I,
+        signal_name,
+        kurtosis,
+        skewness,
+        crest_factor,
+        SQRT(kurtosis*kurtosis + skewness*skewness + crest_factor*crest_factor) AS norm
+    FROM signal_vector
+    WHERE kurtosis IS NOT NULL
+)
+SELECT
+    a.unit_id,
+    a.I,
+    a.signal_name AS signal_a,
+    b.signal_name AS signal_b,
+    'shape' AS engine,
+
+    -- Distance
+    SQRT(
+        POWER(a.kurtosis - b.kurtosis, 2) +
+        POWER(a.skewness - b.skewness, 2) +
+        POWER(a.crest_factor - b.crest_factor, 2)
+    ) AS distance,
+
+    -- Cosine similarity
+    (a.kurtosis * b.kurtosis + a.skewness * b.skewness + a.crest_factor * b.crest_factor) /
+    NULLIF(a.norm * b.norm, 0) AS cosine_similarity
+
+FROM signal_features a
+JOIN signal_features b
+    ON a.unit_id = b.unit_id
+    AND a.I = b.I
+    AND a.signal_name < b.signal_name;  -- Only upper triangle
+"""
+
+
+def compute_signal_pairwise_sql(
+    signal_vector_path: str,
+    output_path: str = "signal_pairwise.parquet",
+    verbose: bool = True
+) -> pl.DataFrame:
+    """
+    Compute signal pairwise using SQL (faster).
+
+    Args:
+        signal_vector_path: Path to signal_vector.parquet
+        output_path: Output path
+        verbose: Print progress
+
+    Returns:
+        Signal pairwise DataFrame
+    """
+    if verbose:
+        print("=" * 70)
+        print("SIGNAL PAIRWISE (SQL)")
+        print("=" * 70)
+
+    con = duckdb.connect()
+
+    # Load data
+    con.execute(f"CREATE TABLE signal_vector AS SELECT * FROM read_parquet('{signal_vector_path}')")
+
+    if verbose:
+        n_signals = con.execute("SELECT COUNT(DISTINCT signal_name) FROM signal_vector").fetchone()[0]
+        n_pairs = n_signals * (n_signals - 1) // 2
+        n_indices = con.execute("SELECT COUNT(DISTINCT I) FROM signal_vector").fetchone()[0]
+        print(f"Signals: {n_signals} → Pairs: {n_pairs}")
+        print(f"Indices: {n_indices}")
+
+    # Run SQL
+    for statement in SIGNAL_PAIRWISE_SQL.split(';'):
+        statement = statement.strip()
+        if statement and not statement.startswith('--'):
+            try:
+                con.execute(statement)
+            except Exception as e:
+                if verbose:
+                    print(f"  Warning: {e}")
+
+    # Export
+    try:
+        result = con.execute("SELECT * FROM v_signal_pairwise_shape ORDER BY unit_id, I, signal_a, signal_b").pl()
+        result.write_parquet(output_path)
+
+        if verbose:
+            print(f"\nSaved: {output_path}")
+            print(f"Shape: {result.shape}")
+    except Exception as e:
+        if verbose:
+            print(f"Error: {e}")
+        result = pl.DataFrame()
+
+    con.close()
+
+    return result
+
+
+# ============================================================
+# AGGREGATIONS
+# ============================================================
+
+def compute_pairwise_aggregations(
+    pairwise_path: str,
+    output_dir: str = ".",
+    verbose: bool = True
+) -> Dict[str, pl.DataFrame]:
+    """
+    Compute aggregations on pairwise data.
+
+    Args:
+        pairwise_path: Path to signal_pairwise.parquet
+        output_dir: Output directory
+        verbose: Print progress
+
+    Returns:
+        Dict of aggregation DataFrames
+    """
+    if verbose:
+        print("\nComputing pairwise aggregations...")
+
+    con = duckdb.connect()
+    con.execute(f"CREATE TABLE pairwise AS SELECT * FROM read_parquet('{pairwise_path}')")
+
+    output_dir = Path(output_dir)
+    results = {}
+
+    # Aggregation: Most correlated pairs per unit
+    sql = """
+    SELECT
+        unit_id,
+        signal_a,
+        signal_b,
+        engine,
+        AVG(correlation) AS mean_correlation,
+        AVG(distance) AS mean_distance,
+        AVG(cosine_similarity) AS mean_cosine,
+        COUNT(*) AS n_observations
+    FROM pairwise
+    GROUP BY unit_id, signal_a, signal_b, engine
+    ORDER BY mean_correlation DESC
+    """
+
+    try:
+        by_pair = con.execute(sql).pl()
+        by_pair.write_parquet(output_dir / "pairwise_by_pair.parquet")
+        results['by_pair'] = by_pair
+        if verbose:
+            print(f"  Saved: pairwise_by_pair.parquet ({len(by_pair)} rows)")
+    except Exception as e:
+        if verbose:
+            print(f"  Warning: {e}")
+
+    # Aggregation: Coupling strength over time
+    sql = """
+    SELECT
+        unit_id,
+        I,
+        engine,
+        AVG(ABS(correlation)) AS mean_abs_correlation,
+        AVG(distance) AS mean_distance,
+        STDDEV(correlation) AS std_correlation,
+        SUM(CASE WHEN ABS(correlation) > 0.8 THEN 1 ELSE 0 END) AS high_corr_pairs,
+        COUNT(*) AS n_pairs
+    FROM pairwise
+    GROUP BY unit_id, I, engine
+    ORDER BY unit_id, I
+    """
+
+    try:
+        over_time = con.execute(sql).pl()
+        over_time.write_parquet(output_dir / "pairwise_over_time.parquet")
+        results['over_time'] = over_time
+        if verbose:
+            print(f"  Saved: pairwise_over_time.parquet ({len(over_time)} rows)")
+    except Exception as e:
+        if verbose:
+            print(f"  Warning: {e}")
+
+    con.close()
+
+    return results
+
+
+# ============================================================
+# CLI
+# ============================================================
+
+def main():
+    import sys
+
+    usage = """
+Signal Pairwise Engine - Signal-to-signal relationships
+
+Usage:
+    python signal_pairwise.py <signal_vector.parquet> <state_vector.parquet> [output.parquet]
+    python signal_pairwise.py --sql <signal_vector.parquet> [output.parquet]
+    python signal_pairwise.py --aggregate <signal_pairwise.parquet> [output_dir]
+
+Computes per pair, per engine, per index:
+- Distance (Euclidean)
+- Cosine similarity
+- Correlation
+- Relative position to state
+
+This captures the internal structure of the signal cloud.
+"""
+
+    if len(sys.argv) < 2:
+        print(usage)
+        sys.exit(1)
+
+    if sys.argv[1] == '--sql':
+        signal_path = sys.argv[2]
+        output_path = sys.argv[3] if len(sys.argv) > 3 else "signal_pairwise.parquet"
+        compute_signal_pairwise_sql(signal_path, output_path)
+
+    elif sys.argv[1] == '--aggregate':
+        pairwise_path = sys.argv[2]
+        output_dir = sys.argv[3] if len(sys.argv) > 3 else "."
+        compute_pairwise_aggregations(pairwise_path, output_dir)
+
+    else:
+        if len(sys.argv) < 3:
+            print("Usage: python signal_pairwise.py <signal_vector.parquet> <state_vector.parquet> [output.parquet]")
+            sys.exit(1)
+        signal_path = sys.argv[1]
+        state_path = sys.argv[2]
+        output_path = sys.argv[3] if len(sys.argv) > 3 else "signal_pairwise.parquet"
+        compute_signal_pairwise(signal_path, state_path, output_path)
+
+
+if __name__ == "__main__":
+    main()
