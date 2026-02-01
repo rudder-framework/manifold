@@ -39,6 +39,19 @@ DEFAULT_FEATURE_GROUPS = {
 # Fallback: use all available features as single group
 FALLBACK_FEATURES = ['kurtosis', 'skewness', 'crest_factor']
 
+# ============================================================
+# SVD NORMALIZATION FIX
+# ============================================================
+# Features to EXCLUDE from SVD (unbounded, can explode)
+# cv and range_ratio can be 10,000+ when signals oscillate
+# around zero, causing eigenvalue_1 to be 10^23 (meaningless)
+
+SVD_EXCLUDE_FEATURES = {
+    'cv',           # Unbounded when mean→0
+    'range_ratio',  # Unbounded when min→0
+    'window_size',  # Not a feature, just metadata
+}
+
 
 # ============================================================
 # CORE STATE COMPUTATION
@@ -83,24 +96,47 @@ def compute_state_at_index(
     centroid = np.mean(signal_matrix, axis=0)
 
     # ─────────────────────────────────────────────────────────
+    # PREPARE FOR SVD: exclude problematic features, normalize
+    # ─────────────────────────────────────────────────────────
+    # Filter out unbounded features that can dominate eigenvalues
+    keep_mask = [f not in SVD_EXCLUDE_FEATURES for f in feature_names]
+    keep_indices = [i for i, keep in enumerate(keep_mask) if keep]
+
+    if len(keep_indices) < 2:
+        # Fallback: keep all if nothing left
+        keep_indices = list(range(D))
+
+    svd_matrix = signal_matrix[:, keep_indices]
+
+    # Z-score normalize: (x - mean) / std
+    # This prevents features with large absolute values from dominating
+    svd_mean = np.mean(svd_matrix, axis=0, keepdims=True)
+    svd_std = np.std(svd_matrix, axis=0, keepdims=True)
+    svd_std = np.where(svd_std < 1e-10, 1.0, svd_std)  # Avoid div by zero
+
+    normalized = (svd_matrix - svd_mean) / svd_std
+    normalized = np.nan_to_num(normalized, nan=0.0, posinf=0.0, neginf=0.0)
+
+    # ─────────────────────────────────────────────────────────
     # EIGENVALUES via SVD (shape of signal cloud)
     # ─────────────────────────────────────────────────────────
-    centered = signal_matrix - centroid
-
+    # Use normalized data for SVD to get meaningful eigenvalues
     try:
-        # SVD of centered data
-        # U: N × k, S: k, Vt: k × D where k = min(N, D)
-        U, S, Vt = np.linalg.svd(centered, full_matrices=False)
+        # SVD of normalized, centered data
+        U, S, Vt = np.linalg.svd(normalized - np.mean(normalized, axis=0), full_matrices=False)
 
         # Eigenvalues of covariance = S² / (N-1)
         eigenvalues = (S ** 2) / max(N - 1, 1)
 
-        # Principal components (rows of Vt)
+        # Principal components (rows of Vt) - in normalized space
         principal_components = Vt
 
     except np.linalg.LinAlgError:
-        eigenvalues = np.zeros(min(N, D))
-        principal_components = np.eye(D)[:min(N, D)]
+        eigenvalues = np.zeros(min(N, len(keep_indices)))
+        principal_components = np.eye(len(keep_indices))[:min(N, len(keep_indices))]
+
+    # For signal geometry, use original centered data
+    centered = signal_matrix - centroid
 
     # ─────────────────────────────────────────────────────────
     # DERIVED METRICS
@@ -523,10 +559,9 @@ def compute_state_vector(
         # ─────────────────────────────────────────────────
         row = {
             'unit_id': unit_id,
+            'I': I,  # I is always required (canonical schema)
             'n_signals': composite_state['n_signals'],
         }
-        if has_I:
-            row['I'] = I
 
         # Centroid (per feature)
         for j, feat in enumerate(available_composite):
