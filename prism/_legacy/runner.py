@@ -37,10 +37,10 @@ try:
 except ImportError:
     HAS_PSUTIL = False
 
-from prism.python_runner import PythonRunner, SIGNAL_ENGINES, PAIR_ENGINES, SYMMETRIC_PAIR_ENGINES, WINDOWED_ENGINES
+from prism._legacy.python_runner import PythonRunner, SIGNAL_ENGINES, PAIR_ENGINES, SYMMETRIC_PAIR_ENGINES, WINDOWED_ENGINES
 from prism.sql_runner import SQLRunner, SQL_ENGINES
-from prism.ram_manager import RAMManager, MemoryStats, streaming_parquet_writer, combine_parquet_batches
-from prism.data_check import abort_if_invalid
+from prism._legacy.ram_manager import RAMManager, MemoryStats, streaming_parquet_writer, combine_parquet_batches
+from prism._legacy.data_check import abort_if_invalid
 
 # Canonical data directory
 DATA_DIR = Path(__file__).parent.parent / 'data'
