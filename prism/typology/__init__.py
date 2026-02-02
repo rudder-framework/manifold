@@ -37,10 +37,21 @@ from prism.typology.level1_stationarity import (
     validate_level1_benchmarks,
 )
 
+# Pipeline Orchestrator
+from prism.typology.run_typology import (
+    run_typology,
+    run_typology_on_array,
+    TypologyResult,
+)
+
+# Auto-repair
+from prism.typology.data_validation import repair_observations
+
 __all__ = [
     # Level 0: Data Validation
     'validate_observations',
     'validate_benchmark_file',
+    'repair_observations',
     'ValidationResult',
     'ValidationStatus',
     # Level 1: Stationarity
@@ -49,4 +60,8 @@ __all__ = [
     'StationarityResult',
     'Confidence',
     'validate_level1_benchmarks',
+    # Pipeline
+    'run_typology',
+    'run_typology_on_array',
+    'TypologyResult',
 ]
