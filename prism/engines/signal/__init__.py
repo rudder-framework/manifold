@@ -1,14 +1,12 @@
 """
 PRISM Python Engines - Signal-level computations.
 
-Each engine computes ONE thing. No domain prefixes.
+Each engine computes ONE thing. Imports from primitives.
 """
 
+from . import basic_stats  # kurtosis, skewness, crest_factor (was separate files)
 from . import rms
 from . import peak
-from . import crest_factor
-from . import kurtosis
-from . import skewness
 from . import envelope
 from . import frequency_bands
 from . import harmonics
@@ -28,11 +26,9 @@ from . import basin
 from . import lof
 
 __all__ = [
+    'basic_stats',
     'rms',
     'peak',
-    'crest_factor',
-    'kurtosis',
-    'skewness',
     'envelope',
     'frequency_bands',
     'harmonics',

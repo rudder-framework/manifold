@@ -7,6 +7,7 @@ All parameters from manifest via params dict.
 
 import numpy as np
 from typing import Dict, Any
+from ..signal.basic_stats import compute_crest_factor
 
 
 def compute(y: np.ndarray, params: Dict[str, Any] = None) -> dict:
@@ -24,7 +25,6 @@ def compute(y: np.ndarray, params: Dict[str, Any] = None) -> dict:
     """
     params = params or {}
     window = params.get('window', 100)
-    # Cheap engine (O(n)): stride=1 is acceptable default
     stride = params.get('stride', 1)
 
     n = len(y)
@@ -35,8 +35,6 @@ def compute(y: np.ndarray, params: Dict[str, Any] = None) -> dict:
 
     for i in range(0, n - window + 1, stride):
         chunk = y[i:i + window]
-        rms = np.sqrt(np.mean(chunk ** 2))
-        peak = np.max(np.abs(chunk))
-        result[i + window - 1] = peak / (rms + 1e-10)
+        result[i + window - 1] = compute_crest_factor(chunk)['crest_factor']
 
     return {'rolling_crest_factor': result}
