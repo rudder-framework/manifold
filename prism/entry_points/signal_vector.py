@@ -91,6 +91,10 @@ ENGINE_REQUIREMENTS: Dict[str, Dict[str, Any]] = {
     'lof': {'min_samples': 20},
     'pulsation_index': {'min_samples': 8},
     'time_constant': {'min_samples': 16},
+
+    # Stationarity engines
+    'adf_stat': {'min_samples': 20},
+    'variance_ratio': {'min_samples': 20},
 }
 
 # Default minimum for unlisted engines
@@ -144,6 +148,7 @@ def _load_engine_registry() -> Dict[str, Callable]:
         basin, cycle_counting, lof, pulsation_index, time_constant,
         rate_of_change, variance_growth,
         fundamental_freq, phase_coherence, snr, thd,
+        adf_stat, variance_ratio,
     )
 
     return {
@@ -212,6 +217,10 @@ def _load_engine_registry() -> Dict[str, Callable]:
         'phase_coherence': phase_coherence.compute,
         'snr': snr.compute,
         'thd': thd.compute,
+
+        # Stationarity engines
+        'adf_stat': adf_stat.compute,
+        'variance_ratio': variance_ratio.compute,
     }
 
 

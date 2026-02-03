@@ -27,6 +27,8 @@ from . import time_constant
 from . import cycle_counting
 from . import basin
 from . import lof
+from . import adf_stat
+from . import variance_ratio
 
 __all__ = [
     'statistics',
@@ -51,4 +53,6 @@ __all__ = [
     'cycle_counting',
     'basin',
     'lof',
+    'adf_stat',
+    'variance_ratio',
 ]
