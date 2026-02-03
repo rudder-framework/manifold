@@ -30,6 +30,117 @@ from typing import Dict, List, Any, Callable, Tuple, Set
 from collections import defaultdict
 
 
+# =============================================================================
+# ENGINE REQUIREMENTS
+# =============================================================================
+# Minimum samples required for each engine to produce valid results.
+# Engines not listed default to 4 (absolute minimum for any computation).
+#
+# These define the "ideal" window size for accurate results. Engines receiving
+# smaller windows will return NaN for those observations.
+# =============================================================================
+
+ENGINE_REQUIREMENTS: Dict[str, Dict[str, Any]] = {
+    # FFT-based engines (need sufficient frequency resolution)
+    'spectral': {'min_samples': 64},
+    'harmonics': {'min_samples': 64},
+    'fundamental_freq': {'min_samples': 64},
+    'thd': {'min_samples': 64},
+    'frequency_bands': {'min_samples': 64},
+    'band_power': {'min_samples': 64},
+
+    # Entropy engines (need sufficient data for pattern detection)
+    'sample_entropy': {'min_samples': 64},
+    'complexity': {'min_samples': 50},
+    'approximate_entropy': {'min_samples': 30},
+    'permutation_entropy': {'min_samples': 20},
+    'perm_entropy': {'min_samples': 20},
+
+    # Fractal/memory engines (need long series for scaling analysis)
+    'hurst': {'min_samples': 128},
+    'dfa': {'min_samples': 20},
+    'memory': {'min_samples': 20},
+    'acf_decay': {'min_samples': 16},
+
+    # Statistical engines (low requirements)
+    'statistics': {'min_samples': 4},
+    'kurtosis': {'min_samples': 4},
+    'skewness': {'min_samples': 4},
+    'crest_factor': {'min_samples': 4},
+
+    # Spectral analysis (moderate requirements)
+    'snr': {'min_samples': 32},
+    'phase_coherence': {'min_samples': 32},
+
+    # Trend engines
+    'trend': {'min_samples': 8},
+    'mann_kendall': {'min_samples': 8},
+    'rate_of_change': {'min_samples': 4},
+
+    # Advanced engines
+    'attractor': {'min_samples': 64},
+    'lyapunov': {'min_samples': 128},
+    'garch': {'min_samples': 64},
+    'dmd': {'min_samples': 32},
+    'envelope': {'min_samples': 16},
+    'variance_growth': {'min_samples': 16},
+
+    # Domain-specific
+    'basin': {'min_samples': 32},
+    'cycle_counting': {'min_samples': 16},
+    'lof': {'min_samples': 20},
+    'pulsation_index': {'min_samples': 8},
+    'time_constant': {'min_samples': 16},
+}
+
+# Default minimum for unlisted engines
+DEFAULT_MIN_SAMPLES = 4
+
+
+def get_engine_min_samples(engine_name: str) -> int:
+    """Get minimum samples required for an engine."""
+    return ENGINE_REQUIREMENTS.get(engine_name, {}).get('min_samples', DEFAULT_MIN_SAMPLES)
+
+
+def validate_engine_can_run(engine_name: str, window_size: int) -> bool:
+    """Check if engine can run with given window size."""
+    min_required = get_engine_min_samples(engine_name)
+    return window_size >= min_required
+
+
+def group_engines_by_window(
+    engines: Dict[str, Callable],
+    overrides: Dict[str, int],
+    default_window: int,
+) -> Dict[int, Dict[str, Callable]]:
+    """
+    Group engines by their required window size.
+
+    Args:
+        engines: Dict of {engine_name: engine_function}
+        overrides: Dict of {engine_name: window_size} from manifest
+        default_window: System default window size
+
+    Returns:
+        dict: {window_size: {engine_name: engine_function}}
+    """
+    groups: Dict[int, Dict[str, Callable]] = {}
+
+    for engine_name, engine_fn in engines.items():
+        # Check manifest override first, then engine requirements, then default
+        if engine_name in overrides:
+            window = overrides[engine_name]
+        else:
+            min_required = get_engine_min_samples(engine_name)
+            window = max(default_window, min_required)
+
+        if window not in groups:
+            groups[window] = {}
+        groups[window][engine_name] = engine_fn
+
+    return groups
+
+
 def _load_engine_registry() -> Dict[str, Callable]:
     """Load all signal engines. Each engine has a compute() method."""
     from prism.engines.signal import (
@@ -200,6 +311,7 @@ def run(
             window_size = signal_config.get('window_size') or default_window
             stride = signal_config.get('stride') or default_stride
             engine_names = signal_config.get('engines', [])
+            engine_window_overrides = signal_config.get('engine_window_overrides', {})
 
             if window_size is None:
                 raise ValueError(f"No window_size for signal '{signal_id}' and no default_window in params")
@@ -240,7 +352,7 @@ def run(
             values = signal_data['value'].to_numpy()
             indices = signal_data['I'].to_numpy()
 
-            # Compute features at each window
+            # Compute features at each window (PR2: per-engine window expansion)
             signal_results, signal_errors = _compute_signal_features(
                 signal_id=signal_id,
                 values=values,
@@ -248,6 +360,7 @@ def run(
                 engines=active_engines,
                 window_size=window_size,
                 stride=stride,
+                engine_window_overrides=engine_window_overrides,
             )
 
             # Track errors (PR13)
@@ -302,9 +415,24 @@ def _compute_signal_features(
     engines: Dict[str, Callable],
     window_size: int,
     stride: int,
+    engine_window_overrides: Dict[str, int] = None,
 ) -> Tuple[List[Dict[str, Any]], Dict[str, int]]:
     """
-    Compute features for one signal.
+    Compute features for one signal with per-engine window support.
+
+    Per-engine window expansion (PR2):
+    - Engines may require larger windows than the system default
+    - Each engine gets the window size it needs, but all share the same I (end index)
+    - Early observations may have NaN for engines requiring larger windows
+
+    Args:
+        signal_id: Signal identifier
+        values: Signal values array
+        indices: I indices array
+        engines: Dict of {engine_name: engine_function}
+        window_size: System default window size
+        stride: Window stride
+        engine_window_overrides: Optional manifest overrides {engine: window_size}
 
     Returns:
         (results_list, error_counts) - PR13: track errors instead of silent pass
@@ -313,23 +441,61 @@ def _compute_signal_features(
     results = []
     error_counts: Dict[str, int] = defaultdict(int)
 
-    for i in range(0, n - window_size + 1, stride):
-        window = values[i:i + window_size]
-        idx = indices[i + window_size - 1]
+    if engine_window_overrides is None:
+        engine_window_overrides = {}
+
+    # Group engines by their required window size
+    engine_groups = group_engines_by_window(engines, engine_window_overrides, window_size)
+
+    # Find the maximum window size needed (determines when we start)
+    max_window = max(engine_groups.keys()) if engine_groups else window_size
+
+    # Track which engines need NaN for early windows
+    # (when not enough data for their required window)
+    def _get_null_output(engine_name: str, engine_fn: Callable) -> Dict[str, float]:
+        """Get NaN output for an engine that can't run."""
+        # Try to call with minimal data to get output keys, then replace with NaN
+        try:
+            # Call with small array to get structure
+            sample_output = engine_fn(np.array([0.0, 0.0, 0.0, 0.0]))
+            return {k: np.nan for k in sample_output.keys()}
+        except Exception:
+            return {}
+
+    # Iterate at system stride, starting when at least system window is available
+    for window_end_pos in range(window_size - 1, n, stride):
+        idx = indices[window_end_pos]
 
         row = {
             'signal_id': signal_id,
             'I': int(idx),
         }
 
-        # Run each engine (PR13: track errors)
-        for name, engine_fn in engines.items():
-            try:
-                output = engine_fn(window)
-                for key, val in output.items():
-                    row[key] = val
-            except Exception:
-                error_counts[name] += 1
+        # Run each engine group with appropriate window
+        for req_window_size, engine_dict in engine_groups.items():
+            # Calculate window start for this window size
+            # All windows END at window_end_pos, but start at different positions
+            window_start_pos = window_end_pos - req_window_size + 1
+
+            # Check if we have enough data for this window
+            if window_start_pos < 0:
+                # Not enough data yet - fill with NaN for these engines
+                for name, engine_fn in engine_dict.items():
+                    null_output = _get_null_output(name, engine_fn)
+                    row.update(null_output)
+                continue
+
+            # Extract window for this group
+            window = values[window_start_pos:window_end_pos + 1]
+
+            # Run engines in this group
+            for name, engine_fn in engine_dict.items():
+                try:
+                    output = engine_fn(window)
+                    for key, val in output.items():
+                        row[key] = val
+                except Exception:
+                    error_counts[name] += 1
 
         results.append(row)
 

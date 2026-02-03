@@ -34,7 +34,8 @@ def compute(y: np.ndarray, sample_rate: float = 1.0, fundamental: float = None) 
     y = y[~np.isnan(y)]
     n = len(y)
 
-    if n < 64:
+    # Absolute minimum check - real validation happens in runner (PR2)
+    if n < 4:
         return result
 
     # Check for constant signal
