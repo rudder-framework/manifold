@@ -11,6 +11,8 @@ from scipy.spatial.distance import pdist
 from collections import Counter
 import math
 
+from prism.primitives.config import PRIMITIVES_CONFIG as cfg
+
 
 def permutation_entropy(
     values: np.ndarray,
@@ -99,7 +101,7 @@ def sample_entropy(
         return 0.0
 
     if r is None:
-        r = 0.2 * np.std(values)
+        r = cfg.entropy.tolerance_ratio * np.std(values)
     elif relative_tolerance:
         r = r * np.std(values)
 
@@ -158,7 +160,7 @@ def approximate_entropy(
         return 0.0
 
     if r is None:
-        r = 0.2 * np.std(values)
+        r = cfg.entropy.tolerance_ratio * np.std(values)
     elif relative_tolerance:
         r = r * np.std(values)
 
@@ -186,7 +188,7 @@ def multiscale_entropy(
     values: np.ndarray,
     m: int = 2,
     r: Optional[float] = None,
-    max_scale: int = 10,
+    max_scale: Optional[int] = None,
     entropy_type: str = 'sample'
 ) -> np.ndarray:
     """
@@ -204,6 +206,9 @@ def multiscale_entropy(
     """
     values = np.asarray(values, dtype=np.float64)
     entropies = []
+
+    if max_scale is None:
+        max_scale = cfg.entropy.max_scale
 
     for scale in range(1, max_scale + 1):
         # Coarse-grain the time series
@@ -373,7 +378,11 @@ def _correlation_dimension(values: np.ndarray, embed_dim: int = 5) -> float:
 
     # Try different radius values
     max_dist = np.max(distances)
-    radii = np.logspace(np.log10(max_dist/100), np.log10(max_dist/2), 10)
+    radii = np.logspace(
+        np.log10(max_dist * cfg.complexity.radius_min_ratio),
+        np.log10(max_dist * cfg.complexity.radius_max_ratio),
+        cfg.complexity.n_radii
+    )
     correlations = []
 
     for r in radii:

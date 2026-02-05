@@ -7,6 +7,8 @@ Sample entropy, permutation entropy, approximate entropy.
 import numpy as np
 from typing import Optional
 
+from prism.primitives.config import PRIMITIVES_CONFIG as cfg
+
 
 def sample_entropy(
     signal: np.ndarray,
@@ -44,7 +46,7 @@ def sample_entropy(
     n = len(signal)
 
     if r is None:
-        r = 0.2 * np.std(signal)
+        r = cfg.entropy.tolerance_ratio * np.std(signal)
 
     if r == 0 or n < m + 2:
         return np.nan
@@ -166,7 +168,7 @@ def approximate_entropy(
     n = len(signal)
 
     if r is None:
-        r = 0.2 * np.std(signal)
+        r = cfg.entropy.tolerance_ratio * np.std(signal)
 
     if r == 0 or n < m + 2:
         return np.nan

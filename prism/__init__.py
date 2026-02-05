@@ -9,9 +9,8 @@ Usage:
     import prism
 
     # Spectral analysis
-    psd_freqs, psd_vals = prism.power_spectral_density(signal, sample_rate=1000)
     dom_freq = prism.dominant_frequency(signal, sample_rate=1000)
-    spec_flat = prism.spectral_flatness(signal)
+    spec_ent = prism.spectral_entropy(signal)
 
     # Statistics
     kurt = prism.kurtosis(signal)
@@ -20,11 +19,11 @@ Usage:
 
     # Complexity
     perm_ent = prism.permutation_entropy(signal, order=3)
-    samp_ent = prism.sample_entropy(signal, m=2, r=0.2)
+    samp_ent = prism.sample_entropy(signal, m=2)
 
     # Memory and correlation
     hurst = prism.hurst_exponent(signal)
-    acf = prism.autocorrelation(signal, max_lag=100)
+    acf = prism.autocorrelation(signal)
 
     # Geometry and eigenstructure
     cov_matrix = prism.covariance_matrix(multivariate_signal)
@@ -40,58 +39,59 @@ Usage:
 """
 
 # Spectral analysis primitives
-from .spectral import (
-    power_spectral_density,
+from .primitives.individual.spectral import (
+    fft,
+    psd,
     dominant_frequency,
-    spectral_flatness,
+    spectral_centroid,
+    spectral_bandwidth,
     spectral_entropy,
-    fundamental_frequency,
-    total_harmonic_distortion,
-    signal_to_noise_ratio,
-    phase_coherence,
-    laplace_transform,
+    wavelet_coeffs,
 )
 
 # Temporal analysis primitives
-from .temporal import (
+from .primitives.individual.temporal import (
     autocorrelation,
     autocorrelation_decay,
     trend_fit,
+    rate_of_change,
     turning_points,
     zero_crossings,
     mean_crossings,
     peak_detection,
     envelope_extraction,
+    moving_average,
+    detrend,
+    segment_signal,
 )
 
 # Statistical primitives
-from .statistics import (
+from .primitives.individual.statistics import (
     mean,
+    std,
     variance,
-    standard_deviation,
+    min_max,
+    percentiles,
     skewness,
     kurtosis,
-    crest_factor,
     rms,
     peak_to_peak,
-    coefficient_of_variation,
-    median,
-    iqr,
-    mad,
+    crest_factor,
 )
 
 # Complexity and entropy primitives
-from .complexity import (
+from .primitives.individual.complexity import (
     permutation_entropy,
     sample_entropy,
     approximate_entropy,
     multiscale_entropy,
     lempel_ziv_complexity,
     fractal_dimension,
+    entropy_rate,
 )
 
 # Memory and long-range dependence
-from .memory import (
+from .primitives.individual.memory import (
     hurst_exponent,
     detrended_fluctuation_analysis,
     rescaled_range,
@@ -100,16 +100,15 @@ from .memory import (
 )
 
 # Stationarity testing
-from .stationarity import (
-    kpss_test,
-    augmented_dickey_fuller,
-    variance_ratio_test,
-    runs_test,
-    is_stationary,
+from .primitives.individual.stationarity import (
+    stationarity_test,
+    trend,
+    changepoints,
+    mann_kendall_test,
 )
 
 # Geometry and linear algebra
-from .geometry import (
+from .primitives.individual.geometry import (
     covariance_matrix,
     correlation_matrix,
     eigendecomposition,
@@ -118,11 +117,16 @@ from .geometry import (
     condition_number,
     matrix_rank,
     alignment_metric,
+    eigenvalue_spread,
     matrix_entropy,
+    geometric_mean_eigenvalue,
+    svd_decomposition,
+    explained_variance_ratio,
+    cumulative_variance_ratio,
 )
 
 # Similarity and distance measures
-from .similarity import (
+from .primitives.individual.similarity import (
     cosine_similarity,
     euclidean_distance,
     manhattan_distance,
@@ -137,7 +141,7 @@ from .similarity import (
 )
 
 # Dynamical systems analysis
-from .dynamics import (
+from .primitives.individual.dynamics import (
     lyapunov_exponent,
     largest_lyapunov_exponent,
     attractor_reconstruction,
@@ -148,7 +152,7 @@ from .dynamics import (
 )
 
 # Normalization and preprocessing
-from .normalization import (
+from .primitives.individual.normalization import (
     zscore_normalize,
     robust_normalize,
     mad_normalize,
@@ -160,7 +164,7 @@ from .normalization import (
 )
 
 # Information theory
-from .information import (
+from .primitives.individual.information import (
     transfer_entropy,
     conditional_entropy,
     joint_entropy,
@@ -171,7 +175,7 @@ from .information import (
 )
 
 # Numerical derivatives
-from .derivatives import (
+from .primitives.individual.derivatives import (
     first_derivative,
     second_derivative,
     gradient,
@@ -185,42 +189,68 @@ from .derivatives import (
     integral,
 )
 
+# Correlation primitives
+from .primitives.individual.correlation import (
+    partial_autocorrelation,
+)
+
+# Fractal primitives
+from .primitives.individual.fractal import (
+    dfa,
+    hurst_r2,
+)
+
+# Hilbert transform primitives
+from .primitives.individual.hilbert import (
+    hilbert_transform,
+    envelope,
+    instantaneous_amplitude,
+    instantaneous_frequency,
+    instantaneous_phase,
+)
+
+# Calculus primitives
+from .primitives.individual.calculus import (
+    derivative,
+)
+
 __version__ = "1.0.0"
 __author__ = "Jason Rudder"
 __license__ = "MIT"
 
 __all__ = [
     # Spectral
-    'power_spectral_density', 'dominant_frequency', 'spectral_flatness',
-    'spectral_entropy', 'fundamental_frequency', 'total_harmonic_distortion',
-    'signal_to_noise_ratio', 'phase_coherence', 'laplace_transform',
+    'fft', 'psd', 'dominant_frequency', 'spectral_centroid',
+    'spectral_bandwidth', 'spectral_entropy', 'wavelet_coeffs',
 
     # Temporal
     'autocorrelation', 'autocorrelation_decay', 'trend_fit',
-    'turning_points', 'zero_crossings', 'mean_crossings',
-    'peak_detection', 'envelope_extraction',
+    'rate_of_change', 'turning_points', 'zero_crossings', 'mean_crossings',
+    'peak_detection', 'envelope_extraction', 'moving_average', 'detrend',
+    'segment_signal',
 
     # Statistics
-    'mean', 'variance', 'standard_deviation', 'skewness', 'kurtosis',
-    'crest_factor', 'rms', 'peak_to_peak', 'coefficient_of_variation',
-    'median', 'iqr', 'mad',
+    'mean', 'std', 'variance', 'min_max', 'percentiles',
+    'skewness', 'kurtosis', 'rms', 'peak_to_peak', 'crest_factor',
 
     # Complexity
     'permutation_entropy', 'sample_entropy', 'approximate_entropy',
     'multiscale_entropy', 'lempel_ziv_complexity', 'fractal_dimension',
+    'entropy_rate',
 
     # Memory
     'hurst_exponent', 'detrended_fluctuation_analysis', 'rescaled_range',
     'long_range_correlation', 'variance_growth',
 
     # Stationarity
-    'kpss_test', 'augmented_dickey_fuller', 'variance_ratio_test',
-    'runs_test', 'is_stationary',
+    'stationarity_test', 'trend', 'changepoints', 'mann_kendall_test',
 
     # Geometry
     'covariance_matrix', 'correlation_matrix', 'eigendecomposition',
     'effective_dimension', 'participation_ratio', 'condition_number',
-    'matrix_rank', 'alignment_metric', 'matrix_entropy',
+    'matrix_rank', 'alignment_metric', 'eigenvalue_spread', 'matrix_entropy',
+    'geometric_mean_eigenvalue', 'svd_decomposition', 'explained_variance_ratio',
+    'cumulative_variance_ratio',
 
     # Similarity
     'cosine_similarity', 'euclidean_distance', 'manhattan_distance',
@@ -245,4 +275,17 @@ __all__ = [
     'first_derivative', 'second_derivative', 'gradient', 'laplacian',
     'finite_difference', 'velocity', 'acceleration', 'jerk', 'curvature',
     'smoothed_derivative', 'integral',
+
+    # Correlation
+    'partial_autocorrelation',
+
+    # Fractal
+    'dfa', 'hurst_r2',
+
+    # Hilbert
+    'hilbert_transform', 'envelope', 'instantaneous_amplitude',
+    'instantaneous_frequency', 'instantaneous_phase',
+
+    # Calculus
+    'derivative',
 ]

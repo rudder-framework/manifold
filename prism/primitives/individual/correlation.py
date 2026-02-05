@@ -7,6 +7,8 @@ Autocorrelation and partial autocorrelation.
 import numpy as np
 from typing import Optional, Union
 
+from prism.primitives.config import PRIMITIVES_CONFIG as cfg
+
 
 def autocorrelation(
     signal: np.ndarray,
@@ -61,7 +63,7 @@ def autocorrelation(
 
 def partial_autocorrelation(
     signal: np.ndarray,
-    max_lag: int = 20
+    max_lag: Optional[int] = None
 ) -> np.ndarray:
     """
     Compute partial autocorrelation function (PACF).
@@ -84,6 +86,9 @@ def partial_autocorrelation(
     after removing the linear dependence on x_{t-1}, ..., x_{t-k+1}.
     Useful for identifying AR model order.
     """
+    if max_lag is None:
+        max_lag = cfg.correlation.default_max_lag
+
     try:
         from statsmodels.tsa.stattools import pacf
         signal = np.asarray(signal)

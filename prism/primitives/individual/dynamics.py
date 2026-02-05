@@ -9,13 +9,15 @@ import numpy as np
 from scipy.spatial.distance import pdist, squareform
 from typing import Tuple, Optional
 
+from prism.primitives.config import PRIMITIVES_CONFIG as cfg
+
 
 def lyapunov_exponent(
     values: np.ndarray,
     embed_dim: int = 3,
     tau: int = 1,
-    min_separation: int = 10,
-    max_steps: int = 10
+    min_separation: Optional[int] = None,
+    max_steps: Optional[int] = None
 ) -> float:
     """
     Estimate largest Lyapunov exponent using Rosenstein's method.
@@ -36,6 +38,11 @@ def lyapunov_exponent(
     """
     values = np.asarray(values, dtype=np.float64)
     n = len(values)
+
+    if min_separation is None:
+        min_separation = cfg.dynamics.min_separation
+    if max_steps is None:
+        max_steps = cfg.dynamics.max_steps
 
     # Embed the time series
     n_vectors = n - (embed_dim - 1) * tau
@@ -136,7 +143,7 @@ def attractor_reconstruction(
 
 def embedding_dimension(
     values: np.ndarray,
-    max_dim: int = 10,
+    max_dim: Optional[int] = None,
     tau: int = 1,
     rtol: float = 10.0
 ) -> int:
@@ -155,11 +162,14 @@ def embedding_dimension(
     values = np.asarray(values, dtype=np.float64)
     n = len(values)
 
+    if max_dim is None:
+        max_dim = cfg.dynamics.max_embedding_dim
+
     fnn_ratios = []
 
     for dim in range(1, max_dim):
         n_vectors = n - dim * tau
-        if n_vectors < 100:
+        if n_vectors < cfg.dynamics.min_vectors_fnn:
             break
 
         # Embed in dimension dim
@@ -201,7 +211,7 @@ def embedding_dimension(
 
     # Find dimension where FNN drops below threshold
     for dim, fnn in enumerate(fnn_ratios, start=1):
-        if fnn < 0.01:  # Less than 1% false neighbors
+        if fnn < cfg.dynamics.fnn_threshold:
             return dim
 
     return max_dim
@@ -227,7 +237,7 @@ def optimal_delay(
     n = len(values)
 
     if max_lag is None:
-        max_lag = n // 4
+        max_lag = int(n * cfg.dynamics.max_lag_ratio)
 
     if method == 'autocorr':
         # First zero crossing or first minimum of autocorrelation
@@ -295,7 +305,7 @@ def recurrence_analysis(
     # Embed
     embedded = attractor_reconstruction(values, embed_dim, tau)
 
-    if len(embedded) < 10:
+    if len(embedded) < cfg.dynamics.rqa_min_samples:
         return {
             'recurrence_rate': np.nan,
             'determinism': np.nan,
@@ -309,7 +319,7 @@ def recurrence_analysis(
 
     # Set threshold
     if threshold is None:
-        threshold = 0.1 * np.max(distances)
+        threshold = cfg.dynamics.rqa_threshold_ratio * np.max(distances)
 
     # Recurrence matrix
     recurrence = distances < threshold

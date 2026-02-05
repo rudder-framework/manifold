@@ -7,6 +7,8 @@ Hurst exponent and Detrended Fluctuation Analysis.
 import numpy as np
 from typing import Optional, Tuple
 
+from prism.primitives.config import PRIMITIVES_CONFIG as cfg
+
 
 def hurst_exponent(
     signal: np.ndarray,
@@ -39,18 +41,18 @@ def hurst_exponent(
     signal = signal[~np.isnan(signal)]
     n = len(signal)
 
-    if n < 20:
+    if n < cfg.min_samples.hurst:
         return np.nan
 
     if method == 'dfa':
         return dfa(signal)
 
     # Rescaled Range (R/S) method
-    max_k = min(n // 2, 100)
+    max_k = min(int(n * cfg.fractal.rs_max_k_ratio), cfg.fractal.rs_max_k_cap)
     k_values = []
     rs_values = []
 
-    for k in range(10, max_k):
+    for k in range(cfg.fractal.rs_min_k, max_k):
         # Divide into subseries
         n_subseries = n // k
         rs_sum = 0
@@ -120,7 +122,7 @@ def dfa(
     signal = signal[~np.isnan(signal)]
     n = len(signal)
 
-    if n < 20:
+    if n < cfg.min_samples.dfa:
         return np.nan
 
     # Integrate signal
@@ -128,15 +130,15 @@ def dfa(
 
     # Define scales
     if scale_range is None:
-        min_scale = 10
-        max_scale = min(n // 4, 100)
+        min_scale = cfg.fractal.dfa_min_scale
+        max_scale = min(int(n * cfg.fractal.dfa_max_scale_ratio), cfg.fractal.dfa_max_scale_cap)
     else:
         min_scale, max_scale = scale_range
 
     scales = np.unique(np.logspace(
         np.log10(min_scale),
         np.log10(max_scale),
-        20
+        cfg.fractal.dfa_n_scales
     ).astype(int))
 
     fluctuations = []
@@ -197,14 +199,14 @@ def hurst_r2(signal: np.ndarray) -> float:
     signal = signal[~np.isnan(signal)]
     n = len(signal)
 
-    if n < 20:
+    if n < cfg.min_samples.hurst:
         return np.nan
 
-    max_k = min(n // 2, 100)
+    max_k = min(int(n * cfg.fractal.rs_max_k_ratio), cfg.fractal.rs_max_k_cap)
     log_k = []
     log_rs = []
 
-    for k in range(10, max_k):
+    for k in range(cfg.fractal.rs_min_k, max_k):
         n_subseries = n // k
         rs_sum = 0
 

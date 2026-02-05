@@ -8,6 +8,8 @@ persistence, and memory in time series.
 import numpy as np
 from typing import Tuple, Optional
 
+from prism.primitives.config import PRIMITIVES_CONFIG as cfg
+
 
 def hurst_exponent(
     values: np.ndarray,
@@ -42,7 +44,7 @@ def _hurst_rs(values: np.ndarray) -> float:
     """Compute Hurst exponent using rescaled range (R/S) method."""
     n = len(values)
 
-    if n < 20:
+    if n < cfg.min_samples.hurst:
         return 0.5  # Not enough data
 
     # Use multiple segment sizes
@@ -50,7 +52,7 @@ def _hurst_rs(values: np.ndarray) -> float:
     rs_values = []
 
     for size in [n // 8, n // 4, n // 2, n]:
-        if size < 10:
+        if size < cfg.fractal.rs_min_k:
             continue
 
         # Split into segments
@@ -95,7 +97,7 @@ def _hurst_dfa(values: np.ndarray) -> float:
     """Compute Hurst exponent using detrended fluctuation analysis."""
     n = len(values)
 
-    if n < 20:
+    if n < cfg.min_samples.dfa:
         return 0.5
 
     # Integration (cumulative sum of deviations from mean)
@@ -280,7 +282,7 @@ def long_range_correlation(
     n = len(values)
 
     if max_lag is None:
-        max_lag = n // 4
+        max_lag = int(n * cfg.dynamics.max_lag_ratio)
 
     # Compute autocorrelation
     values_centered = values - np.mean(values)
@@ -329,7 +331,7 @@ def variance_growth(
     n = len(values)
 
     if max_lag is None:
-        max_lag = n // 4
+        max_lag = int(n * cfg.dynamics.max_lag_ratio)
 
     scales = np.arange(1, max_lag + 1)
     variances = []

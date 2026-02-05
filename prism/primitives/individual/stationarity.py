@@ -8,6 +8,8 @@ import numpy as np
 from scipy import stats as scipy_stats
 from typing import Tuple, List, Optional
 
+from prism.primitives.config import PRIMITIVES_CONFIG as cfg
+
 
 def stationarity_test(
     signal: np.ndarray,
@@ -39,7 +41,7 @@ def stationarity_test(
     signal = np.asarray(signal).flatten()
     signal = signal[~np.isnan(signal)]
 
-    if len(signal) < 20:
+    if len(signal) < cfg.min_samples.stationarity:
         return np.nan, np.nan
 
     try:
@@ -140,7 +142,7 @@ def changepoints(
     signal = signal[~np.isnan(signal)]
     n = len(signal)
 
-    if n < 10:
+    if n < cfg.min_samples.changepoints:
         return []
 
     try:

@@ -2,10 +2,12 @@
 ADF Stat Engine.
 
 Augmented Dickey-Fuller test for stationarity.
+Uses config for min_samples threshold.
 """
 
 import numpy as np
 from typing import Dict
+from prism.primitives.config import PRIMITIVES_CONFIG as cfg
 
 
 def compute(y: np.ndarray) -> Dict[str, float]:
@@ -37,7 +39,7 @@ def compute(y: np.ndarray) -> Dict[str, float]:
     y = y[~np.isnan(y)]
     n = len(y)
 
-    if n < 20:
+    if n < cfg.min_samples.stationarity:
         return result
 
     # Check for constant signal

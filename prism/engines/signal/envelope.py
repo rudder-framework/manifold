@@ -2,6 +2,7 @@
 Envelope Engine.
 
 Imports from primitives/individual/hilbert.py (canonical).
+Primitives handle validation - no redundant checks here.
 """
 
 import numpy as np
@@ -19,13 +20,6 @@ def compute(y: np.ndarray) -> dict:
     Returns:
         dict with envelope_rms, envelope_peak, envelope_kurtosis
     """
-    if len(y) < 10:
-        return {
-            'envelope_rms': np.nan,
-            'envelope_peak': np.nan,
-            'envelope_kurtosis': np.nan
-        }
-
     try:
         env = envelope(y)
 

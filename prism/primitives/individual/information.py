@@ -9,6 +9,8 @@ import numpy as np
 from typing import Optional, Tuple
 from collections import Counter
 
+from prism.primitives.config import PRIMITIVES_CONFIG as cfg
+
 
 def transfer_entropy(
     source: np.ndarray,
@@ -55,7 +57,7 @@ def transfer_entropy(
     max_lag = max(k, l)
     n = len(target) - max_lag
 
-    if n < 10:
+    if n < cfg.min_samples.transfer_entropy:
         return 0.0
 
     # Current target
@@ -208,7 +210,7 @@ def granger_causality(
     target = target[:min_len]
 
     n = len(target)
-    if n < max_lag + 10:
+    if n < max_lag + cfg.min_samples.granger:
         return np.nan, np.nan
 
     # Build design matrices

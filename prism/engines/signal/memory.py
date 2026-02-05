@@ -6,6 +6,7 @@ Computes long-range dependence measures:
 - Autocorrelation decay
 
 Thin wrapper over primitives/individual/fractal.py and correlation.py.
+Primitives handle min_samples via config - no redundant checks here.
 """
 
 import numpy as np
@@ -24,14 +25,14 @@ from prism.primitives.individual.correlation import (
 def compute(y: np.ndarray, method: str = 'rs') -> Dict[str, float]:
     """
     Compute memory/persistence measures.
-    
+
     Args:
         y: Signal values
         method: 'rs' for rescaled range, 'dfa' for detrended fluctuation
-        
+
     Returns:
         dict with hurst, hurst_r2
-        
+
     Interpretation (ORTHON's job, but for reference):
         H < 0.5: anti-persistent (mean-reverting)
         H = 0.5: random walk
@@ -39,13 +40,7 @@ def compute(y: np.ndarray, method: str = 'rs') -> Dict[str, float]:
     """
     y = np.asarray(y).flatten()
     y = y[~np.isnan(y)]
-    
-    if len(y) < 20:
-        return {
-            'hurst': np.nan,
-            'hurst_r2': np.nan,
-        }
-    
+
     return {
         'hurst': hurst_exponent(y, method=method),
         'hurst_r2': hurst_r2(y),
@@ -56,8 +51,6 @@ def compute_hurst(y: np.ndarray, method: str = 'rs') -> Dict[str, float]:
     """Compute Hurst exponent only."""
     y = np.asarray(y).flatten()
     y = y[~np.isnan(y)]
-    if len(y) < 20:
-        return {'hurst': np.nan}
     return {'hurst': hurst_exponent(y, method=method)}
 
 
@@ -65,8 +58,6 @@ def compute_dfa(y: np.ndarray) -> Dict[str, float]:
     """Compute DFA exponent."""
     y = np.asarray(y).flatten()
     y = y[~np.isnan(y)]
-    if len(y) < 20:
-        return {'dfa': np.nan}
     return {'dfa': dfa(y)}
 
 

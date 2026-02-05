@@ -2,6 +2,7 @@
 Hurst Exponent Engine.
 
 Imports from primitives/individual/fractal.py (canonical).
+Primitives handle min_samples via config - no redundant checks here.
 """
 
 import numpy as np
@@ -27,9 +28,6 @@ def compute(y: np.ndarray, method: str = 'rs') -> Dict[str, float]:
     y = np.asarray(y).flatten()
     y = y[~np.isnan(y)]
 
-    if len(y) < 20:
-        return {'hurst': np.nan, 'hurst_r2': np.nan}
-
     return {
         'hurst': hurst_exponent(y, method=method),
         'hurst_r2': hurst_r2(y),
@@ -40,8 +38,5 @@ def compute_dfa(y: np.ndarray) -> Dict[str, float]:
     """Compute DFA exponent."""
     y = np.asarray(y).flatten()
     y = y[~np.isnan(y)]
-
-    if len(y) < 20:
-        return {'dfa': np.nan}
 
     return {'dfa': dfa(y)}
