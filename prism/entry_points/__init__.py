@@ -56,6 +56,9 @@ from . import state_geometry
 # For backward compatibility, export main functions
 from .signal_vector import run, run_from_manifest
 
+# Stage 00: Break detection (runs before signal_vector)
+from . import stage_00_breaks
+
 # Core ordered stages (original 14)
 from . import stage_01_signal_vector
 from . import stage_02_state_vector
@@ -98,6 +101,8 @@ __all__ = [
     'signal_vector',
     'state_vector',
     'state_geometry',
+    # Break detection (stage 00)
+    'stage_00_breaks',
     # Core ordered stages
     'stage_01_signal_vector',
     'stage_02_state_vector',
