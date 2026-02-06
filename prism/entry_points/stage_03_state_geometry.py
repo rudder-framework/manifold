@@ -70,6 +70,9 @@ def compute_eigenvalues(
         'ratio_3_1': result['ratio_3_1'],
         'n_signals': result['n_signals'],
         'n_features': result['n_features'],
+        # Eigenvector loadings - key for pairwise gating
+        'principal_components': result['principal_components'],  # Feature loadings (D x D)
+        'signal_loadings': result['signal_loadings'],            # Signal loadings on PCs (N x k)
     }
 
 
@@ -212,6 +215,33 @@ def compute_state_geometry(
             row['condition_number'] = eigen_result['condition_number']
             row['ratio_2_1'] = eigen_result['ratio_2_1']
             row['ratio_3_1'] = eigen_result['ratio_3_1']
+
+            # Signal loadings on principal components (for pairwise gating)
+            # signal_loadings: N_signals x k matrix (U from SVD)
+            # High co-loading on same PC = signals are correlated
+            signal_loadings = eigen_result.get('signal_loadings')
+            signal_ids = group['signal_id'].to_list() if 'signal_id' in group.columns else []
+
+            if signal_loadings is not None and len(signal_ids) > 0:
+                # Store per-signal loadings on PC1 (and PC2 if available)
+                for sig_idx, sig_id in enumerate(signal_ids[:len(signal_loadings)]):
+                    if sig_idx < len(signal_loadings):
+                        # PC1 loading
+                        row[f'pc1_signal_{sig_id}'] = float(signal_loadings[sig_idx, 0])
+                        # PC2 loading (if exists)
+                        if signal_loadings.shape[1] > 1:
+                            row[f'pc2_signal_{sig_id}'] = float(signal_loadings[sig_idx, 1])
+
+                # Store signal_ids list for reference
+                row['signal_ids'] = ','.join(signal_ids)
+
+            # Feature loadings on PC1 (principal_components: D x D, first row = PC1)
+            principal_components = eigen_result.get('principal_components')
+            if principal_components is not None and len(available) > 0:
+                pc1_loadings = principal_components[0] if len(principal_components) > 0 else None
+                if pc1_loadings is not None:
+                    for feat_idx, feat_name in enumerate(available[:len(pc1_loadings)]):
+                        row[f'pc1_feat_{feat_name}'] = float(pc1_loadings[feat_idx])
 
             results.append(row)
 

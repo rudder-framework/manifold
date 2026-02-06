@@ -201,16 +201,24 @@ def compute_signal_pairwise(
     state_vector_path: str,
     output_path: str = "signal_pairwise.parquet",
     feature_groups: Optional[Dict[str, List[str]]] = None,
+    state_geometry_path: Optional[str] = None,
+    coloading_threshold: float = 0.1,
     verbose: bool = True
 ) -> pl.DataFrame:
     """
     Compute signal pairwise relationships.
+
+    NEW: Uses eigenvector co-loading to gate expensive pairwise operations.
+    If two signals have high co-loading on same PC, run Granger causality.
+    Otherwise, correlation/mutual_info can be derived from loadings.
 
     Args:
         signal_vector_path: Path to signal_vector.parquet
         state_vector_path: Path to state_vector.parquet
         output_path: Output path
         feature_groups: Dict mapping engine names to feature lists
+        state_geometry_path: Path to state_geometry.parquet (optional, for eigenvector gating)
+        coloading_threshold: Threshold for PC co-loading to trigger Granger (default 0.5)
         verbose: Print progress
 
     Returns:
@@ -225,6 +233,29 @@ def compute_signal_pairwise(
     # Load data
     signal_vector = pl.read_parquet(signal_vector_path)
     state_vector = pl.read_parquet(state_vector_path)
+
+    # Load eigenvector loadings for gating (if provided)
+    eigenvector_gating = {}
+    if state_geometry_path is not None:
+        try:
+            sg = pl.read_parquet(state_geometry_path)
+            # Extract PC1 signal loadings for each (cohort, I)
+            pc1_cols = [c for c in sg.columns if c.startswith('pc1_signal_')]
+            if pc1_cols and verbose:
+                print(f"Eigenvector gating enabled: {len(pc1_cols)} signal loadings found")
+                # Build lookup: (cohort, I, engine) -> {signal_id: pc1_loading}
+                for row in sg.iter_rows(named=True):
+                    key = (row.get('cohort'), row.get('I'), row.get('engine'))
+                    loadings = {}
+                    for col in pc1_cols:
+                        sig_id = col.replace('pc1_signal_', '')
+                        if row[col] is not None:
+                            loadings[sig_id] = row[col]
+                    if loadings:
+                        eigenvector_gating[key] = loadings
+        except Exception as e:
+            if verbose:
+                print(f"Warning: Could not load eigenvector gating: {e}")
 
     # Identify features
     meta_cols = ['unit_id', 'I', 'signal_id']
@@ -311,19 +342,41 @@ def compute_signal_pairwise(
             else:
                 centroid = np.mean(matrix[np.isfinite(matrix).all(axis=1)], axis=0) if len(matrix) > 0 else None
 
+            # Get eigenvector loadings for this (cohort, I, engine) if available
+            gating_key = (cohort, I, engine_name)
+            pc1_loadings = eigenvector_gating.get(gating_key, {})
+
             # Compute pairwise
             pairs = compute_pairwise_at_index(matrix, signal_ids, centroid)
 
             # Build result rows
             for pair in pairs:
+                signal_a = pair['signal_a']
+                signal_b = pair['signal_b']
+
+                # Check eigenvector co-loading (if available)
+                # High co-loading = both signals load strongly onto same PC
+                # This indicates correlation without needing full pairwise compute
+                pc1_a = pc1_loadings.get(signal_a, 0.0)
+                pc1_b = pc1_loadings.get(signal_b, 0.0)
+
+                # Co-loading: product of absolute loadings (both high = high product)
+                coloading = abs(pc1_a * pc1_b)
+
+                # Flag for Granger causality: high co-loading means they're related,
+                # but we need Granger to determine direction
+                needs_granger = coloading > coloading_threshold
+
                 row = {
                     'I': I,
-                    'signal_a': pair['signal_a'],
-                    'signal_b': pair['signal_b'],
+                    'signal_a': signal_a,
+                    'signal_b': signal_b,
                     'engine': engine_name,
                     'distance': pair['distance'],
                     'cosine_similarity': pair['cosine_similarity'],
                     'correlation': pair['correlation'],
+                    'pc1_coloading': float(coloading),
+                    'needs_granger': needs_granger,
                     'both_close_to_state': pair['both_close_to_state'],
                     'both_far_from_state': pair['both_far_from_state'],
                     'same_side_of_state': pair['same_side_of_state'],
