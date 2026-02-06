@@ -141,13 +141,26 @@ def run(
                 module.run(str(obs_path), str(output_dir / 'breaks.parquet'), verbose=verbose)
 
             elif stage_num == '01':
-                # Signal vector
+                # Signal vector - run() takes (observations_path, output_path, manifest_dict)
                 obs_path = manifest_path.parent / manifest['paths']['observations']
-                module.run(str(obs_path), str(manifest_path), str(output_dir / 'signal_vector.parquet'), verbose=verbose)
+                typology_path = manifest_path.parent / manifest['paths'].get('typology', 'typology.parquet')
+                module.run(
+                    str(obs_path),
+                    str(output_dir / 'signal_vector.parquet'),
+                    manifest,
+                    verbose=verbose,
+                    typology_path=str(typology_path) if typology_path.exists() else None,
+                )
 
             elif stage_num == '02':
                 # State vector
-                module.run(str(output_dir / 'signal_vector.parquet'), str(output_dir / 'state_vector.parquet'), verbose=verbose)
+                typology_path = manifest_path.parent / manifest['paths'].get('typology', 'typology.parquet')
+                module.run(
+                    str(output_dir / 'signal_vector.parquet'),
+                    str(output_dir / 'state_vector.parquet'),
+                    typology_path=str(typology_path) if typology_path.exists() else None,
+                    verbose=verbose,
+                )
 
             elif stage_num == '03':
                 # State geometry
@@ -164,6 +177,7 @@ def run(
                     str(output_dir / 'signal_vector.parquet'),
                     str(output_dir / 'state_vector.parquet'),
                     str(output_dir / 'cohorts.parquet'),
+                    state_geometry_path=str(output_dir / 'state_geometry.parquet'),
                     verbose=verbose,
                 )
 
@@ -201,26 +215,26 @@ def run(
                 module.run(str(obs_path), str(output_dir / 'lyapunov.parquet'), verbose=verbose)
 
             elif stage_num == '09':
-                # Dynamics
-                module.run(
-                    str(output_dir / 'lyapunov.parquet'),
-                    str(output_dir / 'dynamics.parquet'),
-                    verbose=verbose,
-                )
+                # Dynamics - reads observations (like Lyapunov)
+                # TODO: This is redundant with stage_08. Stage_09 should do
+                # attractor metrics, RQA, etc. For now, just run it.
+                obs_path = manifest_path.parent / manifest['paths']['observations']
+                module.run(str(obs_path), str(output_dir / 'dynamics.parquet'), verbose=verbose)
 
             elif stage_num == '10':
-                # Information flow
+                # Information flow - uses signal_pairwise for Granger gating + observations for time series
+                obs_path = manifest_path.parent / manifest['paths']['observations']
                 module.run(
+                    str(obs_path),
                     str(output_dir / 'signal_pairwise.parquet'),
                     str(output_dir / 'information_flow.parquet'),
                     verbose=verbose,
                 )
 
             elif stage_num == '11':
-                # Topology
+                # Topology - current implementation takes signal_vector
                 module.run(
-                    str(output_dir / 'state_geometry.parquet'),
-                    str(output_dir / 'dynamics.parquet'),
+                    str(output_dir / 'signal_vector.parquet'),
                     str(output_dir / 'topology.parquet'),
                     verbose=verbose,
                 )
@@ -230,8 +244,9 @@ def run(
                 module.run(str(output_dir), str(output_dir / 'zscore.parquet'), verbose=verbose)
 
             elif stage_num == '13':
-                # Statistics
-                module.run(str(output_dir), str(output_dir / 'statistics.parquet'), verbose=verbose)
+                # Statistics - reads observations
+                obs_path = manifest_path.parent / manifest['paths']['observations']
+                module.run(str(obs_path), str(output_dir / 'statistics.parquet'), verbose=verbose)
 
             elif stage_num == '14':
                 # Correlation

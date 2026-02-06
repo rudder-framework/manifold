@@ -270,6 +270,22 @@ def compute_state_geometry(
     return result
 
 
+# Alias for run_pipeline.py compatibility
+def run(
+    signal_vector_path: str,
+    state_vector_path: str,
+    output_path: str = "state_geometry.parquet",
+    verbose: bool = True,
+) -> pl.DataFrame:
+    """Run state geometry computation (wrapper for compute_state_geometry)."""
+    return compute_state_geometry(
+        signal_vector_path,
+        state_vector_path,
+        output_path,
+        verbose=verbose,
+    )
+
+
 def main():
     import sys
 

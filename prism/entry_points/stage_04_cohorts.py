@@ -237,6 +237,57 @@ def interpret_cohort_health(cohort_df: pl.DataFrame) -> List[Dict]:
     return interpretations
 
 
+# Alias for run_pipeline.py compatibility
+def run(
+    signal_vector_path: str,
+    state_vector_path: str,
+    output_path: str = "cohorts.parquet",
+    state_geometry_path: str = None,
+    verbose: bool = True,
+) -> pl.DataFrame:
+    """Run cohorts aggregation (wrapper for compute_cohorts)."""
+    if verbose:
+        print("=" * 70)
+        print("STAGE 04: COHORTS")
+        print("Aggregating window-level metrics into cohort summaries")
+        print("=" * 70)
+
+    # Load data
+    signal_vector_df = pl.read_parquet(signal_vector_path)
+    state_vector_df = pl.read_parquet(state_vector_path)
+
+    if state_geometry_path:
+        state_geometry_df = pl.read_parquet(state_geometry_path)
+    else:
+        # Create minimal geometry df if not provided
+        state_geometry_df = state_vector_df.select(['I', 'cohort'] if 'cohort' in state_vector_df.columns else ['I'])
+
+    if verbose:
+        print(f"Signal vector: {len(signal_vector_df)} rows")
+        print(f"State vector: {len(state_vector_df)} rows")
+
+    # Compute cohorts
+    result = compute_cohorts(
+        state_vector_df,
+        state_geometry_df,
+        signal_vector_df=signal_vector_df,
+    )
+
+    # Write output
+    if len(result) > 0:
+        result.write_parquet(output_path)
+
+    if verbose:
+        print(f"\nSaved: {output_path}")
+        print(f"Shape: {result.shape}")
+        print()
+        print("─" * 50)
+        print(f"✓ {Path(output_path).absolute()}")
+        print("─" * 50)
+
+    return result
+
+
 def main():
     import argparse
 

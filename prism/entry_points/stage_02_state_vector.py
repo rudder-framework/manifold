@@ -220,6 +220,22 @@ def compute_state_vector(
     return result
 
 
+# Alias for run_pipeline.py compatibility
+def run(
+    signal_vector_path: str,
+    output_path: str = "state_vector.parquet",
+    typology_path: str = None,
+    verbose: bool = True,
+) -> pl.DataFrame:
+    """Run state vector computation (wrapper for compute_state_vector)."""
+    return compute_state_vector(
+        signal_vector_path,
+        typology_path,
+        output_path,
+        verbose=verbose,
+    )
+
+
 def main():
     import sys
 
