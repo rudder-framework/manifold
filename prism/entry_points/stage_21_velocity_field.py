@@ -39,7 +39,7 @@ def run(
     output_path: str = "velocity_field.parquet",
     smooth: str = 'savgol',
     smooth_window: int = 11,
-    include_components: bool = False,
+    include_components: bool = True,
     verbose: bool = True,
 ) -> pl.DataFrame:
     """
@@ -50,7 +50,8 @@ def run(
         output_path: Output path for velocity_field.parquet
         smooth: Smoothing method ('none', 'savgol', 'gaussian')
         smooth_window: Window size for smoothing
-        include_components: Include per-signal velocity components
+        include_components: Include per-signal velocity components (v_{signal} columns).
+                           Required for visualization projection. Default: True.
         verbose: Print progress
 
     Returns:
@@ -267,8 +268,8 @@ Example:
                         help='Smoothing method (default: savgol)')
     parser.add_argument('--smooth-window', type=int, default=11,
                         help='Smoothing window size (default: 11)')
-    parser.add_argument('--include-components', action='store_true',
-                        help='Include per-signal velocity components')
+    parser.add_argument('--no-components', action='store_true',
+                        help='Exclude per-signal velocity components (reduces output size)')
     parser.add_argument('-q', '--quiet', action='store_true', help='Suppress output')
 
     args = parser.parse_args()
@@ -278,7 +279,7 @@ Example:
         args.output,
         smooth=args.smooth,
         smooth_window=args.smooth_window,
-        include_components=args.include_components,
+        include_components=not args.no_components,
         verbose=not args.quiet,
     )
 

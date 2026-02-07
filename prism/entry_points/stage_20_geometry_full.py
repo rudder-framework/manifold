@@ -27,7 +27,11 @@ import polars as pl
 from pathlib import Path
 from typing import Optional
 
-from prism.engines.state.eigendecomp import compute as compute_eigendecomp
+from prism.engines.state.eigendecomp import (
+    compute as compute_eigendecomp,
+    enforce_eigenvector_continuity,
+    bootstrap_effective_dim,
+)
 
 
 def run(
@@ -35,6 +39,10 @@ def run(
     output_path: str = "geometry_full.parquet",
     min_window: int = 16,
     stride: int = 1,
+    include_eigenvectors: bool = True,
+    n_eigenvectors: int = 3,
+    include_bootstrap_ci: bool = False,
+    n_bootstrap: int = 50,
     verbose: bool = True,
 ) -> pl.DataFrame:
     """
@@ -45,10 +53,14 @@ def run(
         output_path: Output path for geometry_full.parquet
         min_window: Minimum samples before first eigendecomp
         stride: Compute every N samples (1 = every sample)
+        include_eigenvectors: If True, include eigenvector_{pc}_{signal} columns
+        n_eigenvectors: Number of principal components to store eigenvectors for
+        include_bootstrap_ci: If True, compute bootstrap confidence intervals for eff_dim
+        n_bootstrap: Number of bootstrap samples (default 50 for speed)
         verbose: Print progress
 
     Returns:
-        geometry_full DataFrame with eigenvalues at each I
+        geometry_full DataFrame with eigenvalues, eigenvectors, and optional CI at each I
     """
     if verbose:
         print("=" * 70)
@@ -98,9 +110,10 @@ def run(
         signal_cols = [c for c in wide.columns if c != 'I']
         data_matrix = wide.select(signal_cols).to_numpy()
 
-        # Track previous eff_dim for velocity computation
+        # Track previous values for continuity
         prev_eff_dim = None
         prev_prev_eff_dim = None
+        prev_eigenvectors = None
 
         # Expanding window: at each I, use all data from 0 to I
         for idx in range(min_window - 1, len(data_matrix), stride):
@@ -135,7 +148,7 @@ def run(
             else:
                 eff_dim_acceleration = 0.0
 
-            results.append({
+            row = {
                 'I': int(i_values[idx]),
                 'cohort': cohort,
                 'effective_dim': eff_dim,
@@ -149,7 +162,36 @@ def run(
                 'condition_number': eigen['condition_number'],
                 'total_variance': eigen['total_variance'],
                 'n_samples': idx + 1,
-            })
+            }
+
+            # Add bootstrap confidence intervals
+            if include_bootstrap_ci:
+                bootstrap_result = bootstrap_effective_dim(window, n_bootstrap=n_bootstrap)
+                row['eff_dim_std'] = bootstrap_result['eff_dim_std']
+                row['eff_dim_ci_low'] = bootstrap_result['eff_dim_ci_low']
+                row['eff_dim_ci_high'] = bootstrap_result['eff_dim_ci_high']
+
+            # Add eigenvectors for visualization projection
+            # principal_components is Vt from SVD: shape (min(n,d), d)
+            # Each row is a PC, each column is a signal dimension
+            if include_eigenvectors and eigen.get('principal_components') is not None:
+                pcs = eigen['principal_components']
+
+                # Enforce eigenvector continuity to prevent sign flips
+                if prev_eigenvectors is not None and pcs is not None:
+                    pcs_T = pcs.T  # Convert to column vectors
+                    prev_T = prev_eigenvectors.T
+                    pcs_T = enforce_eigenvector_continuity(pcs_T, prev_T)
+                    pcs = pcs_T.T  # Convert back to row vectors
+
+                for pc_idx in range(min(n_eigenvectors, len(pcs))):
+                    pc_vector = pcs[pc_idx]
+                    for sig_idx, sig_name in enumerate(signal_cols[:len(pc_vector)]):
+                        row[f'eigenvector_{pc_idx+1}_{sig_name}'] = float(pc_vector[sig_idx])
+
+                prev_eigenvectors = pcs
+
+            results.append(row)
 
             prev_prev_eff_dim = prev_eff_dim
             prev_eff_dim = eff_dim
@@ -221,6 +263,14 @@ Example:
                         help='Minimum samples before first eigendecomp (default: 16)')
     parser.add_argument('--stride', type=int, default=1,
                         help='Compute every N samples (default: 1)')
+    parser.add_argument('--no-eigenvectors', action='store_true',
+                        help='Exclude eigenvector columns (reduces output size)')
+    parser.add_argument('--n-eigenvectors', type=int, default=3,
+                        help='Number of PCs to store eigenvectors for (default: 3)')
+    parser.add_argument('--bootstrap-ci', action='store_true',
+                        help='Include bootstrap confidence intervals for eff_dim')
+    parser.add_argument('--n-bootstrap', type=int, default=50,
+                        help='Number of bootstrap samples (default: 50)')
     parser.add_argument('-q', '--quiet', action='store_true', help='Suppress output')
 
     args = parser.parse_args()
@@ -230,6 +280,10 @@ Example:
         args.output,
         min_window=args.min_window,
         stride=args.stride,
+        include_eigenvectors=not args.no_eigenvectors,
+        n_eigenvectors=args.n_eigenvectors,
+        include_bootstrap_ci=args.bootstrap_ci,
+        n_bootstrap=args.n_bootstrap,
         verbose=not args.quiet,
     )
 

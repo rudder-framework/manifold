@@ -9,6 +9,8 @@ from .lyapunov import (
     lyapunov_rosenstein,
     lyapunov_kantz,
     lyapunov_spectrum,
+    estimate_embedding_dim_cao,
+    estimate_tau_ami,
 )
 
 from .dimension import (
@@ -57,6 +59,9 @@ __all__ = [
     'lyapunov_rosenstein',
     'lyapunov_kantz',
     'lyapunov_spectrum',
+    # Embedding estimation
+    'estimate_embedding_dim_cao',
+    'estimate_tau_ami',
     # 88-89: Dimension
     'correlation_dimension',
     'correlation_integral',

@@ -220,6 +220,183 @@ def compute_from_signal_vector(
     return pl.DataFrame(results).sort(group_cols)
 
 
+def enforce_eigenvector_continuity(
+    eigenvectors_current: np.ndarray,
+    eigenvectors_previous: np.ndarray,
+) -> np.ndarray:
+    """
+    Ensure eigenvectors maintain consistent orientation across windows.
+
+    Eigenvectors can flip sign or swap order between adjacent windows.
+    This causes artificial discontinuities in projections and velocity
+    decomposition.
+
+    Parameters
+    ----------
+    eigenvectors_current : np.ndarray
+        Current eigenvectors (d x k matrix, columns are PCs)
+    eigenvectors_previous : np.ndarray
+        Previous window's eigenvectors (same shape)
+
+    Returns
+    -------
+    np.ndarray
+        Corrected eigenvectors with consistent orientation
+    """
+    if eigenvectors_previous is None:
+        return eigenvectors_current
+
+    if eigenvectors_current.shape != eigenvectors_previous.shape:
+        return eigenvectors_current
+
+    corrected = eigenvectors_current.copy()
+    n_vecs = corrected.shape[1] if corrected.ndim == 2 else 1
+
+    if corrected.ndim == 1:
+        # Single eigenvector
+        if np.dot(corrected, eigenvectors_previous) < 0:
+            corrected *= -1
+        return corrected
+
+    # Check each eigenvector for sign flip
+    for j in range(n_vecs):
+        dot = np.dot(eigenvectors_previous[:, j], corrected[:, j])
+        if dot < 0:
+            corrected[:, j] *= -1  # Flip sign
+
+    return corrected
+
+
+def bootstrap_effective_dim(
+    signal_matrix: np.ndarray,
+    n_bootstrap: int = 100,
+    confidence_level: float = 0.95,
+) -> Dict[str, float]:
+    """
+    Bootstrap confidence interval for effective dimensionality.
+
+    Resample rows of feature matrix, compute eigendecomp each time.
+    Return mean, std, and CI of eff_dim.
+
+    Parameters
+    ----------
+    signal_matrix : np.ndarray
+        Signal matrix (n_signals x n_features)
+    n_bootstrap : int
+        Number of bootstrap samples
+    confidence_level : float
+        Confidence level for CI (0.95 = 95% CI)
+
+    Returns
+    -------
+    dict with:
+        eff_dim_mean : float
+        eff_dim_std : float
+        eff_dim_ci_low : float
+        eff_dim_ci_high : float
+    """
+    signal_matrix = np.asarray(signal_matrix)
+
+    if signal_matrix.ndim == 1:
+        signal_matrix = signal_matrix.reshape(1, -1)
+
+    N, D = signal_matrix.shape
+
+    if N < 3:
+        return {
+            'eff_dim_mean': np.nan,
+            'eff_dim_std': np.nan,
+            'eff_dim_ci_low': np.nan,
+            'eff_dim_ci_high': np.nan,
+        }
+
+    eff_dims = []
+
+    for _ in range(n_bootstrap):
+        # Resample rows with replacement
+        idx = np.random.choice(N, size=N, replace=True)
+        bootstrap_sample = signal_matrix[idx]
+
+        # Remove duplicates (can cause singular covariance)
+        unique_rows = np.unique(bootstrap_sample, axis=0)
+        if len(unique_rows) < 2:
+            continue
+
+        # Compute covariance and eigenvalues
+        try:
+            centered = unique_rows - np.mean(unique_rows, axis=0)
+            cov = np.cov(centered.T)
+            if cov.ndim == 0:
+                cov = np.array([[cov]])
+            eigenvalues = np.linalg.eigvalsh(cov)[::-1]
+        except Exception:
+            continue
+
+        # Compute effective dimension
+        eigenvalues = eigenvalues[eigenvalues > 1e-10]
+        if len(eigenvalues) == 0:
+            continue
+
+        total_var = eigenvalues.sum()
+        if total_var > 1e-10:
+            eff_dim = (total_var ** 2) / (eigenvalues ** 2).sum()
+            eff_dims.append(eff_dim)
+
+    if not eff_dims:
+        return {
+            'eff_dim_mean': np.nan,
+            'eff_dim_std': np.nan,
+            'eff_dim_ci_low': np.nan,
+            'eff_dim_ci_high': np.nan,
+        }
+
+    eff_dims = np.array(eff_dims)
+    alpha = 1 - confidence_level
+    ci_low = np.percentile(eff_dims, alpha / 2 * 100)
+    ci_high = np.percentile(eff_dims, (1 - alpha / 2) * 100)
+
+    return {
+        'eff_dim_mean': float(np.mean(eff_dims)),
+        'eff_dim_std': float(np.std(eff_dims)),
+        'eff_dim_ci_low': float(ci_low),
+        'eff_dim_ci_high': float(ci_high),
+    }
+
+
+def enforce_eigenvector_continuity_sequence(
+    eigenvectors_sequence: list,
+) -> list:
+    """
+    Ensure eigenvector continuity across a sequence of windows.
+
+    Parameters
+    ----------
+    eigenvectors_sequence : list
+        List of eigenvector matrices from sequential windows
+
+    Returns
+    -------
+    list
+        Corrected eigenvector matrices
+    """
+    if not eigenvectors_sequence:
+        return eigenvectors_sequence
+
+    corrected = [eigenvectors_sequence[0]]
+
+    for i in range(1, len(eigenvectors_sequence)):
+        prev = corrected[i - 1]
+        curr = eigenvectors_sequence[i]
+
+        if prev is None or curr is None:
+            corrected.append(curr)
+            continue
+
+        corrected.append(enforce_eigenvector_continuity(curr, prev))
+
+    return corrected
+
+
 def compute_effective_dim_trend(
     effective_dims: np.ndarray,
 ) -> Dict[str, float]:

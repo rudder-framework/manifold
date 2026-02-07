@@ -335,7 +335,251 @@ def lyapunov_spectrum(
     return exponents[:n_exponents]
 
 
+# =============================================================================
+# Embedding Dimension Estimation
+# =============================================================================
+
+def estimate_embedding_dim_cao(
+    signal: np.ndarray,
+    max_dim: int = 10,
+    tau: int = None
+) -> dict:
+    """
+    Cao's method for embedding dimension estimation.
+
+    Preferred over False Nearest Neighbors (FNN) because:
+    - FNN requires a threshold parameter (arbitrary)
+    - Cao's is parameter-free
+    - Cao's E2 statistic distinguishes deterministic from stochastic signals
+
+    Parameters
+    ----------
+    signal : np.ndarray
+        1D time series
+    max_dim : int
+        Maximum embedding dimension to test
+    tau : int, optional
+        Time delay (auto-detected if None)
+
+    Returns
+    -------
+    dict with:
+        optimal_dim : int
+            Estimated embedding dimension
+        is_deterministic : bool
+            True if E2 indicates determinism (FTLE meaningful)
+        E1_values : np.ndarray
+            E1(d) for d=1..max_dim
+        E2_values : np.ndarray
+            E2(d) for d=1..max_dim
+        E1_ratio : np.ndarray
+            E1(d+1)/E1(d) - saturates at correct dimension
+        confidence : float
+            Confidence in the estimate (0-1)
+
+    Notes
+    -----
+    E2 distinguishes deterministic from stochastic:
+    - Deterministic: E2 ≠ 1 for some d
+    - Stochastic: E2 ≈ 1 for all d
+
+    If E2 ≈ 1 for all d, FTLE is not meaningful for this signal.
+    """
+    signal = np.asarray(signal).flatten()
+    n = len(signal)
+
+    if n < 50:
+        return {
+            'optimal_dim': 3,
+            'is_deterministic': None,
+            'E1_values': None,
+            'E2_values': None,
+            'E1_ratio': None,
+            'confidence': 0.0,
+        }
+
+    if tau is None:
+        tau = _auto_delay(signal)
+
+    E1 = np.zeros(max_dim)
+    E2 = np.zeros(max_dim)
+
+    for d in range(1, max_dim + 1):
+        embedded_d = _embed(signal, d, tau)
+        embedded_d1 = _embed(signal, d + 1, tau)
+        N = min(len(embedded_d), len(embedded_d1))
+
+        if N < 10:
+            E1[d - 1] = np.nan
+            E2[d - 1] = np.nan
+            continue
+
+        a_values = []
+        a_star_values = []
+
+        # Subsample for efficiency
+        sample_size = min(500, N)
+        sample_idx = np.random.choice(N, sample_size, replace=False)
+
+        for i in sample_idx:
+            # Find nearest neighbor in d-dimensional space using Chebyshev distance
+            min_dist = np.inf
+            nn_idx = -1
+
+            # Compare against other samples (not full N for speed)
+            for j in sample_idx:
+                if i == j:
+                    continue
+                dist = np.max(np.abs(embedded_d[i] - embedded_d[j]))
+                if 0 < dist < min_dist:
+                    min_dist = dist
+                    nn_idx = j
+
+            if nn_idx < 0 or min_dist == 0:
+                continue
+
+            # a(i, d) = distance in (d+1)-space / distance in d-space
+            dist_d1 = np.max(np.abs(embedded_d1[i] - embedded_d1[nn_idx]))
+            a_values.append(dist_d1 / (min_dist + 1e-12))
+
+            # a*(i, d) for E2 calculation
+            idx_d1 = min(i + d * tau, len(signal) - 1)
+            idx_d1_nn = min(nn_idx + d * tau, len(signal) - 1)
+            a_star_values.append(abs(signal[idx_d1] - signal[idx_d1_nn]))
+
+        E1[d - 1] = np.mean(a_values) if a_values else np.nan
+        E2[d - 1] = np.mean(a_star_values) if a_star_values else np.nan
+
+    # E1 ratio: E1(d+1) / E1(d)
+    # Stops changing when correct dimension is reached
+    E1_ratio = np.zeros(max_dim - 1)
+    for d in range(1, max_dim):
+        if E1[d - 1] > 1e-10:
+            E1_ratio[d - 1] = E1[d] / E1[d - 1]
+        else:
+            E1_ratio[d - 1] = np.nan
+
+    # Find where E1_ratio saturates (stops changing significantly)
+    threshold = 0.95
+    optimal_dim = max_dim
+    for d in range(len(E1_ratio)):
+        if np.isfinite(E1_ratio[d]) and E1_ratio[d] > threshold:
+            optimal_dim = d + 1
+            break
+
+    # E2 distinguishes deterministic from stochastic
+    # For deterministic: E2 varies with d
+    # For stochastic: E2 ≈ constant for all d
+    E2_valid = E2[np.isfinite(E2)]
+    if len(E2_valid) >= 2:
+        E2_std = np.std(E2_valid)
+        E2_mean = np.mean(E2_valid)
+        # If E2 varies significantly, signal is deterministic
+        is_deterministic = E2_std / (E2_mean + 1e-12) > 0.1
+    else:
+        is_deterministic = None
+
+    # Confidence based on how sharp the saturation is
+    if len(E1_ratio[np.isfinite(E1_ratio)]) >= 2:
+        ratio_std = np.std(E1_ratio[np.isfinite(E1_ratio)])
+        confidence = min(1.0, 1.0 / (ratio_std + 0.1))
+    else:
+        confidence = 0.5
+
+    return {
+        'optimal_dim': optimal_dim,
+        'is_deterministic': is_deterministic,
+        'E1_values': E1,
+        'E2_values': E2,
+        'E1_ratio': E1_ratio,
+        'confidence': float(confidence),
+    }
+
+
+def estimate_tau_ami(
+    signal: np.ndarray,
+    max_tau: int = 50,
+    n_bins: int = 64
+) -> int:
+    """
+    Estimate embedding delay using Average Mutual Information.
+
+    First minimum of AMI gives optimal tau.
+    Better than autocorrelation for nonlinear systems.
+
+    Parameters
+    ----------
+    signal : np.ndarray
+        1D time series
+    max_tau : int
+        Maximum delay to test
+    n_bins : int
+        Number of bins for histogram
+
+    Returns
+    -------
+    int
+        Optimal embedding delay
+    """
+    signal = np.asarray(signal).flatten()
+    n = len(signal)
+
+    if n < max_tau + 10:
+        return 1
+
+    ami_values = []
+
+    for tau in range(1, min(max_tau + 1, n // 2)):
+        x = signal[:-tau]
+        y = signal[tau:]
+
+        # 2D histogram
+        try:
+            hist_xy, _, _ = np.histogram2d(x, y, bins=n_bins)
+            hist_x, _ = np.histogram(x, bins=n_bins)
+            hist_y, _ = np.histogram(y, bins=n_bins)
+        except Exception:
+            ami_values.append(np.nan)
+            continue
+
+        # Normalize to probabilities
+        p_xy = hist_xy / hist_xy.sum()
+        p_x = hist_x / hist_x.sum()
+        p_y = hist_y / hist_y.sum()
+
+        # Mutual information
+        mi = 0
+        for i in range(n_bins):
+            for j in range(n_bins):
+                if p_xy[i, j] > 0 and p_x[i] > 0 and p_y[j] > 0:
+                    mi += p_xy[i, j] * np.log(p_xy[i, j] / (p_x[i] * p_y[j]))
+
+        ami_values.append(mi)
+
+    if not ami_values:
+        return 1
+
+    ami_arr = np.array(ami_values)
+
+    # Find first local minimum
+    for i in range(1, len(ami_arr) - 1):
+        if np.isfinite(ami_arr[i]):
+            if ami_arr[i] < ami_arr[i - 1] and ami_arr[i] <= ami_arr[i + 1]:
+                return i + 1  # tau (1-indexed)
+
+    # No minimum found — use first below 1/e of initial
+    if np.isfinite(ami_arr[0]):
+        threshold = ami_arr[0] / np.e
+        below = np.where(ami_arr < threshold)[0]
+        if len(below) > 0:
+            return int(below[0]) + 1
+
+    return max_tau // 4  # fallback
+
+
+# =============================================================================
 # Helper functions
+# =============================================================================
 
 def _embed(signal: np.ndarray, dimension: int, delay: int) -> np.ndarray:
     """Time delay embedding."""
@@ -347,8 +591,27 @@ def _embed(signal: np.ndarray, dimension: int, delay: int) -> np.ndarray:
     return embedded
 
 
-def _auto_delay(signal: np.ndarray) -> int:
-    """Auto-detect delay using autocorrelation 1/e decay."""
+def _auto_delay(signal: np.ndarray, method: str = 'ami') -> int:
+    """
+    Auto-detect delay.
+
+    Parameters
+    ----------
+    signal : np.ndarray
+        1D time series
+    method : str
+        'ami' for Average Mutual Information (default, better for nonlinear)
+        'acf' for autocorrelation 1/e decay (faster, linear systems)
+
+    Returns
+    -------
+    int
+        Optimal embedding delay
+    """
+    if method == 'ami':
+        return estimate_tau_ami(signal)
+
+    # Fallback: autocorrelation 1/e decay
     n = len(signal)
     signal_centered = signal - np.mean(signal)
     var = np.var(signal_centered)
@@ -363,9 +626,30 @@ def _auto_delay(signal: np.ndarray) -> int:
     return n // 10
 
 
-def _auto_dimension(signal: np.ndarray, delay: int) -> int:
-    """Auto-detect embedding dimension using false nearest neighbors."""
-    # Simplified: try dimensions 2-10, pick where FNN drops
+def _auto_dimension(signal: np.ndarray, delay: int, method: str = 'cao') -> int:
+    """
+    Auto-detect embedding dimension.
+
+    Parameters
+    ----------
+    signal : np.ndarray
+        1D time series
+    delay : int
+        Time delay
+    method : str
+        'cao' for Cao's method (default, parameter-free)
+        'fnn' for False Nearest Neighbors (faster)
+
+    Returns
+    -------
+    int
+        Optimal embedding dimension
+    """
+    if method == 'cao':
+        result = estimate_embedding_dim_cao(signal, tau=delay)
+        return result['optimal_dim']
+
+    # Fallback: FNN
     for dim in range(2, min(11, len(signal) // (3 * delay))):
         fnn_ratio = _fnn_ratio(signal, dim, delay)
         if fnn_ratio < 0.01:
