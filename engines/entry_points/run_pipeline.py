@@ -45,7 +45,6 @@ ADVANCED_STAGES = [
     'stage_17_ftle_backward',      # Backward FTLE (attracting structures)
     'stage_18_segment_comparison', # Per-segment geometry deltas
     'stage_19_info_flow_delta',    # Per-segment Granger deltas
-    'stage_20_geometry_full',      # Expanding window eigendecomp trajectory
     'stage_21_velocity_field',     # State-space velocity: direction, speed, curvature
     'stage_22_ftle_rolling',       # FTLE at each timestep
     'stage_23_ridge_proximity',    # Urgency = velocity toward FTLE ridge
@@ -73,7 +72,6 @@ STAGE_DEPS = {
     'stage_17_ftle_backward': ['observations.parquet'],
     'stage_18_segment_comparison': ['observations.parquet'],
     'stage_19_info_flow_delta': ['observations.parquet'],
-    'stage_20_geometry_full': ['observations.parquet'],
     'stage_21_velocity_field': ['observations.parquet'],
     'stage_22_ftle_rolling': ['observations.parquet'],
     'stage_23_ridge_proximity': ['ftle_rolling.parquet', 'velocity_field.parquet'],
@@ -368,15 +366,6 @@ def run(
                     verbose=verbose,
                 )
 
-            elif stage_num == '20':
-                # Full-span geometry - expanding window eigendecomp
-                obs_path = manifest_path.parent / manifest['paths']['observations']
-                module.run(
-                    str(obs_path),
-                    str(output_dir / 'geometry_full.parquet'),
-                    verbose=verbose,
-                )
-
             elif stage_num == '21':
                 # Velocity field - state-space motion
                 obs_path = manifest_path.parent / manifest['paths']['observations']
@@ -453,7 +442,6 @@ Advanced (opt-in via --stages 15,16,...,23 or `python -m engines atlas`):
   17: ftle_backward      - Backward FTLE (attracting structures)
   18: segment_comparison - Per-segment geometry with deltas
   19: info_flow_delta    - Per-segment Granger with link changes
-  20: geometry_full      - Expanding window eigendecomp trajectory
   21: velocity_field     - State-space velocity: direction, speed, curvature
   22: ftle_rolling       - FTLE at each timestep (stability evolution)
   23: ridge_proximity    - Urgency = velocity toward FTLE ridge

@@ -90,7 +90,6 @@ The atlas adds system-level dynamics that reveal **where your system is going** 
 | 17 | `ftle_backward.parquet` | Backward FTLE (attracting structures) |
 | 18 | `segment_comparison.parquet` | Pre/post segment geometry deltas |
 | 19 | `info_flow_delta.parquet` | Causality changes across segments |
-| 20 | `geometry_full.parquet` | Expanding-window eigendecomposition trajectory |
 | 21 | `velocity_field.parquet` | State-space velocity, acceleration, curvature |
 | 22 | `ftle_rolling.parquet` | Rolling FTLE stability evolution |
 | 23 | `ridge_proximity.parquet` | Urgency: velocity toward FTLE ridges |
@@ -107,7 +106,7 @@ The number of directions that matter. Computed from eigenvalues of the signal co
 - `effective_dim = N` — variance spread equally across N signals
 - **Dropping effective_dim** = dimensional collapse = system losing degrees of freedom
 
-Found in: `state_geometry.parquet`, `geometry_full.parquet`, `geometry_dynamics.parquet`
+Found in: `state_geometry.parquet`, `geometry_dynamics.parquet`
 
 ### FTLE (Finite-Time Lyapunov Exponent)
 
@@ -261,7 +260,6 @@ engines atlas <data_dir> [--output DIR]
 # Individual atlas stages
 engines break-sequence <data_dir>
 engines ftle-backward <data_dir>
-engines geometry-full <data_dir>
 engines velocity-field <data_dir>
 engines ftle-rolling <data_dir>
 engines ridge-proximity <data_dir>

@@ -400,10 +400,6 @@ def cmd_atlas_stage(args):
                 'verbose': verbose,
             },
         }),
-        'geometry-full': ('stage_20_geometry_full', lambda m: {
-            'args': [str(obs_path), str(output_dir / 'geometry_full.parquet')],
-            'kwargs': {'verbose': verbose},
-        }),
         'velocity-field': ('stage_21_velocity_field', lambda m: {
             'args': [str(obs_path), str(output_dir / 'velocity_field.parquet')],
             'kwargs': {'verbose': verbose},
@@ -478,11 +474,6 @@ def cmd_atlas(args):
         }),
         ('stage_21_velocity_field', 'velocity_field.parquet', lambda: {
             'args': [str(obs_path), str(output_dir / 'velocity_field.parquet')],
-            'kwargs': {'verbose': verbose},
-            'requires': ['observations.parquet'],
-        }),
-        ('stage_20_geometry_full', 'geometry_full.parquet', lambda: {
-            'args': [str(obs_path), str(output_dir / 'geometry_full.parquet')],
             'kwargs': {'verbose': verbose},
             'requires': ['observations.parquet'],
         }),
@@ -581,7 +572,17 @@ def cmd_run(args):
     import yaml
 
     input_path = Path(args.input_path)
-    output_dir = Path(args.output)
+
+    # Default output: sibling to input (e.g. ~/Domains/rossler/ → ~/Domains/rossler/output/)
+    if args.output:
+        output_dir = Path(args.output)
+    else:
+        if input_path.is_dir():
+            output_dir = input_path
+        elif input_path.name == 'observations.parquet':
+            output_dir = input_path.parent
+        else:
+            output_dir = input_path.parent
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Load input data
@@ -632,9 +633,10 @@ def cmd_run(args):
     elif args.atlas and not chars['rolling_ftle_viable']:
         print(f"  Warning: Rolling FTLE requires >=400 samples (have {chars['min_samples']})")
 
-    # Save observations.parquet to output directory
+    # Save observations.parquet to output directory (skip if already there)
     obs_output = output_dir / 'observations.parquet'
-    observations.write_parquet(obs_output)
+    if obs_output.resolve() != input_path.resolve():
+        observations.write_parquet(obs_output)
 
     # Generate minimal typology.parquet (required by state_vector stage)
     import polars as pl
@@ -668,7 +670,7 @@ def cmd_run(args):
     stage_list = None
     if args.atlas:
         # Core + atlas stages
-        stage_list = [f'{i:02d}' for i in range(15)] + [f'{i:02d}' for i in range(16, 24)]
+        stage_list = [f'{i:02d}' for i in range(24)]
     # else: default (core stages only)
 
     # Run pipeline
@@ -878,8 +880,8 @@ Pipeline commands:
         help='Input file (CSV, parquet) or directory with observations.parquet',
     )
     run_parser.add_argument(
-        '--output', '-o', default='./engines_output',
-        help='Output directory for parquet files (default: ./engines_output)',
+        '--output', '-o', default=None,
+        help='Output directory for parquet files (default: <input_dir>/output)',
     )
     run_parser.add_argument(
         '--manifest', '-m', default=None,
@@ -990,7 +992,6 @@ Pipeline commands:
         'ftle-backward': 'Backward FTLE / attracting structures (stage 17)',
         'segment-comparison': 'Per-segment geometry deltas (stage 18)',
         'info-flow-delta': 'Per-segment Granger deltas (stage 19)',
-        'geometry-full': 'Expanding window eigendecomp trajectory (stage 20)',
         'velocity-field': 'State-space velocity field (stage 21)',
         'ftle-rolling': 'Rolling FTLE stability evolution (stage 22)',
         'ridge-proximity': 'Urgency = velocity toward FTLE ridge (stage 23)',
