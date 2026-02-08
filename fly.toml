@@ -1,19 +1,23 @@
-# fly.toml — Orthon Engines
-app = "orthon-engines"
-primary_region = "ord"  # Chicago
+# fly.toml app configuration file generated for orthon-engines-wild-dawn-5157 on 2026-02-07T22:37:58-05:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'orthon-engines-wild-dawn-5157'
+primary_region = 'ord'
 
 [build]
 
 [env]
-  ORTHON_DEV = "true"  # Set to "false" in production to hide dev_code
+  ORTHON_DEV = 'true'
 
 [http_service]
   internal_port = 8080
   force_https = true
-  auto_stop_machines = "stop"
+  auto_stop_machines = 'stop'
   auto_start_machines = true
   min_machines_running = 0
 
 [[vm]]
-  size = "shared-cpu-1x"
-  memory = "512mb"
+  size = 'shared-cpu-1x'
+  memory = '512mb'
