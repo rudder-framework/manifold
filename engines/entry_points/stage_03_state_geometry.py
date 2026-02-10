@@ -136,6 +136,8 @@ def compute_state_geometry(
 
     # Process each group
     results = []
+    loading_rows = []  # Narrow sidecar for signal loadings
+    feature_loading_rows = []  # Narrow sidecar for feature (PC1) loadings
     groups = signal_vector.group_by(group_cols, maintain_order=True)
     n_groups = signal_vector.select(group_cols).unique().height
 
@@ -272,29 +274,39 @@ def compute_state_geometry(
 
                 row['eigenvector_flip_count'] = flip_count
 
-                # Store per-signal loadings on PC1, PC2 (backward compat)
-                for sig_idx, sig_id in enumerate(signal_ids[:len(signal_loadings)]):
-                    if sig_idx < len(signal_loadings):
-                        row[f'pc1_signal_{sig_id}'] = float(signal_loadings[sig_idx, 0])
-                        if signal_loadings.shape[1] > 1:
-                            row[f'pc2_signal_{sig_id}'] = float(signal_loadings[sig_idx, 1])
-
-                # Eigenvector columns for visualization projection (top 3 PCs)
+                # Collect per-signal loadings into narrow sidecar (not wide columns)
                 n_pcs = min(3, signal_loadings.shape[1])
-                for pc in range(n_pcs):
-                    for sig_idx, sig_id in enumerate(signal_ids[:len(signal_loadings)]):
-                        row[f'ev{pc+1}_{sig_id}'] = float(signal_loadings[sig_idx, pc])
+                for sig_idx, sig_id in enumerate(signal_ids[:len(signal_loadings)]):
+                    loading_row = {
+                        'I': I,
+                        'engine': engine_name,
+                        'signal_id': sig_id,
+                        'pc1_loading': float(signal_loadings[sig_idx, 0]),
+                        'pc2_loading': float(signal_loadings[sig_idx, 1]) if signal_loadings.shape[1] > 1 else None,
+                        'pc3_loading': float(signal_loadings[sig_idx, 2]) if signal_loadings.shape[1] > 2 else None,
+                    }
+                    if cohort:
+                        loading_row['cohort'] = cohort
+                    loading_rows.append(loading_row)
 
                 # Store signal_ids list for reference
                 row['signal_ids'] = ','.join(signal_ids)
 
-            # Feature loadings on PC1 (principal_components: D x D, first row = PC1)
+            # Feature loadings on PC1 → narrow sidecar (not wide columns)
             principal_components = eigen_result.get('principal_components')
             if principal_components is not None and len(available) > 0:
                 pc1_loadings = principal_components[0] if len(principal_components) > 0 else None
                 if pc1_loadings is not None:
                     for feat_idx, feat_name in enumerate(available[:len(pc1_loadings)]):
-                        row[f'pc1_feat_{feat_name}'] = float(pc1_loadings[feat_idx])
+                        feat_row = {
+                            'I': I,
+                            'engine': engine_name,
+                            'feature': feat_name,
+                            'pc1_loading': float(pc1_loadings[feat_idx]),
+                        }
+                        if cohort:
+                            feat_row['cohort'] = cohort
+                        feature_loading_rows.append(feat_row)
 
             results.append(row)
 
@@ -305,6 +317,22 @@ def compute_state_geometry(
     result = pl.DataFrame(results)
     result.write_parquet(output_path)
 
+    # Write signal loadings sidecar file (narrow schema)
+    if loading_rows:
+        loadings_df = pl.DataFrame(loading_rows)
+        loadings_path = str(Path(output_path).parent / 'state_geometry_loadings.parquet')
+        loadings_df.write_parquet(loadings_path)
+        if verbose:
+            print(f"Signal loadings sidecar: {loadings_df.shape} → {loadings_path}")
+
+    # Write feature loadings sidecar file (narrow schema, replaces wide pc1_feat_* columns)
+    if feature_loading_rows:
+        feat_loadings_df = pl.DataFrame(feature_loading_rows)
+        feat_loadings_path = str(Path(output_path).parent / 'state_geometry_feature_loadings.parquet')
+        feat_loadings_df.write_parquet(feat_loadings_path)
+        if verbose:
+            print(f"Feature loadings sidecar: {feat_loadings_df.shape} → {feat_loadings_path}")
+
     if verbose:
         print(f"\nShape: {result.shape}")
         print()
@@ -313,12 +341,13 @@ def compute_state_geometry(
         print("─" * 50)
 
         # Summary per engine
-        for engine_name in feature_groups.keys():
-            engine_data = result.filter(pl.col('engine') == engine_name)
-            if len(engine_data) > 0:
-                print(f"\n{engine_name} engine:")
-                print(f"  effective_dim: mean={engine_data['effective_dim'].mean():.2f}, "
-                      f"std={engine_data['effective_dim'].std():.2f}")
+        if len(result) > 0 and 'engine' in result.columns:
+            for engine_name in feature_groups.keys():
+                engine_data = result.filter(pl.col('engine') == engine_name)
+                if len(engine_data) > 0:
+                    print(f"\n{engine_name} engine:")
+                    print(f"  effective_dim: mean={engine_data['effective_dim'].mean():.2f}, "
+                          f"std={engine_data['effective_dim'].std():.2f}")
 
     return result
 

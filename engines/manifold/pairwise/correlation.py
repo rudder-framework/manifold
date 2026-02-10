@@ -146,13 +146,13 @@ def compute_mutual_info(
     valid = ~(np.isnan(x) | np.isnan(y))
     x, y = x[valid], y[valid]
     
-    if len(x) < n_bins * 2:
+    if len(x) < n_bins + 2:
         return {
             'mutual_info': np.nan,
             'normalized_mi': np.nan,
         }
     
-    mi = _mutual_info(x, y, n_bins=n_bins)
+    mi = _mutual_info(x, y, bins=n_bins)
     
     # Normalize by entropy
     # MI / sqrt(H(X) * H(Y)) for normalized measure

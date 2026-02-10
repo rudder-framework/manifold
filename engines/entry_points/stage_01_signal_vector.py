@@ -509,6 +509,10 @@ def _compute_single_signal(
             window_data = signal_data[window_start:window_end + 1]
 
             for engine in engine_list:
+                min_required = get_engine_min_samples(engine)
+                if len(window_data) < min_required:
+                    row.update(null_output_for_engine(engine))
+                    continue
                 try:
                     engine_output = run_engine(engine, window_data)
                     row.update(engine_output)
@@ -716,6 +720,16 @@ def run(
         obs, manifest, verbose=verbose, output_path=output_path,
         window_factors=window_factors
     )
+
+    # Replace infinities with null in all float columns
+    float_cols = [c for c in df.columns if df[c].dtype in [pl.Float64, pl.Float32]]
+    for col in float_cols:
+        df = df.with_columns(
+            pl.when(pl.col(col).is_infinite())
+            .then(None)
+            .otherwise(pl.col(col))
+            .alias(col)
+        )
 
     # Always write output (overwrite if exists)
     df.write_parquet(output_path)

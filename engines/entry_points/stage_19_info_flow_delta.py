@@ -190,12 +190,18 @@ def run(
         print("=" * 70)
         print(f"  min_samples={min_samples} (adaptive from max_lag={max_lag})")
 
+    # Load observations
+    obs = pl.read_parquet(observations_path)
+
     if segments is None or len(segments) < 2:
+        # Percentage-based default: 20% pre, 80% post (per-cohort adaptive)
+        i_max = int(obs['I'].max())
+        split_i = max(int(i_max * 0.20), min_samples)
         if verbose:
-            print("Warning: Need at least 2 segments. Using default split at I=20.")
+            print(f"No segments specified. Using 20/80 split at I={split_i} (i_max={i_max})")
         segments = [
-            {'name': 'pre', 'range': [0, 19]},
-            {'name': 'post', 'range': [20, None]},
+            {'name': 'pre', 'range': [0, split_i]},
+            {'name': 'post', 'range': [split_i + 1, None]},
         ]
 
     if verbose:
@@ -203,9 +209,6 @@ def run(
         for seg in segments:
             end = seg['range'][1] if seg['range'][1] is not None else 'end'
             print(f"  {seg['name']}: I in [{seg['range'][0]}, {end}]")
-
-    # Load observations
-    obs = pl.read_parquet(observations_path)
 
     if verbose:
         print(f"\nLoaded observations: {obs.shape}")
