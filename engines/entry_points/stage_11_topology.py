@@ -135,11 +135,36 @@ def run(
     results = []
 
     if group_cols:
+        # Compute per-cohort correlation threshold (across all I windows in cohort)
+        # so edge count varies across windows instead of being constant
+        cohort_thresholds = {}
+        if 'cohort' in group_cols:
+            for cohort_key, cohort_group in sv.group_by('cohort', maintain_order=True):
+                cohort_name = cohort_key[0] if isinstance(cohort_key, tuple) else cohort_key
+                matrix = cohort_group.select(feature_cols).to_numpy()
+                matrix_filled = np.where(np.isfinite(matrix), matrix, 0.0)
+                corr = np.corrcoef(matrix_filled.T)
+                np.fill_diagonal(corr, 0)
+                upper_tri = np.abs(corr[np.triu_indices_from(corr, k=1)])
+                finite_vals = upper_tri[np.isfinite(upper_tri)]
+                if len(finite_vals) > 0:
+                    cohort_thresholds[cohort_name] = float(np.percentile(finite_vals, 90))
+                else:
+                    cohort_thresholds[cohort_name] = 0.5
+
         groups = sv.group_by(group_cols, maintain_order=True)
         for group_key, group in groups:
             matrix = group.select(feature_cols).to_numpy()
 
-            result = compute_basic_topology(matrix.T, threshold=adaptive_threshold)  # Transpose for signals x features
+            # Use cohort-level threshold if available
+            if 'cohort' in group_cols and cohort_thresholds:
+                cohort_idx = group_cols.index('cohort')
+                cohort_name = group_key[cohort_idx] if isinstance(group_key, tuple) else group_key
+                threshold = cohort_thresholds.get(cohort_name)
+            else:
+                threshold = adaptive_threshold
+
+            result = compute_basic_topology(matrix.T, threshold=threshold)  # Transpose for signals x features
 
             if isinstance(group_key, tuple):
                 for i, col in enumerate(group_cols):

@@ -105,19 +105,28 @@ def compute(
     # Step 2: Fit each copula family
     results = {}
 
-    if "gaussian" in families:
-        results["gaussian"] = _fit_gaussian(u1, u2, kendall_tau)
-
-    if "clayton" in families:
-        results["clayton"] = _fit_clayton(u1, u2, kendall_tau)
-
-    if "gumbel" in families:
-        results["gumbel"] = _fit_gumbel(u1, u2, kendall_tau)
-
-    if "frank" in families:
-        results["frank"] = _fit_frank(u1, u2, kendall_tau)
+    for family in families:
+        try:
+            if family == "gaussian":
+                results["gaussian"] = _fit_gaussian(u1, u2, kendall_tau)
+            elif family == "clayton":
+                results["clayton"] = _fit_clayton(u1, u2, kendall_tau)
+            elif family == "gumbel":
+                results["gumbel"] = _fit_gumbel(u1, u2, kendall_tau)
+            elif family == "frank":
+                results["frank"] = _fit_frank(u1, u2, kendall_tau)
+        except Exception:
+            pass
 
     # Step 3: Select best by AIC
+    if not results:
+        result = _empty_result(n, reason="all_families_failed")
+        result["kendall_tau"] = float(kendall_tau)
+        result["spearman_rho"] = float(spearman_rho)
+        result["empirical_lower_tail"] = float(empirical_lower)
+        result["empirical_upper_tail"] = float(empirical_upper)
+        return result
+
     best_family = None
     best_aic = np.inf
     best_param = float("nan")
@@ -458,7 +467,8 @@ def _frank_tau_from_theta(theta: float) -> float:
     # Approximate via numerical integration
     t = np.linspace(0.01, theta, 100)
     integrand = t / (np.exp(t) - 1.0)
-    D1 = np.trapz(integrand, t) / theta
+    _trapz = getattr(np, 'trapezoid', getattr(np, 'trapz', None))
+    D1 = _trapz(integrand, t) / theta
 
     return 1.0 - 4.0 / theta * (1.0 - D1)
 

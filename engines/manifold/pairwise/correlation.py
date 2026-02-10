@@ -152,7 +152,7 @@ def compute_mutual_info(
             'normalized_mi': np.nan,
         }
     
-    mi = _mutual_info(x, y, n_bins=n_bins)
+    mi = _mutual_info(x, y, bins=n_bins)
     
     # Normalize by entropy
     # MI / sqrt(H(X) * H(Y)) for normalized measure

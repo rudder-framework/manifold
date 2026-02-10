@@ -721,6 +721,16 @@ def run(
         window_factors=window_factors
     )
 
+    # Replace infinities with null in all float columns
+    float_cols = [c for c in df.columns if df[c].dtype in [pl.Float64, pl.Float32]]
+    for col in float_cols:
+        df = df.with_columns(
+            pl.when(pl.col(col).is_infinite())
+            .then(None)
+            .otherwise(pl.col(col))
+            .alias(col)
+        )
+
     # Always write output (overwrite if exists)
     df.write_parquet(output_path)
 

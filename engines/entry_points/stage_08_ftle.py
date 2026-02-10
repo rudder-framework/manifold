@@ -132,8 +132,8 @@ def run(
                     ftle_pre = compute_ftle(pre_values_comp, min_samples=min(min_samples, 50), method=method) if len(pre_values) >= 20 else {'ftle': None, 'ftle_std': None, 'confidence': 0}
                     ftle_post = compute_ftle(post_values_comp, min_samples=min_samples, method=method) if len(post_values) >= min_samples else {'ftle': None, 'ftle_std': None, 'confidence': 0}
 
-                    # Use appropriate column prefix for forward/backward
-                    prefix = 'ftle_bwd' if backward else 'ftle'
+                    # Always use 'ftle' column name — direction column distinguishes
+                    prefix = 'ftle'
                     ftle_val = ftle_full['ftle']
                     if ftle_val is not None:
                         stability = classify_stability(ftle_val).value
@@ -172,7 +172,7 @@ def run(
                         method=method,
                     )
 
-                    prefix = 'ftle_bwd' if backward else 'ftle'
+                    prefix = 'ftle'
                     ftle_val = ftle_result['ftle']
                     if ftle_val is not None:
                         stability = classify_stability(ftle_val).value
@@ -207,7 +207,7 @@ def run(
                 method=method,
             )
 
-            prefix = 'ftle_bwd' if backward else 'ftle'
+            prefix = 'ftle'
             ftle_val = ftle_result['ftle']
             if ftle_val is not None:
                 stability = classify_stability(ftle_val).value
@@ -241,15 +241,14 @@ def run(
         print(f"\nSaved: {output_path}")
         print(f"Shape: {result.shape}")
 
-        col_name = 'ftle_bwd' if backward else 'ftle'
-        if len(result) > 0 and col_name in result.columns:
-            valid = result.filter(pl.col(col_name).is_not_null())
+        if len(result) > 0 and 'ftle' in result.columns:
+            valid = result.filter(pl.col('ftle').is_not_null())
             if len(valid) > 0:
                 label = "Backward FTLE" if backward else "Forward FTLE"
                 print(f"\n{label} stats (n={len(valid)}):")
-                print(f"  Mean: {valid[col_name].mean():.4f}")
-                print(f"  Std:  {valid[col_name].std():.4f}")
-                print(f"  Range: [{valid[col_name].min():.4f}, {valid[col_name].max():.4f}]")
+                print(f"  Mean: {valid['ftle'].mean():.4f}")
+                print(f"  Std:  {valid['ftle'].std():.4f}")
+                print(f"  Range: [{valid['ftle'].min():.4f}, {valid['ftle'].max():.4f}]")
 
         print()
         print("─" * 50)
@@ -318,31 +317,13 @@ def run_bidirectional(
         direction='backward',
     )
 
-    # Merge forward and backward
-    join_cols = ['signal_id']
-    if 'cohort' in fwd.columns:
-        join_cols.append('cohort')
+    # Merge forward and backward into single DataFrame via vstack
+    # Both have same schema with 'ftle' column — 'direction' column distinguishes
+    common_cols = sorted(set(fwd.columns) & set(bwd.columns))
+    combined = pl.concat([fwd.select(common_cols), bwd.select(common_cols)], how='vertical')
 
-    # Select backward columns to merge (avoid duplicates)
-    bwd_cols = [c for c in bwd.columns if c.startswith('ftle_bwd')]
-    bwd_select = join_cols + bwd_cols
-
-    combined = fwd.join(bwd.select(bwd_select), on=join_cols, how='left')
-
-    # Compute LCS metrics
-    ftle_col = 'ftle'
-    bwd_col = 'ftle_bwd'
-
-    if ftle_col in combined.columns and bwd_col in combined.columns:
-        combined = combined.with_columns([
-            # LCS strength: total stretching
-            (pl.col(ftle_col) + pl.col(bwd_col)).alias('lcs_strength'),
-            # Asymmetry: positive = more repelling, negative = more attracting
-            (pl.col(ftle_col) - pl.col(bwd_col)).alias('ftle_asymmetry'),
-        ])
-
-    # Save bidirectional result
-    output_path = output_dir / 'ftle_bidirectional.parquet'
+    # Save merged result
+    output_path = output_dir / 'ftle.parquet'
     combined.write_parquet(output_path)
 
     if verbose:
@@ -351,15 +332,15 @@ def run_bidirectional(
         print("BIDIRECTIONAL FTLE COMPLETE")
         print("=" * 70)
         print(f"Saved: {output_path}")
+        print(f"Shape: {combined.shape} (forward + backward)")
 
-        if 'lcs_strength' in combined.columns:
-            valid = combined.filter(pl.col('lcs_strength').is_not_null())
+        for dir_name in ['forward', 'backward']:
+            subset = combined.filter(pl.col('direction') == dir_name)
+            valid = subset.filter(pl.col('ftle').is_not_null())
             if len(valid) > 0:
-                print(f"\nLCS metrics (n={len(valid)}):")
-                print(f"  Forward FTLE:  mean={valid[ftle_col].mean():.4f}")
-                print(f"  Backward FTLE: mean={valid[bwd_col].mean():.4f}")
-                print(f"  LCS Strength:  mean={valid['lcs_strength'].mean():.4f}")
-                print(f"  Asymmetry:     mean={valid['ftle_asymmetry'].mean():.4f}")
+                print(f"\n{dir_name.title()} FTLE stats (n={len(valid)}):")
+                print(f"  Mean: {valid['ftle'].mean():.4f}")
+                print(f"  Std:  {valid['ftle'].std():.4f}")
 
     return combined
 

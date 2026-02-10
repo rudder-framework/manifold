@@ -137,6 +137,7 @@ def compute_state_geometry(
     # Process each group
     results = []
     loading_rows = []  # Narrow sidecar for signal loadings
+    feature_loading_rows = []  # Narrow sidecar for feature (PC1) loadings
     groups = signal_vector.group_by(group_cols, maintain_order=True)
     n_groups = signal_vector.select(group_cols).unique().height
 
@@ -291,13 +292,21 @@ def compute_state_geometry(
                 # Store signal_ids list for reference
                 row['signal_ids'] = ','.join(signal_ids)
 
-            # Feature loadings on PC1 (principal_components: D x D, first row = PC1)
+            # Feature loadings on PC1 → narrow sidecar (not wide columns)
             principal_components = eigen_result.get('principal_components')
             if principal_components is not None and len(available) > 0:
                 pc1_loadings = principal_components[0] if len(principal_components) > 0 else None
                 if pc1_loadings is not None:
                     for feat_idx, feat_name in enumerate(available[:len(pc1_loadings)]):
-                        row[f'pc1_feat_{feat_name}'] = float(pc1_loadings[feat_idx])
+                        feat_row = {
+                            'I': I,
+                            'engine': engine_name,
+                            'feature': feat_name,
+                            'pc1_loading': float(pc1_loadings[feat_idx]),
+                        }
+                        if cohort:
+                            feat_row['cohort'] = cohort
+                        feature_loading_rows.append(feat_row)
 
             results.append(row)
 
@@ -308,13 +317,21 @@ def compute_state_geometry(
     result = pl.DataFrame(results)
     result.write_parquet(output_path)
 
-    # Write loadings sidecar file (narrow schema)
+    # Write signal loadings sidecar file (narrow schema)
     if loading_rows:
         loadings_df = pl.DataFrame(loading_rows)
         loadings_path = str(Path(output_path).parent / 'state_geometry_loadings.parquet')
         loadings_df.write_parquet(loadings_path)
         if verbose:
-            print(f"Loadings sidecar: {loadings_df.shape} → {loadings_path}")
+            print(f"Signal loadings sidecar: {loadings_df.shape} → {loadings_path}")
+
+    # Write feature loadings sidecar file (narrow schema, replaces wide pc1_feat_* columns)
+    if feature_loading_rows:
+        feat_loadings_df = pl.DataFrame(feature_loading_rows)
+        feat_loadings_path = str(Path(output_path).parent / 'state_geometry_feature_loadings.parquet')
+        feat_loadings_df.write_parquet(feat_loadings_path)
+        if verbose:
+            print(f"Feature loadings sidecar: {feat_loadings_df.shape} → {feat_loadings_path}")
 
     if verbose:
         print(f"\nShape: {result.shape}")

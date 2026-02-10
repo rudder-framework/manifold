@@ -62,7 +62,7 @@ STAGE_DEPS = {
     'stage_06_signal_pairwise': ['signal_vector.parquet', 'state_vector.parquet'],
     'stage_07_geometry_dynamics': ['state_geometry.parquet'],
     'stage_08_ftle': ['observations.parquet'],
-    'stage_09_dynamics': ['ftle.parquet'],
+    'stage_09_dynamics': [],  # Skipped — merged into stage_08
     'stage_10_information_flow': ['signal_pairwise.parquet'],
     'stage_11_topology': ['state_geometry.parquet', 'dynamics.parquet'],
     'stage_12_zscore': [],  # Reads from output_dir
@@ -246,15 +246,11 @@ def run(
                 )
 
             elif stage_num == '09':
-                # Dynamics - thin wrapper that delegates to stage_08 (forward FTLE + stability)
-                obs_path = manifest_path.parent / manifest['paths']['observations']
-                intervention = manifest.get('intervention')
-                module.run(
-                    str(obs_path),
-                    str(output_dir / 'dynamics.parquet'),
-                    verbose=verbose,
-                    intervention=intervention,
-                )
+                # Dynamics is now redundant — stage_08 already includes stability.
+                # Skip to avoid writing a duplicate of ftle.parquet.
+                if verbose:
+                    print("  Skipped (merged into stage_08 ftle.parquet)")
+                continue
 
             elif stage_num == '10':
                 # Information flow - uses signal_pairwise for Granger gating + observations for time series
@@ -315,15 +311,26 @@ def run(
 
             elif stage_num == '17':
                 # Backward FTLE - attracting structures
+                # Compute backward, then merge into ftle.parquet alongside forward
+                import polars as _pl
                 obs_path = manifest_path.parent / manifest['paths']['observations']
                 intervention = manifest.get('intervention')
-                module.run(
+                bwd = module.run(
                     str(obs_path),
                     str(output_dir / 'ftle_backward.parquet'),
                     verbose=verbose,
                     intervention=intervention,
                     direction='backward',
                 )
+                # Merge backward into ftle.parquet if forward exists
+                ftle_path = output_dir / 'ftle.parquet'
+                if ftle_path.exists() and len(bwd) > 0:
+                    fwd = _pl.read_parquet(str(ftle_path))
+                    common_cols = sorted(set(fwd.columns) & set(bwd.columns))
+                    merged = _pl.concat([fwd.select(common_cols), bwd.select(common_cols)], how='vertical')
+                    merged.write_parquet(str(ftle_path))
+                    if verbose:
+                        print(f"  Merged into ftle.parquet: {merged.shape} (forward + backward)")
 
             elif stage_num == '18':
                 # Segment comparison - per-segment geometry
