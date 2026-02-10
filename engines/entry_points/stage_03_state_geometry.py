@@ -193,10 +193,10 @@ def compute_state_geometry(
             valid_rows = np.isfinite(matrix).all(axis=1)
             matrix_clean = matrix[valid_rows]
 
-            # Guard: need more rows than features for meaningful eigendecomposition
-            if len(matrix_clean) < len(available) + 1:
+            # Guard: need at least 2 signals for eigendecomposition (variance requires N>=2)
+            if len(matrix_clean) < 2:
                 if verbose and i == 0:
-                    print(f"  Skipping {engine_name} at I={I}: only {len(matrix_clean)} valid rows for {len(available)} features")
+                    print(f"  Skipping {engine_name} at I={I}: only {len(matrix_clean)} valid rows (need >=2)")
                 continue
 
             # Guard: skip if any column is constant (zero variance → degenerate SVD)
