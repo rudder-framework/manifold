@@ -242,9 +242,15 @@ def run(
     # that may be null in early rows)
     result = pl.DataFrame(results, infer_schema_length=len(results)) if results else pl.DataFrame()
 
-    # Post-process: replace all inf values with null in float columns
+    # Post-process: replace inf with null in float columns EXCEPT sentinel columns.
+    # half_life uses inf as sentinel for "no decay detected" (not mean-reverting).
     if len(result) > 0:
-        float_cols = [c for c in result.columns if result[c].dtype in [pl.Float64, pl.Float32]]
+        sentinel_cols = {'half_life'}  # inf is meaningful for these columns
+        float_cols = [
+            c for c in result.columns
+            if result[c].dtype in [pl.Float64, pl.Float32]
+            and c not in sentinel_cols
+        ]
         for col in float_cols:
             result = result.with_columns(
                 pl.when(pl.col(col).is_infinite())

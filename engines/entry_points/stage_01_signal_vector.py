@@ -761,18 +761,28 @@ def run(
                       'window_size', 'cohort'}
     n_rows = len(df)
     if n_rows > 0:
-        # Phase 1: Drop columns >90% null globally (universally broken engines)
+        # Helper: count "dead" values (null OR NaN) for a column
+        def dead_count(col_name: str) -> int:
+            col = df[col_name]
+            null_cnt = col.null_count()
+            # For float columns, also count NaN values
+            if col.dtype in [pl.Float64, pl.Float32]:
+                nan_cnt = col.is_nan().sum()
+                return null_cnt + nan_cnt
+            return null_cnt
+
+        # Phase 1: Drop columns >90% dead globally (universally broken engines)
         dead_cols = [
             c for c in df.columns
             if c not in meta_cols_keep
-            and df[c].null_count() / n_rows > 0.90
+            and dead_count(c) / n_rows > 0.90
         ]
         if dead_cols:
             if verbose:
-                print(f"  Pruning {len(dead_cols)} dead columns (>90% null)")
+                print(f"  Pruning {len(dead_cols)} dead columns (>90% null/NaN): {dead_cols}")
             df = df.drop(dead_cols)
 
-        # Phase 2: Drop columns 100% null for any signal (engine not applicable
+        # Phase 2: Drop columns 100% dead for any signal (engine not applicable
         # to that signal type — e.g. trend engines on broadband signals).
         # Different signal types have different engine sets in the manifest.
         # The wide format creates null columns for inapplicable engines.
@@ -787,7 +797,13 @@ def run(
                     if sig_n == 0:
                         continue
                     for c in feature_cols:
-                        if c not in inapplicable and sig_df[c].null_count() == sig_n:
+                        if c in inapplicable:
+                            continue
+                        col = sig_df[c]
+                        dead_cnt = col.null_count()
+                        if col.dtype in [pl.Float64, pl.Float32]:
+                            dead_cnt += col.is_nan().sum()
+                        if dead_cnt == sig_n:
                             inapplicable.add(c)
                 if inapplicable:
                     if verbose:
