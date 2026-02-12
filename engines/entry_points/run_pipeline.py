@@ -45,6 +45,7 @@ ADVANCED_STAGES = [
     'stage_17_ftle_backward',      # Backward FTLE (attracting structures)
     'stage_18_segment_comparison', # Per-segment geometry deltas
     'stage_19_info_flow_delta',    # Per-segment Granger deltas
+    'stage_20_sensor_eigendecomp', # Rolling sensor eigendecomp (dimensional collapse)
     'stage_21_velocity_field',     # State-space velocity: direction, speed, curvature
     'stage_22_ftle_rolling',       # FTLE at each timestep
     'stage_23_ridge_proximity',    # Urgency = velocity toward FTLE ridge
@@ -82,6 +83,7 @@ STAGE_DEPS = {
     'stage_17_ftle_backward': ['observations.parquet'],
     'stage_18_segment_comparison': ['observations.parquet'],
     'stage_19_info_flow_delta': ['observations.parquet'],
+    'stage_20_sensor_eigendecomp': ['observations.parquet'],
     'stage_21_velocity_field': ['observations.parquet'],
     'stage_22_ftle_rolling': ['observations.parquet'],
     'stage_23_ridge_proximity': ['ftle_rolling.parquet', 'velocity_field.parquet'],
@@ -395,6 +397,19 @@ def run(
                     verbose=verbose,
                 )
 
+            elif stage_num == '20':
+                # Rolling sensor eigendecomposition (2-level)
+                obs_path = manifest_path.parent / manifest['paths']['observations']
+                se_config = manifest.get('sensor_eigendecomp', {})
+                module.run(
+                    str(obs_path),
+                    str(output_dir / 'sensor_eigendecomp.parquet'),
+                    agg_window=se_config.get('agg_window', 30),
+                    agg_stride=se_config.get('agg_stride', 5),
+                    lookback=se_config.get('lookback', 30),
+                    verbose=verbose,
+                )
+
             elif stage_num == '21':
                 # Velocity field - state-space motion
                 obs_path = manifest_path.parent / manifest['paths']['observations']
@@ -592,6 +607,7 @@ Advanced (opt-in via --stages 15,16,...,32 or `python -m engines atlas`):
   17: ftle_backward      - Backward FTLE (attracting structures)
   18: segment_comparison - Per-segment geometry with deltas
   19: info_flow_delta    - Per-segment Granger with link changes
+  20: sensor_eigendecomp - Rolling sensor eigendecomp (dimensional collapse)
   21: velocity_field     - State-space velocity: direction, speed, curvature
   22: ftle_rolling       - FTLE at each timestep (stability evolution)
   23: ridge_proximity    - Urgency = velocity toward FTLE ridge
