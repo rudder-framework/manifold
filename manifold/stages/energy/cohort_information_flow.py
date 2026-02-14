@@ -25,6 +25,7 @@ from manifold.primitives.pairwise.distance import dynamic_time_warping
 from manifold.core.pairwise.correlation import compute_mutual_info
 from manifold.primitives.information.divergence import kl_divergence, js_divergence
 from manifold.core.pairwise import cointegration, copula
+from manifold.io.writer import write_output
 
 
 def _compute_pair(cohort_a: str, cohort_b: str, x: np.ndarray, y: np.ndarray) -> dict:
@@ -111,7 +112,7 @@ def _compute_pair(cohort_a: str, cohort_b: str, x: np.ndarray, y: np.ndarray) ->
 def run(
     cohort_vector_path: str,
     cohort_pairwise_path: str,
-    output_path: str = "cohort_information_flow.parquet",
+    data_path: str = ".",
     min_samples: int = 20,
     verbose: bool = True,
 ) -> pl.DataFrame:
@@ -121,7 +122,7 @@ def run(
     Args:
         cohort_vector_path: Path to cohort_vector.parquet
         cohort_pairwise_path: Path to cohort_pairwise.parquet
-        output_path: Output path for cohort_information_flow.parquet
+        data_path: Root data directory (for write_output)
         min_samples: Minimum samples per cohort trajectory (default: 20, low for short series)
         verbose: Print progress
 
@@ -144,8 +145,9 @@ def run(
     if len(cv) == 0 or len(pairwise) == 0:
         if verbose:
             print("  Empty input — skipping")
-        pl.DataFrame().write_parquet(output_path)
-        return pl.DataFrame()
+        result = pl.DataFrame()
+        write_output(result, data_path, 'cohort_information_flow', verbose=verbose)
+        return result
 
     # Find the primary scalar column
     scalar_col = None
@@ -161,8 +163,9 @@ def run(
         else:
             if verbose:
                 print("  No effective_dim column found — skipping")
-            pl.DataFrame().write_parquet(output_path)
-            return pl.DataFrame()
+            result = pl.DataFrame()
+            write_output(result, data_path, 'cohort_information_flow', verbose=verbose)
+            return result
 
     if verbose:
         print(f"Primary scalar: {scalar_col}")
@@ -184,8 +187,9 @@ def run(
     if n_granger == 0:
         if verbose:
             print("  No pairs flagged — skipping")
-        pl.DataFrame().write_parquet(output_path)
-        return pl.DataFrame()
+        result = pl.DataFrame()
+        write_output(result, data_path, 'cohort_information_flow', verbose=verbose)
+        return result
 
     # Build per-cohort trajectories (scalar over I)
     cohort_trajectories = {}
@@ -240,17 +244,13 @@ def run(
                 .alias(col)
             )
 
-    result.write_parquet(output_path)
+    write_output(result, data_path, 'cohort_information_flow', verbose=verbose)
 
     if verbose:
-        print(f"\nShape: {result.shape}")
+        print(f"Shape: {result.shape}")
         if len(result) > 0 and 'granger_f_a_to_b' in result.columns:
             valid = result.filter(pl.col('granger_f_a_to_b').is_not_null())
             print(f"  Granger computed: {len(valid)} pairs")
-        print()
-        print("-" * 50)
-        print(f"  {Path(output_path).absolute()}")
-        print("-" * 50)
 
     return result
 
@@ -273,8 +273,8 @@ Example:
     )
     parser.add_argument('cohort_vector', help='Path to cohort_vector.parquet')
     parser.add_argument('cohort_pairwise', help='Path to cohort_pairwise.parquet')
-    parser.add_argument('-o', '--output', default='cohort_information_flow.parquet',
-                        help='Output path (default: cohort_information_flow.parquet)')
+    parser.add_argument('-d', '--data-path', default='.',
+                        help='Root data directory (default: .)')
     parser.add_argument('--min-samples', type=int, default=20,
                         help='Minimum samples per trajectory (default: 20)')
     parser.add_argument('-q', '--quiet', action='store_true', help='Suppress output')
@@ -284,7 +284,7 @@ Example:
     run(
         args.cohort_vector,
         args.cohort_pairwise,
-        args.output,
+        args.data_path,
         min_samples=args.min_samples,
         verbose=not args.quiet,
     )

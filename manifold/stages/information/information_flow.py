@@ -27,6 +27,7 @@ from manifold.primitives.pairwise.distance import dynamic_time_warping
 from manifold.core.pairwise.correlation import compute_mutual_info
 from manifold.primitives.information.divergence import kl_divergence, js_divergence
 from manifold.core.pairwise import cointegration, copula
+from manifold.io.writer import write_output
 
 
 def _compute_pair(args):
@@ -115,7 +116,7 @@ def _compute_pair(args):
 def run(
     observations_path: str,
     signal_pairwise_path: str,
-    output_path: str = "information_flow.parquet",
+    data_path: str = ".",
     signal_column: str = 'signal_id',
     value_column: str = 'value',
     index_column: str = 'I',
@@ -173,7 +174,7 @@ def run(
         if verbose:
             print("No pairs flagged for Granger causality")
         result = pl.DataFrame()
-        result.write_parquet(output_path)
+        write_output(result, data_path, 'information_flow', verbose=verbose)
         return result
 
     # Determine cohorts
@@ -258,21 +259,15 @@ def run(
                 .otherwise(pl.col(col))
                 .alias(col)
             )
-        result.write_parquet(output_path)
+        write_output(result, data_path, 'information_flow', verbose=verbose)
 
     if verbose:
-        print(f"\nSaved: {output_path}")
         print(f"Shape: {result.shape}")
 
         if len(result) > 0 and 'granger_f_a_to_b' in result.columns:
             valid_granger = result.filter(pl.col('granger_f_a_to_b').is_not_null())
             if len(valid_granger) > 0:
                 print(f"\nGranger causality computed: {len(valid_granger)} pairs")
-
-        print()
-        print("─" * 50)
-        print(f"✓ {Path(output_path).absolute()}")
-        print("─" * 50)
 
     return result
 
@@ -296,8 +291,8 @@ Example:
     )
     parser.add_argument('observations', help='Path to observations.parquet')
     parser.add_argument('signal_pairwise', help='Path to signal_pairwise.parquet')
-    parser.add_argument('-o', '--output', default='information_flow.parquet',
-                        help='Output path (default: information_flow.parquet)')
+    parser.add_argument('-d', '--data-path', default='.',
+                        help='Root data directory (default: .)')
     parser.add_argument('--min-samples', type=int, default=100,
                         help='Minimum samples per signal (default: 100)')
     parser.add_argument('-q', '--quiet', action='store_true', help='Suppress output')
@@ -307,7 +302,7 @@ Example:
     run(
         args.observations,
         args.signal_pairwise,
-        args.output,
+        args.data_path,
         min_samples=args.min_samples,
         verbose=not args.quiet,
     )

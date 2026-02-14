@@ -37,6 +37,7 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional, Tuple
 
 from manifold.core.pairwise.causality import compute_granger
+from manifold.io.writer import write_output
 
 
 def _compute_cohort(args):
@@ -153,7 +154,7 @@ def _compute_cohort(args):
 
 def run(
     observations_path: str,
-    output_path: str = "info_flow_delta.parquet",
+    data_path: str = ".",
     segments: List[Dict[str, Any]] = None,
     max_lag: int = 5,
     min_samples: int = None,
@@ -167,7 +168,7 @@ def run(
 
     Args:
         observations_path: Path to observations.parquet
-        output_path: Output path for info_flow_delta.parquet
+        data_path: Root data directory (for write_output)
         segments: List of segment definitions
         max_lag: Maximum lag for Granger test
         min_samples: Minimum samples per segment for Granger test
@@ -272,10 +273,9 @@ def run(
             'link_status': pl.Utf8,
         })
 
-    result.write_parquet(output_path)
+    write_output(result, data_path, 'info_flow_delta', verbose=verbose)
 
     if verbose:
-        print(f"\nSaved: {output_path}")
         print(f"Shape: {result.shape}")
 
         if len(result) > 0:
@@ -283,11 +283,6 @@ def run(
             status_counts = result.group_by('link_status').agg(pl.len().alias('count')).sort('count', descending=True)
             for row in status_counts.iter_rows(named=True):
                 print(f"  {row['link_status']}: {row['count']}")
-
-        print()
-        print("─" * 50)
-        print(f"✓ {Path(output_path).absolute()}")
-        print("─" * 50)
 
     return result
 
@@ -343,8 +338,8 @@ Example:
 """
     )
     parser.add_argument('observations', help='Path to observations.parquet')
-    parser.add_argument('-o', '--output', default='info_flow_delta.parquet',
-                        help='Output path (default: info_flow_delta.parquet)')
+    parser.add_argument('-d', '--data-path', default='.',
+                        help='Root data directory (default: .)')
     parser.add_argument('--split-at', type=int, default=20,
                         help='I value to split at (default: 20)')
     parser.add_argument('--max-lag', type=int, default=5,
@@ -362,7 +357,7 @@ Example:
 
     run(
         args.observations,
-        args.output,
+        args.data_path,
         segments=segments,
         max_lag=args.max_lag,
         min_samples=args.min_samples,

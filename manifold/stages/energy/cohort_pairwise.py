@@ -20,10 +20,12 @@ from pathlib import Path
 from itertools import combinations
 from typing import Optional
 
+from manifold.io.writer import write_output
+
 
 def run(
     cohort_vector_path: str,
-    output_path: str = "cohort_pairwise.parquet",
+    data_path: str = ".",
     system_geometry_loadings_path: Optional[str] = None,
     pc_coloading_threshold: float = 0.3,
     verbose: bool = True,
@@ -33,7 +35,7 @@ def run(
 
     Args:
         cohort_vector_path: Path to cohort_vector.parquet
-        output_path: Output path for cohort_pairwise.parquet
+        data_path: Root data directory (for write_output)
         system_geometry_loadings_path: Optional path to system_geometry_loadings.parquet
         pc_coloading_threshold: Threshold for flagging needs_granger
         verbose: Print progress
@@ -55,8 +57,9 @@ def run(
     if len(cv) == 0:
         if verbose:
             print("  Empty cohort_vector — skipping")
-        pl.DataFrame().write_parquet(output_path)
-        return pl.DataFrame()
+        result = pl.DataFrame()
+        write_output(result, data_path, 'cohort_pairwise', verbose=verbose)
+        return result
 
     feature_cols = [c for c in cv.columns if c not in ['cohort', 'I']]
 
@@ -149,19 +152,15 @@ def run(
 
     result = pl.DataFrame(results, infer_schema_length=len(results)) if results else pl.DataFrame()
 
-    result.write_parquet(output_path)
+    write_output(result, data_path, 'cohort_pairwise', verbose=verbose)
 
     if verbose:
-        print(f"\nShape: {result.shape}")
+        print(f"Shape: {result.shape}")
         if len(result) > 0:
             print(f"  Mean distance: {result['distance'].mean():.4f}")
             if 'needs_granger' in result.columns:
                 n_granger = result.filter(pl.col('needs_granger') == True).height
                 print(f"  Pairs needing Granger: {n_granger}/{len(result)}")
-        print()
-        print("-" * 50)
-        print(f"  {Path(output_path).absolute()}")
-        print("-" * 50)
 
     return result
 
@@ -181,15 +180,15 @@ Example:
 """
     )
     parser.add_argument('cohort_vector', help='Path to cohort_vector.parquet')
-    parser.add_argument('-o', '--output', default='cohort_pairwise.parquet',
-                        help='Output path (default: cohort_pairwise.parquet)')
+    parser.add_argument('-d', '--data-path', default='.',
+                        help='Root data directory (default: .)')
     parser.add_argument('-q', '--quiet', action='store_true', help='Suppress output')
 
     args = parser.parse_args()
 
     run(
         args.cohort_vector,
-        args.output,
+        args.data_path,
         verbose=not args.quiet,
     )
 

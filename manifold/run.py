@@ -300,7 +300,7 @@ def _dispatch(
         module.run(
             _out(output_dir, 'signal_vector.parquet'),
             _out(output_dir, 'state_vector.parquet'),
-            _out(output_dir, 'signal_pairwise.parquet'),
+            data_path=data_path_str,
             state_geometry_path=_out(output_dir, 'state_geometry.parquet'),
             verbose=verbose,
         )
@@ -312,19 +312,20 @@ def _dispatch(
             module.run(
                 obs_path,
                 str(pairwise_file),
-                _out(output_dir, 'information_flow.parquet'),
+                data_path=data_path_str,
                 verbose=verbose,
             )
         else:
             if verbose:
                 print("  Skipped (empty signal_pairwise)")
-            _pl.DataFrame().write_parquet(_out(output_dir, 'information_flow.parquet'))
+            from manifold.io.writer import write_output as _write
+            _write(_pl.DataFrame(), data_path_str, 'information_flow', verbose=verbose)
 
     elif stage_name == 'segment_comparison':
         segments = _get_segments(manifest)
         module.run(
             obs_path,
-            _out(output_dir, 'segment_comparison.parquet'),
+            data_path=data_path_str,
             segments=segments,
             verbose=verbose,
         )
@@ -333,7 +334,7 @@ def _dispatch(
         segments = _get_segments(manifest)
         module.run(
             obs_path,
-            _out(output_dir, 'info_flow_delta.parquet'),
+            data_path=data_path_str,
             segments=segments,
             verbose=verbose,
         )
@@ -455,7 +456,7 @@ def _dispatch_fleet(
             loadings_path = output_dir / 'system_geometry_loadings.parquet'
         module.run(
             str(cv_path),
-            _out(output_dir, 'cohort_pairwise.parquet'),
+            data_path=data_path_str,
             system_geometry_loadings_path=str(loadings_path) if loadings_path.exists() else None,
             verbose=verbose,
         )
@@ -466,13 +467,14 @@ def _dispatch_fleet(
             module.run(
                 str(cv_path),
                 str(pairwise_path),
-                _out(output_dir, 'cohort_information_flow.parquet'),
+                data_path=data_path_str,
                 verbose=verbose,
             )
         else:
             if verbose:
                 print("  Skipped (empty cohort_pairwise)")
-            _pl.DataFrame().write_parquet(_out(output_dir, 'cohort_information_flow.parquet'))
+            from manifold.io.writer import write_output as _write
+            _write(_pl.DataFrame(), data_path_str, 'cohort_information_flow', verbose=verbose)
 
     elif stage_name == 'cohort_ftle':
         module.run(str(cv_path), data_path=data_path_str, verbose=verbose)

@@ -25,12 +25,13 @@ from pathlib import Path
 from typing import Optional
 
 from manifold.core.signal_pairwise import compute_signal_pairwise
+from manifold.io.reader import output_path as resolve_output_path
 
 
 def run(
     signal_vector_path: str,
     state_vector_path: str,
-    output_path: str = "signal_pairwise.parquet",
+    data_path: str = ".",
     state_geometry_path: Optional[str] = None,
     coloading_threshold: float = 0.1,
     verbose: bool = True,
@@ -41,7 +42,7 @@ def run(
     Args:
         signal_vector_path: Path to signal_vector.parquet
         state_vector_path: Path to state_vector.parquet
-        output_path: Output path for signal_pairwise.parquet
+        data_path: Root data directory (for write_output)
         state_geometry_path: Path to state_geometry.parquet (for PC gating)
         coloading_threshold: Threshold for PC co-loading to flag Granger
         verbose: Print progress
@@ -55,20 +56,15 @@ def run(
         print("Pairwise relationships with eigenvector gating")
         print("=" * 70)
 
+    out = str(resolve_output_path(data_path, 'signal_pairwise'))
     result = compute_signal_pairwise(
         signal_vector_path,
         state_vector_path,
-        output_path,
+        out,
         state_geometry_path=state_geometry_path,
         coloading_threshold=coloading_threshold,
         verbose=verbose,
     )
-
-    if verbose:
-        print()
-        print("─" * 50)
-        print(f"✓ {Path(output_path).absolute()}")
-        print("─" * 50)
 
     return result
 
@@ -96,8 +92,8 @@ Example:
     parser.add_argument('--state-geometry', help='Path to state_geometry.parquet (for PC gating)')
     parser.add_argument('--coloading-threshold', type=float, default=0.1,
                         help='Threshold for PC co-loading (default: 0.1)')
-    parser.add_argument('-o', '--output', default='signal_pairwise.parquet',
-                        help='Output path (default: signal_pairwise.parquet)')
+    parser.add_argument('-d', '--data-path', default='.',
+                        help='Root data directory (default: .)')
     parser.add_argument('-q', '--quiet', action='store_true', help='Suppress output')
 
     args = parser.parse_args()
@@ -105,7 +101,7 @@ Example:
     run(
         args.signal_vector,
         args.state_vector,
-        args.output,
+        args.data_path,
         state_geometry_path=args.state_geometry,
         coloading_threshold=args.coloading_threshold,
         verbose=not args.quiet,

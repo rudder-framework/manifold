@@ -31,11 +31,12 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional
 
 from manifold.core.state.eigendecomp import compute as compute_eigendecomp
+from manifold.io.writer import write_output
 
 
 def run(
     observations_path: str,
-    output_path: str = "segment_comparison.parquet",
+    data_path: str = ".",
     segments: List[Dict[str, Any]] = None,
     verbose: bool = True,
 ) -> pl.DataFrame:
@@ -44,7 +45,7 @@ def run(
 
     Args:
         observations_path: Path to observations.parquet
-        output_path: Output path for segment_comparison.parquet
+        data_path: Root data directory (for write_output)
         segments: List of segment definitions:
             [{'name': 'pre', 'range': [0, 20]},
              {'name': 'post', 'range': [21, None]}]
@@ -229,10 +230,9 @@ def run(
             'spectral_gap_b': pl.Float64,
         })
 
-    result.write_parquet(output_path)
+    write_output(result, data_path, 'segment_comparison', verbose=verbose)
 
     if verbose:
-        print(f"\nSaved: {output_path}")
         print(f"Shape: {result.shape}")
 
         if len(result) > 0:
@@ -244,11 +244,6 @@ def run(
                 print(f"  Collapsed (delta < -0.5): {len(collapsed)} cohorts")
                 print(f"  Expanded (delta > 0.5):   {len(expanded)} cohorts")
                 print(f"  Mean delta: {valid['eff_dim_delta'].mean():.3f}")
-
-        print()
-        print("─" * 50)
-        print(f"✓ {Path(output_path).absolute()}")
-        print("─" * 50)
 
     return result
 
@@ -276,8 +271,8 @@ Example:
 """
     )
     parser.add_argument('observations', help='Path to observations.parquet')
-    parser.add_argument('-o', '--output', default='segment_comparison.parquet',
-                        help='Output path (default: segment_comparison.parquet)')
+    parser.add_argument('-d', '--data-path', default='.',
+                        help='Root data directory (default: .)')
     parser.add_argument('--split-at', type=int, default=20,
                         help='I value to split at (default: 20)')
     parser.add_argument('-q', '--quiet', action='store_true', help='Suppress output')
@@ -292,7 +287,7 @@ Example:
 
     run(
         args.observations,
-        args.output,
+        args.data_path,
         segments=segments,
         verbose=not args.quiet,
     )
