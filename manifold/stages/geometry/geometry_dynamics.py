@@ -24,11 +24,12 @@ from pathlib import Path
 from typing import Optional
 
 from manifold.core.geometry_dynamics import compute_geometry_dynamics
+from manifold.io.reader import output_path as resolve_output_path
 
 
 def run(
     state_geometry_path: str,
-    output_path: str = "geometry_dynamics.parquet",
+    data_path: str = ".",
     dt: Optional[float] = None,
     smooth_window: Optional[int] = None,
     verbose: bool = True,
@@ -38,7 +39,7 @@ def run(
 
     Args:
         state_geometry_path: Path to state_geometry.parquet
-        output_path: Output path for geometry_dynamics.parquet
+        data_path: Root data directory (for write_output)
         dt: Time step for derivatives (from config if None)
         smooth_window: Smoothing window (from config if None)
         verbose: Print progress
@@ -52,19 +53,14 @@ def run(
         print("Differential geometry of state evolution (d1/d2/d3)")
         print("=" * 70)
 
+    out = str(resolve_output_path(data_path, 'geometry_dynamics'))
     result = compute_geometry_dynamics(
         state_geometry_path,
-        output_path,
+        out,
         dt=dt,
         smooth_window=smooth_window,
         verbose=verbose,
     )
-
-    if verbose:
-        print()
-        print("─" * 50)
-        print(f"✓ {Path(output_path).absolute()}")
-        print("─" * 50)
 
     return result
 

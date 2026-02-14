@@ -25,12 +25,13 @@ from pathlib import Path
 from typing import Optional
 
 from manifold.core.signal_geometry import compute_signal_geometry
+from manifold.io.reader import output_path as resolve_output_path
 
 
 def run(
     signal_vector_path: str,
     state_vector_path: str,
-    output_path: str = "signal_geometry.parquet",
+    data_path: str = ".",
     state_geometry_path: Optional[str] = None,
     verbose: bool = True,
 ) -> pl.DataFrame:
@@ -40,7 +41,7 @@ def run(
     Args:
         signal_vector_path: Path to signal_vector.parquet
         state_vector_path: Path to state_vector.parquet
-        output_path: Output path for signal_geometry.parquet
+        data_path: Root data directory (for write_output)
         state_geometry_path: Path to state_geometry.parquet (for PCs)
         verbose: Print progress
 
@@ -53,19 +54,14 @@ def run(
         print("Per-signal relationships to system state")
         print("=" * 70)
 
+    out = str(resolve_output_path(data_path, 'signal_geometry'))
     result = compute_signal_geometry(
         signal_vector_path,
         state_vector_path,
-        output_path,
+        out,
         state_geometry_path=state_geometry_path,
         verbose=verbose,
     )
-
-    if verbose:
-        print()
-        print("─" * 50)
-        print(f"✓ {Path(output_path).absolute()}")
-        print("─" * 50)
 
     return result
 

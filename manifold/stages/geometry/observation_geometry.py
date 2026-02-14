@@ -35,6 +35,8 @@ import json
 from pathlib import Path
 from typing import Optional
 
+from manifold.io.writer import write_output
+
 
 def _score_cohort(cohort_data, cohort, centroid, baseline_std, pcs, signal_cols, eigenvalues):
     """Score a single cohort's observations against a baseline. Returns list of dicts."""
@@ -101,7 +103,7 @@ def _score_cohort(cohort_data, cohort, centroid, baseline_std, pcs, signal_cols,
 def run(
     observations_path: str,
     baseline_path: str,
-    output_path: str = "observation_geometry.parquet",
+    data_path: str = ".",
     verbose: bool = True,
 ) -> pl.DataFrame:
     """
@@ -132,7 +134,7 @@ def run(
     if len(baseline) == 0:
         if verbose:
             print("  Empty baseline — skipping")
-        pl.DataFrame().write_parquet(output_path)
+        write_output(pl.DataFrame(), data_path, 'observation_geometry', verbose=verbose)
         return pl.DataFrame()
 
     has_cohort = 'cohort' in obs.columns
@@ -204,18 +206,7 @@ def run(
             'sensor_norm': pl.Float64,
         })
 
-    result.write_parquet(output_path)
-
-    if verbose:
-        print(f"\nShape: {result.shape}")
-        if len(result) > 0:
-            print(f"  Mean centroid_distance: {result['centroid_distance'].mean():.4f}")
-            print(f"  Mean mahalanobis: {result['mahalanobis_approx'].mean():.4f}")
-            print(f"  Max centroid_distance: {result['centroid_distance'].max():.4f}")
-        print()
-        print("-" * 50)
-        print(f"  {Path(output_path).absolute()}")
-        print("-" * 50)
+    write_output(result, data_path, 'observation_geometry', verbose=verbose)
 
     return result
 

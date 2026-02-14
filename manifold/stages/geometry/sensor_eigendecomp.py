@@ -35,6 +35,7 @@ from manifold.core.state.eigendecomp import (
     compute as compute_eigendecomp,
     enforce_eigenvector_continuity,
 )
+from manifold.io.writer import write_output
 
 
 def _aggregate_sensor_means(matrix: np.ndarray, i_values: np.ndarray,
@@ -79,7 +80,7 @@ def _aggregate_sensor_means(matrix: np.ndarray, i_values: np.ndarray,
 
 def run(
     observations_path: str,
-    output_path: str = "sensor_eigendecomp.parquet",
+    data_path: str = ".",
     agg_window: int = 30,
     agg_stride: int = 5,
     lookback: int = 30,
@@ -286,38 +287,7 @@ def run(
             'ratio_3_1': pl.Float64,
         })
 
-    df.write_parquet(output_path)
-
-    if verbose:
-        print(f"\nSaved: {output_path}")
-        print(f"Shape: {df.shape}")
-
-        if len(df) > 0:
-            valid = df.filter(pl.col('effective_dim').is_not_null() & pl.col('effective_dim').is_not_nan())
-            null_count = len(df) - len(valid)
-            print(f"\nEffective dimension summary (participation ratio):")
-            print(f"  Mean:   {valid['effective_dim'].mean():.3f}")
-            print(f"  Median: {valid['effective_dim'].median():.3f}")
-            print(f"  Min:    {valid['effective_dim'].min():.3f}")
-            print(f"  Max:    {valid['effective_dim'].max():.3f}")
-
-            ede = df.filter(pl.col('eff_dim_entropy').is_not_null() & pl.col('eff_dim_entropy').is_not_nan())
-            if len(ede) > 0:
-                print(f"\nEffective dimension summary (entropy):")
-                print(f"  Mean:   {ede['eff_dim_entropy'].mean():.3f}")
-                print(f"  Median: {ede['eff_dim_entropy'].median():.3f}")
-                print(f"  Min:    {ede['eff_dim_entropy'].min():.3f}")
-                print(f"  Max:    {ede['eff_dim_entropy'].max():.3f}")
-
-            if null_count > 0:
-                print(f"\n  Warmup rows (NaN): {null_count}")
-
-            print(f"\n  Cohorts with data: {df['cohort'].n_unique()}")
-
-        print()
-        print("─" * 50)
-        print(f"✓ {Path(output_path).absolute()}")
-        print("─" * 50)
+    write_output(df, data_path, 'sensor_eigendecomp', verbose=verbose)
 
     return df
 

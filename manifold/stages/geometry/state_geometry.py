@@ -21,6 +21,7 @@ from manifold.core.state.eigendecomp import (
     enforce_eigenvector_continuity,
     bootstrap_effective_dim,
 )
+from manifold.io.writer import write_output, write_sidecar
 
 
 # Feature groups
@@ -83,7 +84,7 @@ def compute_eigenvalues(
 def compute_state_geometry(
     signal_vector_path: str,
     state_vector_path: str,
-    output_path: str = "state_geometry.parquet",
+    data_path: str = ".",
     feature_groups: Optional[Dict[str, List[str]]] = None,
     max_eigenvalues: int = 5,
     verbose: bool = True
@@ -327,30 +328,17 @@ def compute_state_geometry(
 
     # Build DataFrame
     result = pl.DataFrame(results)
-    result.write_parquet(output_path)
+    write_output(result, data_path, 'state_geometry', verbose=verbose)
 
     # Write signal loadings sidecar file (narrow schema)
     if loading_rows:
         loadings_df = pl.DataFrame(loading_rows)
-        loadings_path = str(Path(output_path).parent / 'state_geometry_loadings.parquet')
-        loadings_df.write_parquet(loadings_path)
-        if verbose:
-            print(f"Signal loadings sidecar: {loadings_df.shape} → {loadings_path}")
+        write_sidecar(loadings_df, data_path, 'state_geometry', 'loadings', verbose=verbose)
 
     # Write feature loadings sidecar file (narrow schema, replaces wide pc1_feat_* columns)
     if feature_loading_rows:
         feat_loadings_df = pl.DataFrame(feature_loading_rows)
-        feat_loadings_path = str(Path(output_path).parent / 'state_geometry_feature_loadings.parquet')
-        feat_loadings_df.write_parquet(feat_loadings_path)
-        if verbose:
-            print(f"Feature loadings sidecar: {feat_loadings_df.shape} → {feat_loadings_path}")
-
-    if verbose:
-        print(f"\nShape: {result.shape}")
-        print()
-        print("─" * 50)
-        print(f"✓ {Path(output_path).absolute()}")
-        print("─" * 50)
+        write_sidecar(feat_loadings_df, data_path, 'state_geometry', 'feature_loadings', verbose=verbose)
 
         # Summary per engine
         if len(result) > 0 and 'engine' in result.columns:
@@ -368,14 +356,14 @@ def compute_state_geometry(
 def run(
     signal_vector_path: str,
     state_vector_path: str,
-    output_path: str = "state_geometry.parquet",
+    data_path: str = ".",
     verbose: bool = True,
 ) -> pl.DataFrame:
     """Run state geometry computation (wrapper for compute_state_geometry)."""
     return compute_state_geometry(
         signal_vector_path,
         state_vector_path,
-        output_path,
+        data_path,
         verbose=verbose,
     )
 

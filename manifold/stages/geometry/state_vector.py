@@ -17,6 +17,7 @@ from typing import List, Dict, Optional, Any
 
 # Import the actual computation from engine
 from manifold.core.state.centroid import compute as compute_centroid_engine
+from manifold.io.writer import write_output
 
 
 # Feature groups for per-engine centroids
@@ -53,7 +54,7 @@ def compute_centroid(
 def compute_state_vector(
     signal_vector_path: str,
     typology_path: str,
-    output_path: str = "state_vector.parquet",
+    data_path: str = ".",
     feature_groups: Optional[Dict[str, List[str]]] = None,
     compute_per_engine: bool = True,
     verbose: bool = True
@@ -213,14 +214,7 @@ def compute_state_vector(
 
     # Build DataFrame
     result = pl.DataFrame(results)
-    result.write_parquet(output_path)
-
-    if verbose:
-        print(f"\nShape: {result.shape}")
-        print()
-        print("─" * 50)
-        print(f"✓ {Path(output_path).absolute()}")
-        print("─" * 50)
+    write_output(result, data_path, 'state_vector', verbose=verbose)
 
     return result
 
@@ -228,7 +222,7 @@ def compute_state_vector(
 # Alias for run_pipeline.py compatibility
 def run(
     signal_vector_path: str,
-    output_path: str = "state_vector.parquet",
+    data_path: str = ".",
     typology_path: str = None,
     verbose: bool = True,
 ) -> pl.DataFrame:
@@ -236,7 +230,7 @@ def run(
     return compute_state_vector(
         signal_vector_path,
         typology_path,
-        output_path,
+        data_path,
         verbose=verbose,
     )
 

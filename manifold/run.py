@@ -238,7 +238,7 @@ def _dispatch(
         typology_path = _find_typology(manifest, output_dir)
         module.run(
             _out(output_dir, 'signal_vector.parquet'),
-            _out(output_dir, 'state_vector.parquet'),
+            data_path=data_path_str,
             typology_path=typology_path,
             verbose=verbose,
         )
@@ -247,7 +247,7 @@ def _dispatch(
         module.run(
             _out(output_dir, 'signal_vector.parquet'),
             _out(output_dir, 'state_vector.parquet'),
-            _out(output_dir, 'state_geometry.parquet'),
+            data_path=data_path_str,
             verbose=verbose,
         )
 
@@ -255,7 +255,7 @@ def _dispatch(
         module.run(
             _out(output_dir, 'signal_vector.parquet'),
             _out(output_dir, 'state_vector.parquet'),
-            _out(output_dir, 'signal_geometry.parquet'),
+            data_path=data_path_str,
             state_geometry_path=_out(output_dir, 'state_geometry.parquet'),
             verbose=verbose,
         )
@@ -263,7 +263,7 @@ def _dispatch(
     elif stage_name == 'geometry_dynamics':
         module.run(
             _out(output_dir, 'state_geometry.parquet'),
-            _out(output_dir, 'geometry_dynamics.parquet'),
+            data_path=data_path_str,
             verbose=verbose,
         )
 
@@ -271,7 +271,7 @@ def _dispatch(
         se_config = manifest.get('sensor_eigendecomp', {})
         module.run(
             obs_path,
-            _out(output_dir, 'sensor_eigendecomp.parquet'),
+            data_path=data_path_str,
             agg_window=se_config.get('agg_window', 30),
             agg_stride=se_config.get('agg_stride', 5),
             lookback=se_config.get('lookback', 30),
@@ -279,7 +279,7 @@ def _dispatch(
         )
 
     elif stage_name == 'cohort_baseline':
-        module.run(obs_path, _out(output_dir, 'cohort_baseline.parquet'), verbose=verbose)
+        module.run(obs_path, data_path=data_path_str, verbose=verbose)
 
     elif stage_name == 'observation_geometry':
         baseline_path = _out(output_dir, 'cohort_baseline.parquet')
@@ -287,7 +287,7 @@ def _dispatch(
             module.run(
                 obs_path,
                 baseline_path,
-                _out(output_dir, 'observation_geometry.parquet'),
+                data_path=data_path_str,
                 verbose=verbose,
             )
         else:
@@ -404,7 +404,7 @@ def _dispatch(
         'system_geometry', 'cohort_pairwise', 'cohort_information_flow',
         'cohort_ftle', 'cohort_velocity_field',
     ):
-        _dispatch_fleet(module, stage_name, output_dir, verbose)
+        _dispatch_fleet(module, stage_name, output_dir, verbose, data_path_str)
 
     else:
         if verbose:
@@ -416,6 +416,7 @@ def _dispatch_fleet(
     stage_name: str,
     output_dir: Path,
     verbose: bool,
+    data_path_str: str = '',
 ) -> None:
     """
     Dispatch fleet-scale stages (26-31).
@@ -446,7 +447,7 @@ def _dispatch_fleet(
         return
 
     if stage_name == 'system_geometry':
-        module.run(str(cv_path), _out(output_dir, 'system_geometry.parquet'), verbose=verbose)
+        module.run(str(cv_path), data_path=data_path_str, verbose=verbose)
 
     elif stage_name == 'cohort_pairwise':
         loadings_path = output_dir / '6_fleet' / 'system_geometry_loadings.parquet'

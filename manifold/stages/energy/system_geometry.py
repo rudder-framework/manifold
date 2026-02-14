@@ -18,11 +18,12 @@ import polars as pl
 from pathlib import Path
 
 from manifold.core.state.eigendecomp import compute as compute_eigendecomp
+from manifold.io.writer import write_output, write_sidecar
 
 
 def run(
     cohort_vector_path: str,
-    output_path: str = "system_geometry.parquet",
+    data_path: str = ".",
     max_eigenvalues: int = 5,
     verbose: bool = True,
 ) -> pl.DataFrame:
@@ -52,7 +53,7 @@ def run(
     if len(cv) == 0:
         if verbose:
             print("  Empty cohort_vector — skipping")
-        pl.DataFrame().write_parquet(output_path)
+        write_output(pl.DataFrame(), data_path, 'system_geometry', verbose=verbose)
         return pl.DataFrame()
 
     # Identify feature columns (everything except cohort, I)
@@ -145,24 +146,12 @@ def run(
     # Build output
     result = pl.DataFrame(results) if results else pl.DataFrame()
 
-    result.write_parquet(output_path)
+    write_output(result, data_path, 'system_geometry', verbose=verbose)
 
     # Write loadings sidecar
     if loading_rows:
         loadings_df = pl.DataFrame(loading_rows)
-        loadings_path = str(Path(output_path).parent / 'system_geometry_loadings.parquet')
-        loadings_df.write_parquet(loadings_path)
-        if verbose:
-            print(f"Loadings sidecar: {loadings_df.shape} -> {loadings_path}")
-
-    if verbose:
-        print(f"\nShape: {result.shape}")
-        if len(result) > 0 and 'effective_dim' in result.columns:
-            print(f"  effective_dim: mean={result['effective_dim'].mean():.2f}")
-        print()
-        print("-" * 50)
-        print(f"  {Path(output_path).absolute()}")
-        print("-" * 50)
+        write_sidecar(loadings_df, data_path, 'system_geometry', 'loadings', verbose=verbose)
 
     return result
 

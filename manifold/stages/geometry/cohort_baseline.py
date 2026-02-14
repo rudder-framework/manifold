@@ -40,6 +40,8 @@ import json
 from pathlib import Path
 from typing import Optional
 
+from manifold.io.writer import write_output
+
 
 BASELINE_FRACTION = 0.20  # First 20% of lifecycle
 
@@ -122,7 +124,7 @@ def _compute_baseline(x_baseline: np.ndarray) -> dict:
 
 def run(
     observations_path: str,
-    output_path: str = "cohort_baseline.parquet",
+    data_path: str = ".",
     baseline_fraction: float = BASELINE_FRACTION,
     mode: str = "fleet",
     verbose: bool = True,
@@ -204,7 +206,7 @@ def run(
                 'cohort': pl.Utf8, 'n_baseline_cycles': pl.Int64,
                 'baseline_effective_dim': pl.Float64,
             })
-            result.write_parquet(output_path)
+            write_output(result, data_path, 'cohort_baseline', verbose=verbose)
             return result
 
         x_pooled = np.vstack(pooled_baselines)
@@ -216,7 +218,7 @@ def run(
             if verbose:
                 print("  SVD failed on pooled data")
             result = pl.DataFrame(schema={'cohort': pl.Utf8})
-            result.write_parquet(output_path)
+            write_output(result, data_path, 'cohort_baseline', verbose=verbose)
             return result
 
         # Single fleet row — cohort='fleet' signals it applies to all
@@ -293,17 +295,7 @@ def run(
             'baseline_total_variance': pl.Float64,
         })
 
-    result_df.write_parquet(output_path)
-
-    if verbose:
-        print(f"\nShape: {result_df.shape}")
-        if len(result_df) > 0:
-            print(f"  Mean baseline effective_dim: {result_df['baseline_effective_dim'].mean():.2f}")
-            print(f"  Mean baseline total_variance: {result_df['baseline_total_variance'].mean():.2f}")
-        print()
-        print("-" * 50)
-        print(f"  {Path(output_path).absolute()}")
-        print("-" * 50)
+    write_output(result_df, data_path, 'cohort_baseline', verbose=verbose)
 
     return result_df
 
