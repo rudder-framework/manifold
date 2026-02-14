@@ -30,6 +30,7 @@ from pathlib import Path
 
 from manifold.core.signal.hilbert_stability import compute as compute_hilbert
 from manifold.core.signal.wavelet_stability import compute as compute_wavelet
+from manifold.io.writer import write_output
 
 
 # ── Hilbert aggregation columns ──
@@ -125,7 +126,7 @@ def aggregate_wavelet(metrics_list):
 
 def run(
     observations_path: str,
-    output_path: str = "signal_stability.parquet",
+    data_path: str = ".",
     window_size: int = 30,
     stride: int = 5,
     verbose: bool = True,
@@ -139,7 +140,7 @@ def run(
 
     Args:
         observations_path: Path to observations.parquet
-        output_path: Output path for signal_stability.parquet
+        data_path: Root data directory (for write_output)
         window_size: Number of observations per window
         stride: Stride between windows
         verbose: Print progress
@@ -245,39 +246,7 @@ def run(
             schema[col] = pl.Float64
         df = pl.DataFrame(schema=schema)
 
-    df.write_parquet(output_path)
-
-    if verbose:
-        print(f"\nSaved: {output_path}")
-        print(f"Shape: {df.shape}")
-
-        if len(df) > 0:
-            print(f"Cohorts with data: {df['cohort'].n_unique()}")
-
-            # Hilbert summary
-            valid_h = df.filter(
-                pl.col('h_freq_stability_mean').is_not_null() &
-                pl.col('h_freq_stability_mean').is_not_nan()
-            )
-            if len(valid_h) > 0:
-                print(f"\nHilbert freq stability (mean across signals):")
-                print(f"  Mean:   {valid_h['h_freq_stability_mean'].mean():.3f}")
-                print(f"  Median: {valid_h['h_freq_stability_mean'].median():.3f}")
-
-            # Wavelet summary
-            valid_w = df.filter(
-                pl.col('w_entropy_mean').is_not_null() &
-                pl.col('w_entropy_mean').is_not_nan()
-            )
-            if len(valid_w) > 0:
-                print(f"\nWavelet entropy (mean across signals):")
-                print(f"  Mean:   {valid_w['w_entropy_mean'].mean():.3f}")
-                print(f"  Median: {valid_w['w_entropy_mean'].median():.3f}")
-
-        print()
-        print("-" * 50)
-        print(f"  {Path(output_path).absolute()}")
-        print("-" * 50)
+    write_output(df, data_path, 'signal_stability', verbose=verbose)
 
     return df
 
@@ -307,8 +276,8 @@ Example:
 """
     )
     parser.add_argument('observations', help='Path to observations.parquet')
-    parser.add_argument('-o', '--output', default='signal_stability.parquet',
-                        help='Output path (default: signal_stability.parquet)')
+    parser.add_argument('-d', '--data-path', default='.',
+                        help='Root data directory (default: .)')
     parser.add_argument('--window-size', type=int, default=30,
                         help='Rolling window size (default: 30)')
     parser.add_argument('--stride', type=int, default=5,
@@ -319,7 +288,7 @@ Example:
 
     run(
         args.observations,
-        args.output,
+        args.data_path,
         window_size=args.window_size,
         stride=args.stride,
         verbose=not args.quiet,

@@ -19,11 +19,12 @@ from pathlib import Path
 from typing import Dict, Any, Optional
 
 from manifold.core.breaks import compute, summarize_breaks
+from manifold.io.writer import write_output
 
 
 def run(
     observations_path: str,
-    output_path: str = "breaks.parquet",
+    data_path: str = ".",
     sensitivity: float = 1.0,
     min_spacing: int = 10,
     context_window: int = 50,
@@ -138,17 +139,13 @@ def run(
         breaks_df = pl.DataFrame(schema=schema)
 
     # Write
-    breaks_df.write_parquet(output_path)
+    write_output(breaks_df, data_path, 'breaks', verbose=verbose)
 
     if verbose:
         total = len(all_breaks)
         signals_with = sum(1 for s in summaries.values() if s['n_breaks'] > 0)
         print(f"\nTotal breaks: {total}")
         print(f"Signals with breaks: {signals_with}/{len(signal_ids)}")
-        print()
-        print("─" * 50)
-        print(f"✓ {Path(output_path).absolute()}")
-        print("─" * 50)
 
     return breaks_df
 
@@ -159,15 +156,14 @@ def run_from_manifest(
 ) -> pl.DataFrame:
     """Run break detection using manifest configuration."""
     obs_path = manifest['paths']['observations']
-    output_dir = manifest['paths'].get('output_dir', '.')
-    output_path = str(Path(output_dir) / 'breaks.parquet')
+    data_dir = manifest.get('_data_dir', '.')
 
     # Sensitivity from manifest (ORTHON can tune per job)
     sensitivity = manifest.get('defaults', {}).get('break_sensitivity', 1.0)
 
     return run(
         observations_path=obs_path,
-        output_path=output_path,
+        data_path=data_dir,
         sensitivity=sensitivity,
         verbose=verbose,
     )

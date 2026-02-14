@@ -175,7 +175,7 @@ def run(
                     print(f"  Warning: {module_path} has no run() function, skipping")
                 continue
 
-            _dispatch(module, module_path, stage_id, obs_path, output_dir, manifest, verbose)
+            _dispatch(module, module_path, stage_id, obs_path, output_dir, manifest, verbose, str(data_path))
 
         except Exception as e:
             if verbose:
@@ -207,6 +207,7 @@ def _dispatch(
     output_dir: Path,
     manifest: Dict[str, Any],
     verbose: bool,
+    data_path_str: str = '',
 ) -> None:
     """Dispatch a stage with the correct arguments and output path."""
 
@@ -216,20 +217,20 @@ def _dispatch(
     # ── vector ──
 
     if stage_name == 'breaks':
-        module.run(obs_path, _out(output_dir, 'breaks.parquet'), verbose=verbose)
+        module.run(obs_path, data_path=data_path_str, verbose=verbose)
 
     elif stage_name == 'signal_vector':
         typology_path = _find_typology(manifest, output_dir)
         module.run(
             obs_path,
-            _out(output_dir, 'signal_vector.parquet'),
-            manifest,
+            data_path=data_path_str,
+            manifest=manifest,
             verbose=verbose,
             typology_path=typology_path,
         )
 
     elif stage_name == 'signal_stability':
-        module.run(obs_path, _out(output_dir, 'signal_stability.parquet'), verbose=verbose)
+        module.run(obs_path, data_path=data_path_str, verbose=verbose)
 
     # ── geometry ──
 

@@ -36,6 +36,7 @@ import multiprocessing
 from joblib import Parallel, delayed
 
 from manifold.core.registry import get_registry, EngineRegistry
+from manifold.io.writer import write_output
 
 # Hardcoded: always use all available cores
 _N_WORKERS = multiprocessing.cpu_count()
@@ -673,8 +674,8 @@ def compute_signal_vector(
 
 def run(
     observations_path: str,
-    output_path: str,
-    manifest: Dict[str, Any],
+    data_path: str = ".",
+    manifest: Dict[str, Any] = None,
     verbose: bool = True,
     typology_path: str = None,
 ) -> pl.DataFrame:
@@ -683,7 +684,7 @@ def run(
 
     Args:
         observations_path: Path to observations.parquet
-        output_path: Path to write signal_vector.parquet
+        data_path: Root data directory (for write_output)
         manifest: Manifest dict from ORTHON (REQUIRED)
         verbose: Print progress
         typology_path: Path to typology.parquet (for window_factor)
@@ -742,7 +743,7 @@ def run(
 
     # Compute signal vector using core function
     df = compute_signal_vector(
-        obs, manifest, verbose=verbose, output_path=output_path,
+        obs, manifest, verbose=verbose,
         window_factors=window_factors
     )
 
@@ -810,15 +811,8 @@ def run(
                         print(f"  Pruning {len(inapplicable)} engine-specific columns (inapplicable to ≥1 signal type)")
                     df = df.drop(list(inapplicable))
 
-    # Always write output (overwrite if exists)
-    df.write_parquet(output_path)
-
-    if verbose:
-        print(f"  {len(df):,} rows computed")
-        print()
-        print("─" * 50)
-        print(f"✓ {Path(output_path).absolute()}")
-        print("─" * 50)
+    # Write output through central writer
+    write_output(df, data_path, 'signal_vector', verbose=verbose)
 
     return df
 
@@ -904,18 +898,15 @@ def run_from_manifest(
     else:
         obs_path = Path(data_dir) / 'observations.parquet'
 
-    if output_dir is None:
-        # Use manifest directory for output
-        out_path = manifest_dir / 'signal_vector.parquet'
-    else:
-        out_path = Path(output_dir) / 'signal_vector.parquet'
+    # Resolve data_path for write_output
+    resolved_data_path = str(data_dir) if data_dir else str(manifest_dir)
 
     # Get typology path for window_factors
     typology_path = manifest_dir / 'typology.parquet'
 
     return run(
         observations_path=str(obs_path),
-        output_path=str(out_path),
+        data_path=resolved_data_path,
         manifest=manifest,
         verbose=verbose,
         typology_path=str(typology_path) if typology_path.exists() else None,
