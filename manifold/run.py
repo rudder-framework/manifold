@@ -339,7 +339,7 @@ def run(
         print(f"Data:     {data_path}")
         print(f"Output:   {output_dir}")
         print(f"Stages:   {len(run_stages)}")
-        print(f"Backend:  {'Rust' if USE_RUST else 'Python (MANIFOLD_USE_RUST=0)'}")
+        print(f"Backend:  {'Rust' if USE_RUST else 'Python (USE_RUST=0)'}")
         print(f"Workers:  {n_workers} ({'parallel' if n_workers > 1 else 'sequential'})")
         print()
 

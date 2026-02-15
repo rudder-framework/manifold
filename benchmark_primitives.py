@@ -7,13 +7,14 @@ Usage:
 """
 
 import time
+from pathlib import Path
 import numpy as np
 import polars as pl
 from typing import Callable, Any, List, Tuple
 
 # ── Load FD004 signals ──────────────────────────────────────────────────────
 
-OBS_PATH = "/Users/jasonrudder/domains/cmapss/FD_004/train/observations.parquet"
+OBS_PATH = str(Path.home() / "domains/cmapss/FD_004/train/observations.parquet")
 
 SIGNALS = [
     ("engine_1", "T24"),
