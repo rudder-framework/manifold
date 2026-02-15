@@ -3,7 +3,7 @@ requires = ["setuptools>=45", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "orthon-engines"
+name = "manifold"
 version = "1.0.0"
 description = "Dynamical systems computation engines — eigendecomposition, FTLE, velocity fields, and urgency metrics"
 readme = "README.md"
@@ -37,7 +37,7 @@ dependencies = [
 ]
 
 [project.scripts]
-engines = "engines.cli:main"
+manifold = "manifold.cli:main"
 
 [project.optional-dependencies]
 dev = [
@@ -67,18 +67,12 @@ hmm = [
 ]
 
 all = [
-    "orthon-engines[dynamics,ml,topology,hmm]"
+    "manifold[dynamics,ml,topology,hmm]"
 ]
-
-[project.urls]
-Homepage = "https://github.com/orthon-engines/engines"
-Repository = "https://github.com/orthon-engines/engines"
-Documentation = "https://orthon-engines.github.io/engines"
-"Bug Reports" = "https://github.com/orthon-engines/engines/issues"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["engines*"]
+include = ["manifold*"]
 
 [tool.black]
 line-length = 88
@@ -92,7 +86,7 @@ line_length = 88
 testpaths = ["tests"]
 python_files = "test_*.py"
 python_functions = "test_*"
-addopts = "--cov=engines --cov-report=html --cov-report=term-missing"
+addopts = "--cov=manifold --cov-report=html --cov-report=term-missing"
 
 [tool.mypy]
 python_version = "3.8"

@@ -145,37 +145,12 @@ def run(
         print(f"Pairwise: {len(pairwise)} rows")
 
     # Check for needs_granger column
-    all_pairs = pairwise.select(['signal_a', 'signal_b']).unique()
-    n_total = all_pairs.height
+    has_granger_col = 'needs_granger' in pairwise.columns
+    has_cohort_pw = 'cohort' in pairwise.columns
 
-    if 'needs_granger' not in pairwise.columns:
+    if not has_granger_col:
         if verbose:
-            print("Warning: needs_granger column not found, computing all pairs")
-        granger_pairs = all_pairs
-    else:
-        # Filter to pairs needing Granger
-        granger_pairs = pairwise.filter(pl.col('needs_granger') == True).select(['signal_a', 'signal_b']).unique()
-
-        # Fallback: if no pairs flagged AND pc1_coloading is all zero,
-        # eigenvector gating data was missing — compute all pairs
-        if len(granger_pairs) == 0 and 'pc1_coloading' in pairwise.columns:
-            all_zero = (pairwise['pc1_coloading'] == 0.0).all()
-            if all_zero:
-                if verbose:
-                    print("No eigenvector gating data available — computing all pairs")
-                granger_pairs = all_pairs
-
-    n_granger = len(granger_pairs)
-
-    if verbose:
-        print(f"Pairs needing Granger: {n_granger}/{n_total} ({100*n_granger/max(n_total,1):.1f}%)")
-
-    if n_granger == 0:
-        if verbose:
-            print("No pairs flagged for Granger causality")
-        result = pl.DataFrame()
-        write_output(result, data_path, 'information_flow', verbose=verbose)
-        return result
+            print("Warning: needs_granger column not found, will compute all pairs")
 
     # Determine cohorts
     has_cohort = 'cohort' in obs.columns
@@ -184,13 +159,11 @@ def run(
     else:
         cohorts = [None]
 
-    pairs_list = granger_pairs.to_dicts()
     signals = obs[signal_column].unique().to_list()
 
     if verbose:
         print(f"Signals: {len(signals)}")
         print(f"Cohorts: {len(cohorts)}")
-        print(f"Work: {len(pairs_list)} pairs × {len(cohorts)} cohorts = {len(pairs_list) * len(cohorts)} items")
 
     # Sequential per-cohort computation
     results = []
@@ -202,6 +175,23 @@ def run(
             cohort_obs = obs.filter(pl.col('cohort') == cohort)
         else:
             cohort_obs = obs
+
+        # Get granger pairs for THIS cohort (not globally)
+        if has_granger_col:
+            if has_cohort_pw and cohort is not None:
+                cohort_pw = pairwise.filter(pl.col('cohort') == cohort)
+            else:
+                cohort_pw = pairwise
+            pairs_list = (
+                cohort_pw.filter(pl.col('needs_granger') == True)
+                .select(['signal_a', 'signal_b']).unique().to_dicts()
+            )
+            # Fallback: if no pairs flagged AND pc1_coloading is all zero
+            if len(pairs_list) == 0 and 'pc1_coloading' in cohort_pw.columns:
+                if (cohort_pw['pc1_coloading'] == 0.0).all():
+                    pairs_list = cohort_pw.select(['signal_a', 'signal_b']).unique().to_dicts()
+        else:
+            pairs_list = pairwise.select(['signal_a', 'signal_b']).unique().to_dicts()
 
         # Build signal lookup for this cohort only
         signal_data = {}
