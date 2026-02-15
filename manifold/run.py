@@ -271,7 +271,9 @@ def _out(output_dir: Path, filename: str) -> str:
 
 
 def run(
-    data_path: str,
+    observations_path: str,
+    manifest_path: str,
+    output_dir: str,
     stages: Optional[List[str]] = None,
     skip: Optional[List[str]] = None,
     verbose: bool = True,
@@ -279,31 +281,36 @@ def run(
     """
     Run pipeline stages in dependency order.
 
-    All 27 stages run by default. Use --stages or --skip for debugging only.
+    All 29 stages run by default. Use stages/skip for debugging only.
 
     Args:
-        data_path: Path to data directory (must contain manifest.yaml)
+        observations_path: Path to observations.parquet
+        manifest_path: Path to manifest.yaml
+        output_dir: Where to write output parquets
         stages: Specific stage identifiers to run (e.g., ['01', '02', '08_lyapunov'])
         skip: Stage identifiers to skip
         verbose: Print progress
     """
     import importlib
 
-    data_path = Path(data_path)
-    manifest_path = data_path / 'manifest.yaml'
+    observations_path = Path(observations_path)
+    manifest_path = Path(manifest_path)
+    output_dir = Path(output_dir)
 
+    if not observations_path.exists():
+        raise FileNotFoundError(f"observations not found: {observations_path}")
     if not manifest_path.exists():
-        raise FileNotFoundError(f"No manifest.yaml in {data_path}")
+        raise FileNotFoundError(f"manifest not found: {manifest_path}")
 
     with open(manifest_path) as f:
         manifest = yaml.safe_load(f)
 
-    # Store manifest path for downstream use
+    # data_path = parent of output_dir (writer resolves data_path / 'output')
+    data_path = output_dir.parent
+
     manifest['_manifest_path'] = str(manifest_path)
     manifest['_data_dir'] = str(data_path)
 
-    # Determine output directory
-    output_dir = data_path / manifest.get('paths', {}).get('output_dir', 'output')
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Create output subdirectories
@@ -336,14 +343,15 @@ def run(
         print("=" * 70)
         print("MANIFOLD PIPELINE")
         print("=" * 70)
-        print(f"Data:     {data_path}")
+        print(f"Input:    {observations_path}")
+        print(f"Manifest: {manifest_path}")
         print(f"Output:   {output_dir}")
         print(f"Stages:   {len(run_stages)}")
         print(f"Backend:  {'Rust' if USE_RUST else 'Python (USE_RUST=0)'}")
         print(f"Workers:  {n_workers} ({'parallel' if n_workers > 1 else 'sequential'})")
         print()
 
-    obs_path = str(data_path / manifest['paths']['observations'])
+    obs_path = str(observations_path)
 
     # Try parallel execution
     cohort_map = None
@@ -960,16 +968,17 @@ def _write_readmes(output_dir: Path) -> None:
 
 
 def main():
+    """CLI entry point. Resolves data_path into explicit paths and calls run()."""
     parser = argparse.ArgumentParser(
         description="Manifold Pipeline",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-28 stages. All always-on.
+29 stages. All always-on.
 
 Usage:
-  python -m manifold domains/rossler
-  python -m manifold domains/rossler --stages 01,02,03
-  python -m manifold domains/rossler --skip 08,09a
+  python -m manifold ~/domains/rossler
+  python -m manifold ~/domains/rossler --stages 01,02,03
+  python -m manifold ~/domains/rossler --skip 08,09a
 """
     )
     parser.add_argument('data_path', help='Path to data directory (must contain manifest.yaml)')
@@ -979,10 +988,29 @@ Usage:
 
     args = parser.parse_args()
 
+    data_path = Path(args.data_path)
+    manifest_path = data_path / 'manifest.yaml'
+
+    if not manifest_path.exists():
+        raise FileNotFoundError(f"No manifest.yaml in {data_path}")
+
+    with open(manifest_path) as f:
+        manifest = yaml.safe_load(f)
+
+    obs_rel = manifest.get('paths', {}).get('observations', 'observations.parquet')
+    out_rel = manifest.get('paths', {}).get('output_dir', 'output')
+
     stages_list = args.stages.split(',') if args.stages else None
     skip_list = args.skip.split(',') if args.skip else None
 
-    run(args.data_path, stages=stages_list, skip=skip_list, verbose=not args.quiet)
+    run(
+        observations_path=str(data_path / obs_rel),
+        manifest_path=str(manifest_path),
+        output_dir=str(data_path / out_rel),
+        stages=stages_list,
+        skip=skip_list,
+        verbose=not args.quiet,
+    )
 
 
 if __name__ == '__main__':
