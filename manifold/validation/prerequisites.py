@@ -36,7 +36,7 @@ class PrerequisiteError(Exception):
             message = (
                 f"Cannot run '{stage}' stage. Missing required files:\n"
                 + "\n".join(f"  - {f}" for f in missing_files)
-                + "\n\nRun the prerequisite stages first (ORTHON generates these)."
+                + "\n\nRun the prerequisite stages first (Prime generates these)."
             )
 
         super().__init__(message)
@@ -85,7 +85,7 @@ class StagePrerequisites:
 # STAGE DEFINITIONS
 # =============================================================================
 # Pipeline order: observations -> typology -> manifest -> signal_vector -> ...
-# ORTHON produces: observations.parquet, typology.parquet, manifest.yaml
+# Prime produces: observations.parquet, typology.parquet, manifest.yaml
 # ENGINES produces: signal_vector.parquet, state_vector.parquet, etc.
 # =============================================================================
 

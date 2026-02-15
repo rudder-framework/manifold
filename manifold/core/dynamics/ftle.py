@@ -14,7 +14,7 @@ FTLE:
 
 The astrodynamics of your bearings.
 
-ENGINES computes FTLE values. ORTHON interprets ridges as regime boundaries.
+ENGINES computes FTLE values. Prime interprets ridges as regime boundaries.
 """
 
 import numpy as np
@@ -194,7 +194,7 @@ def compute_trend(ftle_values: np.ndarray) -> Dict[str, float]:
     """
     Compute trend statistics on FTLE values.
 
-    Returns numbers only - ORTHON interprets what "destabilizing" means.
+    Returns numbers only - Prime interprets what "destabilizing" means.
     """
     valid = ~np.isnan(ftle_values)
     if np.sum(valid) < 4:

@@ -4,7 +4,7 @@ Lyapunov Engine.
 Computes largest Lyapunov exponent using Rosenstein's algorithm.
 Measures rate of divergence of nearby trajectories in phase space.
 
-ENGINES computes, ORTHON interprets:
+ENGINES computes, Prime interprets:
     λ > 0: Chaos (trajectories diverge)
     λ ≈ 0: Quasi-periodic (trajectories parallel)
     λ < 0: Stable (trajectories converge)
@@ -148,7 +148,7 @@ def compute_trend(lyap_values: np.ndarray) -> Dict[str, float]:
     """
     Compute trend statistics on Lyapunov values.
 
-    Returns numbers only - ORTHON interprets what "destabilizing" means.
+    Returns numbers only - Prime interprets what "destabilizing" means.
     """
     valid = ~np.isnan(lyap_values)
     if np.sum(valid) < 4:

@@ -9,7 +9,7 @@ Based on:
 - Scheffer (2009) Critical Transitions in Nature and Society
 - Ashwin et al. (2012) Tipping points in open systems
 
-ENGINES computes metrics. ORTHON interprets failure modes.
+ENGINES computes metrics. Prime interprets failure modes.
 """
 
 from dataclasses import dataclass, field
@@ -94,7 +94,7 @@ class TippingType(str, Enum):
 
 class SystemTypology(str, Enum):
     """
-    System behavior typology (from ORTHON).
+    System behavior typology (from Prime).
 
     Guides interpretation of metrics.
     """

@@ -4,7 +4,7 @@ Saddle Point Detection Engine.
 Detects saddle points and measures proximity to unstable equilibria.
 Saddle points indicate where the system can transition between basins.
 
-ENGINES computes metrics. ORTHON interprets:
+ENGINES computes metrics. Prime interprets:
     - High saddle_score = near unstable equilibrium
     - Approaching saddle = possible regime transition
     - Crossed separatrix = changed attractor basin

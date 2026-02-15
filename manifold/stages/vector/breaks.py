@@ -158,7 +158,7 @@ def run_from_manifest(
     obs_path = manifest['paths']['observations']
     data_dir = manifest.get('_data_dir', '.')
 
-    # Sensitivity from manifest (ORTHON can tune per job)
+    # Sensitivity from manifest (Prime can tune per job)
     sensitivity = manifest.get('defaults', {}).get('break_sensitivity', 1.0)
 
     return run(

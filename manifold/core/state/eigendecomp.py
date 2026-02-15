@@ -403,7 +403,7 @@ def compute_effective_dim_trend(
     """
     Compute trend statistics on effective dimension over time.
 
-    Returns numbers only - ORTHON interprets what "collapsing" means.
+    Returns numbers only - Prime interprets what "collapsing" means.
 
     Args:
         effective_dims: Array of effective_dim values over time

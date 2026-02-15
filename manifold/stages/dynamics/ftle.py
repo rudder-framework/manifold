@@ -22,7 +22,7 @@ Output:
     - ftle.parquet (forward FTLE)
     - ftle_backward.parquet (backward FTLE, optional)
 
-ENGINES computes FTLE, ORTHON interprets:
+ENGINES computes FTLE, Prime interprets:
     Forward FTLE > 0:  Trajectories diverge (repelling structures)
     Backward FTLE > 0: Trajectories converge TO this point (attracting structures)
 

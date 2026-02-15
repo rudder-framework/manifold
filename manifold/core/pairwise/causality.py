@@ -38,7 +38,7 @@ def compute_granger(
     Returns:
         dict with granger_f, granger_p, optimal_lag
 
-    Note: ORTHON interprets significance (e.g., p < 0.05)
+    Note: Prime interprets significance (e.g., p < 0.05)
     """
     source = np.asarray(source).flatten()
     target = np.asarray(target).flatten()
@@ -134,7 +134,7 @@ def compute_bidirectional(
     """
     Compute bidirectional causality.
 
-    Tests A→B and B→A. Returns numbers only - ORTHON classifies
+    Tests A→B and B→A. Returns numbers only - Prime classifies
     the relationship type (mutual, unidirectional, independent).
 
     Args:

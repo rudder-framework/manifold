@@ -15,7 +15,7 @@ From persistence diagrams, extracts:
 - Max/total persistence (dominant structure strength)
 - Number of significant features (above noise threshold)
 
-MANIFOLD computes topology. ORTHON interprets what fragmentation means.
+MANIFOLD computes topology. Prime interprets what fragmentation means.
 """
 
 import numpy as np

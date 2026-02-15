@@ -69,7 +69,7 @@ def _process_entity(entity_id: str, obs: pl.DataFrame, params: Dict[str, Any]) -
         try:
             lyap_result = lyapunov.compute(sig_data, min_samples=50)
             result_row['lyapunov'] = lyap_result.get('lyapunov')
-            result_row['stability_class'] = lyap_result.get('stability_class')
+
             result_row['lyapunov_confidence'] = lyap_result.get('confidence')
             embedding_dim = lyap_result.get('embedding_dim', 3) or 3
             embedding_tau = lyap_result.get('embedding_tau', 1) or 1
@@ -77,17 +77,16 @@ def _process_entity(entity_id: str, obs: pl.DataFrame, params: Dict[str, Any]) -
             result_row['embedding_tau'] = embedding_tau
         except Exception:
             result_row['lyapunov'] = np.nan
-            result_row['stability_class'] = 'unknown'
+
             embedding_dim = 3
             embedding_tau = 1
 
         try:
             attr_result = attractor.compute(sig_data, embedding_dim=embedding_dim, delay=embedding_tau)
             result_row['correlation_dim'] = attr_result.get('correlation_dim')
-            result_row['attractor_type'] = attr_result.get('attractor_type')
+
         except Exception:
             result_row['correlation_dim'] = np.nan
-            result_row['attractor_type'] = 'unknown'
 
         if len(sig_data) >= 200:
             try:

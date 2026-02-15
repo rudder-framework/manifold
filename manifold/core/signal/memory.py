@@ -34,7 +34,7 @@ def compute(y: np.ndarray, method: str = 'rs') -> Dict[str, float]:
     Returns:
         dict with hurst, hurst_r2
 
-    Interpretation (ORTHON's job, but for reference):
+    Interpretation (Prime's job, but for reference):
         H < 0.5: anti-persistent (mean-reverting)
         H = 0.5: random walk
         H > 0.5: persistent (trending)

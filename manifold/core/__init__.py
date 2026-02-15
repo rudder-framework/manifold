@@ -3,7 +3,7 @@ ENGINES Manifold
 ================
 
 Self-describing compute engines with configuration.
-ENGINES computes, ORTHON classifies.
+ENGINES computes, Prime classifies.
 
 Structure:
     base.py      - BaseEngine class with self-configuration

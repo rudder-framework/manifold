@@ -17,7 +17,7 @@ Inputs:
 Output:
     - ftle_backward.parquet
 
-ENGINES computes FTLE values. ORTHON interprets attractors as failure states.
+ENGINES computes FTLE values. Prime interprets attractors as failure states.
 """
 
 import argparse

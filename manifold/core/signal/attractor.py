@@ -2,7 +2,7 @@
 Attractor Engine.
 
 Imports from primitives/embedding/ and primitives/dynamical/ (canonical).
-Returns numbers only - ORTHON classifies attractor types.
+Returns numbers only - Prime classifies attractor types.
 """
 
 import numpy as np
@@ -20,7 +20,7 @@ def compute(y: np.ndarray, embedding_dim: int = None, delay: int = None) -> Dict
 
     Returns:
         dict with embedding_dim, correlation_dim, delay
-        ORTHON interprets correlation_dim to classify attractor type.
+        Prime interprets correlation_dim to classify attractor type.
     """
     result = {
         'embedding_dim': np.nan,

@@ -16,7 +16,7 @@ Computes per-signal Lyapunov exponents:
     - Embedding delay
     - Confidence score
 
-ENGINES computes, ORTHON interprets:
+ENGINES computes, Prime interprets:
     λ > 0: Chaos (trajectories diverge)
     λ ≈ 0: Quasi-periodic (trajectories parallel)
     λ < 0: Stable (trajectories converge)

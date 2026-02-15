@@ -11,7 +11,7 @@ Methods:
 - mad: (x - median) / MAD - most robust, works for heavy-tailed distributions
 - minmax: Scale to [0, 1] range - preserves distribution shape
 
-ENGINES computes numbers. ORTHON classifies.
+ENGINES computes numbers. Prime classifies.
 """
 
 import numpy as np

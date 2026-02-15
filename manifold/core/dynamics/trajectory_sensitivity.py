@@ -4,7 +4,7 @@ Trajectory Sensitivity Engine.
 Computes which variables are most sensitive at current state.
 Sensitivity varies with position on the attractor.
 
-ENGINES computes rankings. ORTHON interprets:
+ENGINES computes rankings. Prime interprets:
     - Variable ranks show real-time importance
     - Rank transitions indicate regime changes
     - High sensitivity entropy = distributed importance

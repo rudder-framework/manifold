@@ -685,7 +685,7 @@ def run(
     Args:
         observations_path: Path to observations.parquet
         data_path: Root data directory (for write_output)
-        manifest: Manifest dict from ORTHON (REQUIRED)
+        manifest: Manifest dict from Prime (REQUIRED)
         verbose: Print progress
         typology_path: Path to typology.parquet (for window_factor)
 

@@ -16,7 +16,7 @@ Computes:
 - Phase space analysis
 
 NOTE: ENGINES computes, never classifies. All classification logic
-has been removed. ORTHON interprets the computed values.
+has been removed. Prime interprets the computed values.
 
 ARCHITECTURE: This is an ORCHESTRATOR that delegates all compute to primitives.
 All mathematical operations are performed by directly-imported primitive functions.
@@ -704,7 +704,7 @@ def compute_pairwise_dynamics(
                 'distance_velocity': dist_deriv['velocity'][i],
 
                 # Coupling dynamics - COMPUTED VALUES ONLY (no classification)
-                # ORTHON interprets: WHERE coupling_velocity > 0.01 THEN 'STRENGTHENING'
+                # Prime interprets: WHERE coupling_velocity > 0.01 THEN 'STRENGTHENING'
                 'coupling_velocity': corr_deriv['velocity'][i] * np.sign(correlation[i]) if np.abs(correlation[i]) > 1e-10 else 0.0,
             }
             # Include cohort if available
@@ -790,7 +790,7 @@ Usage:
     python geometry_dynamics.py pairwise <signal_pairwise.parquet> [output.parquet]
     python geometry_dynamics.py all <state_geometry.parquet> <signal_geometry.parquet> [signal_pairwise.parquet] [output_dir]
 
-Computes (no classification - ENGINES computes, ORTHON interprets):
+Computes (no classification - ENGINES computes, Prime interprets):
 - Velocity (first derivative)
 - Acceleration (second derivative)
 - Jerk (third derivative)

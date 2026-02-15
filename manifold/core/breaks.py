@@ -12,7 +12,7 @@ Uses three complementary detectors:
 3. Local outlier detection — finds isolated spikes
 
 ENGINES computes break locations and metrics.
-ORTHON classifies break types.
+Prime classifies break types.
 """
 
 import numpy as np

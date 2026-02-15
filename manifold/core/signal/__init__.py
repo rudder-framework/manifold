@@ -2,7 +2,7 @@
 ENGINES Signal Engines.
 
 Each engine computes ONE thing. Imports from primitives.
-ENGINES computes, ORTHON classifies.
+ENGINES computes, Prime classifies.
 """
 
 from . import statistics  # kurtosis, skewness, crest_factor
