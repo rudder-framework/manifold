@@ -7,11 +7,13 @@ Quantifies signal vs noise content.
 import numpy as np
 from typing import Dict
 
-try:
-    from rudder_primitives_rs.individual import snr as _snr_rs
-    _USE_RUST_SNR = True
-except ImportError:
-    _USE_RUST_SNR = False
+from manifold.primitives._config import USE_RUST as _USE_RUST_SNR
+
+if _USE_RUST_SNR:
+    try:
+        from rudder_primitives_rs.individual import snr as _snr_rs
+    except ImportError:
+        _USE_RUST_SNR = False
 
 
 def compute(y: np.ndarray) -> Dict[str, float]:

@@ -7,14 +7,16 @@ Mutual information and transfer entropy.
 import numpy as np
 from typing import Optional
 
-try:
-    from rudder_primitives_rs.information import (
-        mutual_information as _mutual_info_rs,
-        transfer_entropy as _transfer_entropy_rs,
-    )
-    _USE_RUST_INFO = True
-except ImportError:
-    _USE_RUST_INFO = False
+from manifold.primitives._config import USE_RUST as _USE_RUST_INFO
+
+if _USE_RUST_INFO:
+    try:
+        from rudder_primitives_rs.information import (
+            mutual_information as _mutual_info_rs,
+            transfer_entropy as _transfer_entropy_rs,
+        )
+    except ImportError:
+        _USE_RUST_INFO = False
 
 
 def mutual_information(

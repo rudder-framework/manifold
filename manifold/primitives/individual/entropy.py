@@ -9,11 +9,13 @@ from typing import Optional
 
 from manifold.primitives.config import PRIMITIVES_CONFIG as cfg
 
-try:
-    from rudder_primitives_rs.individual import permutation_entropy as _perm_entropy_rs
-    _USE_RUST_PERM = True
-except ImportError:
-    _USE_RUST_PERM = False
+from manifold.primitives._config import USE_RUST as _USE_RUST_PERM
+
+if _USE_RUST_PERM:
+    try:
+        from rudder_primitives_rs.individual import permutation_entropy as _perm_entropy_rs
+    except ImportError:
+        _USE_RUST_PERM = False
 
 
 def sample_entropy(

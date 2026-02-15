@@ -7,14 +7,16 @@ Distance matrix, adjacency matrix, Laplacian matrix.
 import numpy as np
 from typing import Callable, Optional, Literal
 
-try:
-    from rudder_primitives_rs.matrix import (
-        laplacian_matrix as _laplacian_matrix_rs,
-        laplacian_eigenvalues as _laplacian_eigenvalues_rs,
-    )
-    _USE_RUST_GRAPH = True
-except ImportError:
-    _USE_RUST_GRAPH = False
+from manifold.primitives._config import USE_RUST as _USE_RUST_GRAPH
+
+if _USE_RUST_GRAPH:
+    try:
+        from rudder_primitives_rs.matrix import (
+            laplacian_matrix as _laplacian_matrix_rs,
+            laplacian_eigenvalues as _laplacian_eigenvalues_rs,
+        )
+    except ImportError:
+        _USE_RUST_GRAPH = False
 
 
 def distance_matrix(

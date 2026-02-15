@@ -7,13 +7,15 @@ Mutual information, conditional MI, multivariate MI.
 import numpy as np
 from typing import List, Optional, Tuple
 
-try:
-    from rudder_primitives_rs.information import (
-        mutual_information as _mutual_info_rs,
-    )
-    _USE_RUST_MI = True
-except ImportError:
-    _USE_RUST_MI = False
+from manifold.primitives._config import USE_RUST as _USE_RUST_MI
+
+if _USE_RUST_MI:
+    try:
+        from rudder_primitives_rs.information import (
+            mutual_information as _mutual_info_rs,
+        )
+    except ImportError:
+        _USE_RUST_MI = False
 
 
 def mutual_information(

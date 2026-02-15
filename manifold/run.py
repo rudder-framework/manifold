@@ -152,12 +152,14 @@ def run(
         ]
 
     if verbose:
+        from manifold.primitives._config import USE_RUST
         print("=" * 70)
         print("MANIFOLD PIPELINE")
         print("=" * 70)
         print(f"Data:     {data_path}")
         print(f"Output:   {output_dir}")
         print(f"Stages:   {len(run_stages)}")
+        print(f"Backend:  {'Rust' if USE_RUST else 'Python (MANIFOLD_USE_RUST=0)'}")
         print()
 
     obs_path = str(data_path / manifest['paths']['observations'])

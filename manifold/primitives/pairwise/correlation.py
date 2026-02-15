@@ -7,18 +7,20 @@ Correlation, covariance, cross-correlation.
 import numpy as np
 from typing import Optional, Union, Tuple
 
-try:
-    from rudder_primitives_rs.pairwise import (
-        correlation as _correlation_rs,
-        covariance as _covariance_rs,
-        cross_correlation as _cross_correlation_rs,
-        lag_at_max_xcorr as _lag_at_max_xcorr_rs,
-        spearman_rho as _spearman_rho_rs,
-        kendall_tau as _kendall_tau_rs,
-    )
-    _USE_RUST_PAIRWISE = True
-except ImportError:
-    _USE_RUST_PAIRWISE = False
+from manifold.primitives._config import USE_RUST as _USE_RUST_PAIRWISE
+
+if _USE_RUST_PAIRWISE:
+    try:
+        from rudder_primitives_rs.pairwise import (
+            correlation as _correlation_rs,
+            covariance as _covariance_rs,
+            cross_correlation as _cross_correlation_rs,
+            lag_at_max_xcorr as _lag_at_max_xcorr_rs,
+            spearman_rho as _spearman_rho_rs,
+            kendall_tau as _kendall_tau_rs,
+        )
+    except ImportError:
+        _USE_RUST_PAIRWISE = False
 
 
 def correlation(

@@ -7,13 +7,15 @@ DTW, Euclidean, Cosine similarity.
 import numpy as np
 from typing import Optional
 
-try:
-    from rudder_primitives_rs.pairwise import (
-        dynamic_time_warping as _dtw_rs,
-    )
-    _USE_RUST_DISTANCE = True
-except ImportError:
-    _USE_RUST_DISTANCE = False
+from manifold.primitives._config import USE_RUST as _USE_RUST_DISTANCE
+
+if _USE_RUST_DISTANCE:
+    try:
+        from rudder_primitives_rs.pairwise import (
+            dynamic_time_warping as _dtw_rs,
+        )
+    except ImportError:
+        _USE_RUST_DISTANCE = False
 
 
 def dynamic_time_warping(

@@ -22,11 +22,13 @@ from manifold.primitives.individual.correlation import (
     autocorrelation,
 )
 
-try:
-    from rudder_primitives_rs.individual import acf_decay as _acf_decay_rs
-    _USE_RUST_ACF = True
-except ImportError:
-    _USE_RUST_ACF = False
+from manifold.primitives._config import USE_RUST as _USE_RUST_ACF
+
+if _USE_RUST_ACF:
+    try:
+        from rudder_primitives_rs.individual import acf_decay as _acf_decay_rs
+    except ImportError:
+        _USE_RUST_ACF = False
 
 
 def compute(y: np.ndarray, method: str = 'rs') -> Dict[str, float]:

@@ -19,11 +19,13 @@ import numpy as np
 from typing import Tuple, Dict, Any, Optional
 from scipy.spatial import KDTree
 
-try:
-    from rudder_primitives_rs.dynamical import ftle_local_linearization as _ftle_rs
-    _USE_RUST_FTLE = True
-except ImportError:
-    _USE_RUST_FTLE = False
+from manifold.primitives._config import USE_RUST as _USE_RUST_FTLE
+
+if _USE_RUST_FTLE:
+    try:
+        from rudder_primitives_rs.dynamical import ftle_local_linearization as _ftle_rs
+    except ImportError:
+        _USE_RUST_FTLE = False
 
 
 def ftle_local_linearization(

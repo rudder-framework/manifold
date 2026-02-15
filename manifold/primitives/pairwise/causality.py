@@ -8,13 +8,15 @@ import numpy as np
 from scipy import stats
 from typing import Tuple, Optional
 
-try:
-    from rudder_primitives_rs.pairwise import (
-        granger_causality as _granger_rs,
-    )
-    _USE_RUST_CAUSALITY = True
-except ImportError:
-    _USE_RUST_CAUSALITY = False
+from manifold.primitives._config import USE_RUST as _USE_RUST_CAUSALITY
+
+if _USE_RUST_CAUSALITY:
+    try:
+        from rudder_primitives_rs.pairwise import (
+            granger_causality as _granger_rs,
+        )
+    except ImportError:
+        _USE_RUST_CAUSALITY = False
 
 
 def granger_causality(

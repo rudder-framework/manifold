@@ -7,11 +7,13 @@ ADF, KPSS, Phillips-Perron tests.
 import numpy as np
 from typing import Tuple, Optional
 
-try:
-    from rudder_primitives_rs.individual import adf_test as _adf_rs
-    _USE_RUST_ADF = True
-except ImportError:
-    _USE_RUST_ADF = False
+from manifold.primitives._config import USE_RUST as _USE_RUST_ADF
+
+if _USE_RUST_ADF:
+    try:
+        from rudder_primitives_rs.individual import adf_test as _adf_rs
+    except ImportError:
+        _USE_RUST_ADF = False
 
 
 def adf_test(

@@ -9,11 +9,13 @@ from typing import Optional, Tuple
 
 from manifold.primitives.config import PRIMITIVES_CONFIG as cfg
 
-try:
-    from rudder_primitives_rs.individual import hurst_exponent as _hurst_rs
-    _USE_RUST = True
-except ImportError:
-    _USE_RUST = False
+from manifold.primitives._config import USE_RUST as _USE_RUST
+
+if _USE_RUST:
+    try:
+        from rudder_primitives_rs.individual import hurst_exponent as _hurst_rs
+    except ImportError:
+        _USE_RUST = False
 
 
 def hurst_exponent(

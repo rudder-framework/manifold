@@ -8,15 +8,17 @@ import numpy as np
 from scipy import signal as scipy_signal
 from typing import Tuple, Optional
 
-try:
-    from rudder_primitives_rs.individual import (
-        psd as _psd_rs,
-        spectral_entropy as _spectral_entropy_rs,
-        spectral_centroid as _spectral_centroid_rs,
-    )
-    _USE_RUST_SPECTRAL = True
-except ImportError:
-    _USE_RUST_SPECTRAL = False
+from manifold.primitives._config import USE_RUST as _USE_RUST_SPECTRAL
+
+if _USE_RUST_SPECTRAL:
+    try:
+        from rudder_primitives_rs.individual import (
+            psd as _psd_rs,
+            spectral_entropy as _spectral_entropy_rs,
+            spectral_centroid as _spectral_centroid_rs,
+        )
+    except ImportError:
+        _USE_RUST_SPECTRAL = False
 
 
 def fft(signal: np.ndarray) -> np.ndarray:

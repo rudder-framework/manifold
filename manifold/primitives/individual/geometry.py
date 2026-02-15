@@ -9,16 +9,18 @@ import numpy as np
 from scipy.linalg import eigh, eigvals, svd
 from typing import Tuple, Optional
 
-try:
-    from rudder_primitives_rs.matrix import (
-        eigendecomposition as _eigendecomp_rs,
-        condition_number as _condition_number_rs,
-        effective_dimension as _effective_dimension_rs,
-        covariance_matrix as _covariance_matrix_rs,
-    )
-    _USE_RUST_MATRIX = True
-except ImportError:
-    _USE_RUST_MATRIX = False
+from manifold.primitives._config import USE_RUST as _USE_RUST_MATRIX
+
+if _USE_RUST_MATRIX:
+    try:
+        from rudder_primitives_rs.matrix import (
+            eigendecomposition as _eigendecomp_rs,
+            condition_number as _condition_number_rs,
+            effective_dimension as _effective_dimension_rs,
+            covariance_matrix as _covariance_matrix_rs,
+        )
+    except ImportError:
+        _USE_RUST_MATRIX = False
 
 
 def covariance_matrix(

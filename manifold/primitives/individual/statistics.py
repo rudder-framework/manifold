@@ -8,15 +8,17 @@ import numpy as np
 from scipy import stats as scipy_stats
 from typing import Tuple, Union, List
 
-try:
-    from rudder_primitives_rs.individual import (
-        skewness as _skewness_rs,
-        kurtosis as _kurtosis_rs,
-        crest_factor as _crest_factor_rs,
-    )
-    _USE_RUST_STATS = True
-except ImportError:
-    _USE_RUST_STATS = False
+from manifold.primitives._config import USE_RUST as _USE_RUST_STATS
+
+if _USE_RUST_STATS:
+    try:
+        from rudder_primitives_rs.individual import (
+            skewness as _skewness_rs,
+            kurtosis as _kurtosis_rs,
+            crest_factor as _crest_factor_rs,
+        )
+    except ImportError:
+        _USE_RUST_STATS = False
 
 
 def mean(signal: np.ndarray) -> float:

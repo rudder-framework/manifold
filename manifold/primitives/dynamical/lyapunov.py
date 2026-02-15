@@ -7,11 +7,13 @@ Lyapunov exponent estimation.
 import numpy as np
 from typing import Tuple, Optional
 
-try:
-    from rudder_primitives_rs.dynamical import lyapunov_rosenstein as _lyapunov_rs
-    _USE_RUST_LYAP = True
-except ImportError:
-    _USE_RUST_LYAP = False
+from manifold.primitives._config import USE_RUST as _USE_RUST_LYAP
+
+if _USE_RUST_LYAP:
+    try:
+        from rudder_primitives_rs.dynamical import lyapunov_rosenstein as _lyapunov_rs
+    except ImportError:
+        _USE_RUST_LYAP = False
 
 
 def lyapunov_rosenstein(

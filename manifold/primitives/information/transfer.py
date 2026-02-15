@@ -7,13 +7,15 @@ Transfer entropy for causal information flow.
 import numpy as np
 from typing import Optional
 
-try:
-    from rudder_primitives_rs.information import (
-        transfer_entropy as _transfer_entropy_rs,
-    )
-    _USE_RUST_TE = True
-except ImportError:
-    _USE_RUST_TE = False
+from manifold.primitives._config import USE_RUST as _USE_RUST_TE
+
+if _USE_RUST_TE:
+    try:
+        from rudder_primitives_rs.information import (
+            transfer_entropy as _transfer_entropy_rs,
+        )
+    except ImportError:
+        _USE_RUST_TE = False
 
 
 def transfer_entropy(
