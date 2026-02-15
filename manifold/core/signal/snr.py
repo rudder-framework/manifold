@@ -7,14 +7,6 @@ Quantifies signal vs noise content.
 import numpy as np
 from typing import Dict
 
-from manifold.primitives._config import USE_RUST as _USE_RUST_SNR
-
-if _USE_RUST_SNR:
-    try:
-        from manifold_rs.individual import snr as _snr_rs
-    except ImportError:
-        _USE_RUST_SNR = False
-
 
 def compute(y: np.ndarray) -> Dict[str, float]:
     """
@@ -42,15 +34,6 @@ def compute(y: np.ndarray) -> Dict[str, float]:
 
     if n < 8:
         return result
-
-    if _USE_RUST_SNR:
-        snr_db, snr_linear, signal_power, noise_power = _snr_rs(y)
-        return {
-            'snr_db': float(snr_db),
-            'snr_linear': float(snr_linear),
-            'signal_power': float(signal_power),
-            'noise_power': float(noise_power),
-        }
 
     try:
         # Remove DC

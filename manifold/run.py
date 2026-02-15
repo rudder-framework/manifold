@@ -339,7 +339,6 @@ def run(
         n_workers = max(1, (os.cpu_count() or 2) - 1)
 
     if verbose:
-        from manifold.primitives._config import USE_RUST
         print("=" * 70)
         print("MANIFOLD PIPELINE")
         print("=" * 70)
@@ -347,7 +346,6 @@ def run(
         print(f"Manifest: {manifest_path}")
         print(f"Output:   {output_dir}")
         print(f"Stages:   {len(run_stages)}")
-        print(f"Backend:  {'Rust' if USE_RUST else 'Python (USE_RUST=0)'}")
         print(f"Workers:  {n_workers} ({'parallel' if n_workers > 1 else 'sequential'})")
         print()
 

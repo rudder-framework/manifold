@@ -22,14 +22,6 @@ from manifold.primitives.individual.correlation import (
     autocorrelation,
 )
 
-from manifold.primitives._config import USE_RUST as _USE_RUST_ACF
-
-if _USE_RUST_ACF:
-    try:
-        from manifold_rs.individual import acf_decay as _acf_decay_rs
-    except ImportError:
-        _USE_RUST_ACF = False
-
 
 def compute(y: np.ndarray, method: str = 'rs') -> Dict[str, float]:
     """
@@ -93,14 +85,6 @@ def compute_acf_decay(y: np.ndarray, max_lag: int = 50) -> Dict[str, Any]:
             'acf_lag1': np.nan,
             'acf_lag10': np.nan,
             'acf_half_life': np.nan,
-        }
-
-    if _USE_RUST_ACF:
-        lag1, lag10, half = _acf_decay_rs(y, max_lag)
-        return {
-            'acf_lag1': float(lag1),
-            'acf_lag10': float(lag10),
-            'acf_half_life': float(half),
         }
 
     # Get all ACF values then slice to max_lag
