@@ -183,6 +183,13 @@ def _run_cohort_worker(
     # Limit internal parallelism (signal_vector uses joblib)
     os.environ['LOKY_MAX_CPU_COUNT'] = '2'
 
+    # Initialize coordinate tagging in worker process (module state is not inherited)
+    from manifold.io.coordinate import get_coordinate_config as _build_coord_config
+    from manifold.io import writer as _writer
+    _coord_config = _build_coord_config(manifest, cohort_obs_path)
+    if _coord_config:
+        _writer.set_coordinate_config(_coord_config)
+
     output_dir = Path(cohort_output_dir)
 
     for module_path, stage_id in run_stages:
@@ -311,6 +318,17 @@ def run(
 
     manifest['_manifest_path'] = str(manifest_path)
     manifest['_data_dir'] = str(data_path)
+
+    # Initialize coordinate tagging (if manifest has a coordinate block)
+    from manifold.io.coordinate import get_coordinate_config as _build_coord_config
+    from manifold.io import writer as _writer
+    _coord_config = _build_coord_config(manifest, str(observations_path))
+    if _coord_config:
+        _writer.set_coordinate_config(_coord_config)
+        if verbose:
+            col = _coord_config['column']
+            src = _coord_config['source']
+            print(f"Coordinate: {col} (source={src})")
 
     # Safety: refuse to wipe if this looks like a domain root
     if (output_dir / 'observations.parquet').exists():

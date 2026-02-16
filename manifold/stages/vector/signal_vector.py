@@ -502,6 +502,7 @@ def _compute_single_signal(
         row = {
             'signal_id': signal_id,
             'I': window_end,
+            'window_start_I': max(0, window_end - system_window + 1),
         }
         # Always include cohort (downstream stages group by it)
         row['cohort'] = cohort if cohort is not None else ''
@@ -757,8 +758,8 @@ def run(
         )
 
     # Prune dead columns
-    meta_cols_keep = {'unit_id', 'I', 'signal_id', 'signal_name', 'n_samples',
-                      'window_size', 'cohort'}
+    meta_cols_keep = {'unit_id', 'I', 'window_start_I', 'signal_id', 'signal_name',
+                      'n_samples', 'window_size', 'cohort'}
     n_rows = len(df)
     if n_rows > 0:
         # Helper: count "dead" values (null OR NaN) for a column

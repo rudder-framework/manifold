@@ -65,6 +65,11 @@ def get_intervention(manifest: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     return manifest.get('intervention')
 
 
+def get_coordinate_block(manifest: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Get coordinate config from manifest, or None if absent."""
+    return manifest.get('coordinate')
+
+
 def get_segments(manifest: Dict[str, Any]) -> Optional[list]:
     """Get segments config, deriving from intervention if needed."""
     segments = manifest.get('segments')
