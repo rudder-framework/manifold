@@ -35,6 +35,9 @@ from . import snr
 from . import thd
 from . import hilbert_stability
 from . import wavelet_stability
+from . import transition_count
+from . import duty_cycle
+from . import mean_time_between
 
 __all__ = [
     'statistics',
@@ -67,4 +70,7 @@ __all__ = [
     'thd',
     'hilbert_stability',
     'wavelet_stability',
+    'transition_count',
+    'duty_cycle',
+    'mean_time_between',
 ]

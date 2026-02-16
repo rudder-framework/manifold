@@ -189,8 +189,9 @@ def _load_legacy_engine_registry() -> Dict[str, Callable]:
         rate_of_change, variance_growth,
         fundamental_freq, phase_coherence, snr, thd,
         adf_stat, variance_ratio,
-        # Discrete/state engines (PR: Missing Discrete Engines)
+        # Discrete/state engines
         dwell_times, level_count, level_histogram, transition_matrix,
+        transition_count, duty_cycle, mean_time_between,
         # RQA + amplitude engines
         rqa, peak, rms,
         correlation_dimension, determinism, embedding_dim, recurrence_rate,
@@ -276,6 +277,9 @@ def _load_legacy_engine_registry() -> Dict[str, Callable]:
         'level_histogram': level_histogram.compute,
         'transition_matrix': transition_matrix.compute,
         'entropy': discrete_entropy.compute,
+        'transition_count': transition_count.compute,
+        'duty_cycle': duty_cycle.compute,
+        'mean_time_between': mean_time_between.compute,
 
         # RQA engines (full + individual)
         'rqa': rqa.compute,
@@ -405,7 +409,7 @@ def _validate_engines(
     return valid, unknown
 
 
-def _diagnose_manifest_engines(
+def _audit_manifest_engines(
     manifest: Dict[str, Any],
     legacy_registry: Dict[str, Callable]
 ) -> Dict[str, Any]:
@@ -705,13 +709,13 @@ def run(
     engine_registry = _get_engine_registry()
 
     # Validate engines upfront (PR13)
-    diagnosis = _diagnose_manifest_engines(manifest, engine_registry)
+    audit = _audit_manifest_engines(manifest, engine_registry)
     if verbose:
-        if diagnosis['missing']:
-            print(f"WARNING: Missing engines: {diagnosis['missing']}")
-            print(f"  Coverage: {diagnosis['coverage']:.1%} ({len(diagnosis['available'])}/{diagnosis['total_requested']})")
+        if audit['missing']:
+            print(f"WARNING: Missing engines: {audit['missing']}")
+            print(f"  Coverage: {audit['coverage']:.1%} ({len(audit['available'])}/{audit['total_requested']})")
         else:
-            print(f"All {diagnosis['total_requested']} engines available")
+            print(f"All {audit['total_requested']} engines available")
 
     # Load window factors from typology (if available)
     window_factors = {}
@@ -787,33 +791,30 @@ def run(
                 print(f"  Pruning {len(dead_cols)} dead columns (>90% null/NaN): {dead_cols}")
             df = df.drop(dead_cols)
 
-        # Phase 2: Drop columns 100% dead for any signal (engine not applicable
-        # to that signal type — e.g. trend engines on broadband signals).
+        # Phase 2: Drop columns 100% dead for ALL signals (universally broken).
         # Different signal types have different engine sets in the manifest.
-        # The wide format creates null columns for inapplicable engines.
+        # A column is only pruned if no signal produces any data for it.
         if 'signal_id' in df.columns:
             feature_cols = [c for c in df.columns if c not in meta_cols_keep]
             signals = df['signal_id'].unique().to_list()
             if len(signals) > 1 and feature_cols:
-                inapplicable = set()
+                dead_everywhere = set(feature_cols)
                 for sig in signals:
                     sig_df = df.filter(pl.col('signal_id') == sig)
                     sig_n = len(sig_df)
                     if sig_n == 0:
                         continue
-                    for c in feature_cols:
-                        if c in inapplicable:
-                            continue
+                    for c in list(dead_everywhere):
                         col = sig_df[c]
                         dead_cnt = col.null_count()
                         if col.dtype in [pl.Float64, pl.Float32]:
                             dead_cnt += col.is_nan().sum()
-                        if dead_cnt == sig_n:
-                            inapplicable.add(c)
-                if inapplicable:
+                        if dead_cnt < sig_n:
+                            dead_everywhere.discard(c)
+                if dead_everywhere:
                     if verbose:
-                        print(f"  Pruning {len(inapplicable)} engine-specific columns (inapplicable to ≥1 signal type)")
-                    df = df.drop(list(inapplicable))
+                        print(f"  Pruning {len(dead_everywhere)} dead columns (100% null/NaN for all signals)")
+                    df = df.drop(list(dead_everywhere))
 
     # Write output through central writer
     write_output(df, data_path, 'signal_vector', verbose=verbose)
