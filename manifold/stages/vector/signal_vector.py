@@ -331,7 +331,7 @@ def get_signal_data(
     observations: pl.DataFrame,
     cohort_name: str,
     signal_id: str,
-) -> np.ndarray:
+) -> tuple:
     """
     Extract signal data from observations.
 
@@ -341,7 +341,7 @@ def get_signal_data(
         signal_id: Signal identifier
 
     Returns:
-        numpy array of signal values sorted by I
+        (values_array, signal_0_array) tuple sorted by signal_0
     """
     # Filter by BOTH cohort and signal_id to get per-engine data
     filters = pl.col('signal_id') == signal_id
@@ -351,9 +351,9 @@ def get_signal_data(
     signal_data = (
         observations
         .filter(filters)
-        .sort('I')
+        .sort('signal_0')
     )
-    return signal_data['value'].to_numpy()
+    return signal_data['value'].to_numpy(), signal_data['signal_0'].to_numpy()
 
 
 def run_engine(engine_name: str, window_data: np.ndarray) -> Dict[str, Any]:
@@ -463,6 +463,7 @@ def load_window_factors(typology_path: Path) -> Dict[str, float]:
 def _compute_single_signal(
     signal_id: str,
     signal_data: np.ndarray,
+    signal_0_data: np.ndarray,
     signal_config: Dict[str, Any],
     system_window: int,
     system_stride: int,
@@ -476,7 +477,8 @@ def _compute_single_signal(
 
     Args:
         signal_id: Signal identifier
-        signal_data: numpy array of signal values (sorted by I)
+        signal_data: numpy array of signal values (sorted by signal_0)
+        signal_0_data: numpy array of signal_0 values (physical coordinate)
         signal_config: Config dict for this signal from manifest
         system_window: System window size
         system_stride: System stride
@@ -499,18 +501,20 @@ def _compute_single_signal(
 
     # Compute windows at system stride
     for window_end in range(system_window - 1, len(signal_data), system_stride):
+        window_start = max(0, window_end - system_window + 1)
         row = {
             'signal_id': signal_id,
-            'I': window_end,
-            'window_start_I': max(0, window_end - system_window + 1),
+            'signal_0_start': float(signal_0_data[window_start]),
+            'signal_0_end': float(signal_0_data[window_end]),
+            'signal_0_center': (float(signal_0_data[window_start]) + float(signal_0_data[window_end])) / 2,
         }
         # Always include cohort (downstream stages group by it)
         row['cohort'] = cohort if cohort is not None else ''
 
         # Run each engine group with appropriate window
         for window_size, engine_list in engine_groups.items():
-            window_start = max(0, window_end - window_size + 1)
-            window_data = signal_data[window_start:window_end + 1]
+            eng_start = max(0, window_end - window_size + 1)
+            window_data = signal_data[eng_start:window_end + 1]
             actual_available = len(window_data)
 
             for engine in engine_list:
@@ -526,7 +530,7 @@ def _compute_single_signal(
                     row.update(engine_output)
                 except Exception as e:
                     import sys
-                    print(f"WARNING: Engine '{engine}' failed on signal '{signal_id}' I={window_end}: {e}", file=sys.stderr)
+                    print(f"WARNING: Engine '{engine}' failed on signal '{signal_id}' signal_0={signal_0_data[window_end]}: {e}", file=sys.stderr)
                     row.update(null_output_for_engine(engine))
 
         rows.append(row)
@@ -538,9 +542,9 @@ def _prepare_signal_tasks(
     observations: pl.DataFrame,
     manifest: Dict[str, Any],
     window_factors: Dict[str, float] = None,
-) -> List[Tuple[str, np.ndarray, Dict[str, Any], float, str]]:
+) -> List[Tuple[str, np.ndarray, np.ndarray, Dict[str, Any], float, str]]:
     """
-    Prepare (signal_id, signal_data, signal_config, window_factor, cohort) tuples for parallel dispatch.
+    Prepare (signal_id, signal_data, signal_0_data, signal_config, window_factor, cohort) tuples for parallel dispatch.
 
     Args:
         observations: Observations DataFrame
@@ -548,7 +552,7 @@ def _prepare_signal_tasks(
         window_factors: Dict mapping signal_id to window_factor (from typology)
 
     Returns:
-        List of (signal_id, signal_data, signal_config, window_factor, cohort) tuples
+        List of (signal_id, signal_data, signal_0_data, signal_config, window_factor, cohort) tuples
     """
     if window_factors is None:
         window_factors = {}
@@ -572,7 +576,7 @@ def _prepare_signal_tasks(
             if not engines:
                 continue
 
-            signal_data = get_signal_data(observations, cohort_name, signal_id)
+            signal_data, signal_0_data = get_signal_data(observations, cohort_name, signal_id)
             if len(signal_data) == 0:
                 continue
 
@@ -587,7 +591,7 @@ def _prepare_signal_tasks(
             # Get window factor for this signal (default 1.0)
             factor = window_factors.get(signal_id, 1.0)
 
-            tasks.append((signal_id, signal_data, signal_config, factor, cohort_name))
+            tasks.append((signal_id, signal_data, signal_0_data, signal_config, factor, cohort_name))
 
     return tasks
 
@@ -632,7 +636,7 @@ def compute_signal_vector(
 
     # Count total windows for progress
     total_windows = 0
-    for signal_id, signal_data, signal_config, factor, cohort in tasks:
+    for signal_id, signal_data, signal_0_data, signal_config, factor, cohort in tasks:
         n_windows = max(0, (len(signal_data) - system_window) // system_stride + 1)
         total_windows += n_windows
 
@@ -642,17 +646,17 @@ def compute_signal_vector(
 
     if len(tasks) == 1:
         # Single signal - no parallelism overhead
-        signal_id, signal_data, signal_config, factor, cohort = tasks[0]
+        signal_id, signal_data, signal_0_data, signal_config, factor, cohort = tasks[0]
         all_rows = _compute_single_signal(
-            signal_id, signal_data, signal_config, system_window, system_stride, factor, cohort
+            signal_id, signal_data, signal_0_data, signal_config, system_window, system_stride, factor, cohort
         )
     else:
         # Parallel across signals - always
         results = Parallel(n_jobs=_N_WORKERS, prefer="processes")(
             delayed(_compute_single_signal)(
-                signal_id, signal_data, signal_config, system_window, system_stride, factor, cohort
+                signal_id, signal_data, signal_0_data, signal_config, system_window, system_stride, factor, cohort
             )
-            for signal_id, signal_data, signal_config, factor, cohort in tasks
+            for signal_id, signal_data, signal_0_data, signal_config, factor, cohort in tasks
         )
 
         # Flatten results
@@ -758,8 +762,8 @@ def run(
         )
 
     # Prune dead columns
-    meta_cols_keep = {'unit_id', 'I', 'window_start_I', 'signal_id', 'signal_name',
-                      'n_samples', 'window_size', 'cohort'}
+    meta_cols_keep = {'unit_id', 'signal_0_start', 'signal_0_end', 'signal_0_center',
+                      'signal_id', 'signal_name', 'n_samples', 'window_size', 'cohort'}
     n_rows = len(df)
     if n_rows > 0:
         # Helper: count "dead" values (null OR NaN) for a column

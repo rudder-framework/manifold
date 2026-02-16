@@ -73,7 +73,7 @@ def compute(signal_matrix: np.ndarray, min_signals: int = 2) -> Dict[str, Any]:
 def compute_from_signal_vector(
     signal_vector: pl.DataFrame,
     feature_columns: Optional[List[str]] = None,
-    group_cols: List[str] = ['unit_id', 'I'],
+    group_cols: List[str] = ['unit_id', 'signal_0_end'],
     min_signals: int = 2,
 ) -> pl.DataFrame:
     """
@@ -92,7 +92,7 @@ def compute_from_signal_vector(
         # Auto-detect numeric feature columns
         feature_columns = [
             col for col in signal_vector.columns
-            if col not in ['unit_id', 'I', 'signal_id', 'cohort']
+            if col not in ['unit_id', 'signal_0_start', 'signal_0_end', 'signal_0_center', 'signal_id', 'cohort']
             and signal_vector[col].dtype in [pl.Float64, pl.Float32, pl.Int64, pl.Int32]
         ]
 

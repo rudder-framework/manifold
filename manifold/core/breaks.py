@@ -30,7 +30,7 @@ def compute(
     Detect breaks in a single signal.
 
     Args:
-        y: Signal values (1D array, ordered by I)
+        y: Signal values (1D array, ordered by signal_0)
         signal_id: Signal identifier (passed through to output)
         sensitivity: Detection sensitivity multiplier (lower = more breaks)
                      Default 1.0 uses adaptive thresholds.
@@ -438,8 +438,8 @@ def summarize_breaks(breaks: List[Dict[str, Any]]) -> Dict[str, Any]:
     magnitudes = [abs(b['magnitude']) for b in breaks]
     sharpnesses = [b['sharpness'] for b in breaks]
 
-    # Break spacing
-    locations = sorted(b['I'] for b in breaks)
+    # Break spacing (signal_0 after stage translation, 'I' inside engine)
+    locations = sorted(b.get('signal_0', b.get('I', 0)) for b in breaks)
     if len(locations) > 1:
         spacings = [locations[i+1] - locations[i] for i in range(len(locations)-1)]
         mean_spacing = float(np.mean(spacings))

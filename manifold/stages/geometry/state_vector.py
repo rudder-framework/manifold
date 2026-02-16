@@ -110,7 +110,7 @@ def compute_state_vector(
     signal_vector = signal_vector.filter(pl.col(signal_col).is_in(active_signals))
 
     # Identify features
-    meta_cols = ['unit_id', 'I', 'signal_id', 'signal_name', 'n_samples', 'window_size', 'cohort']
+    meta_cols = ['unit_id', 'signal_0_start', 'signal_0_end', 'signal_0_center', 'signal_id', 'signal_name', 'n_samples', 'window_size', 'cohort']
     all_features = [c for c in signal_vector.columns if c not in meta_cols]
 
     if verbose:
@@ -141,13 +141,13 @@ def compute_state_vector(
         print(f"Composite features: {len(composite_features)}")
         print()
 
-    # Require I column
-    if 'I' not in signal_vector.columns:
-        raise ValueError("Missing required column 'I'. Use temporal signal_vector.")
+    # Require signal_0_end column
+    if 'signal_0_end' not in signal_vector.columns:
+        raise ValueError("Missing required column 'signal_0_end'. Use temporal signal_vector.")
 
     # Determine grouping columns
     has_cohort = 'cohort' in signal_vector.columns
-    group_cols = ['cohort', 'I'] if has_cohort else ['I']
+    group_cols = ['cohort', 'signal_0_end'] if has_cohort else ['signal_0_end']
 
     # Process each group
     results = []
@@ -159,10 +159,10 @@ def compute_state_vector(
 
     for i, (group_key, group) in enumerate(groups):
         if has_cohort:
-            cohort, I = group_key if isinstance(group_key, tuple) else (group_key, None)
+            cohort, s0_end = group_key if isinstance(group_key, tuple) else (group_key, None)
         else:
             cohort = None
-            I = group_key[0] if isinstance(group_key, tuple) else group_key
+            s0_end = group_key[0] if isinstance(group_key, tuple) else group_key
         unit_id = group['unit_id'].to_list()[0] if 'unit_id' in group.columns else ''
 
         # Build composite matrix
@@ -182,9 +182,15 @@ def compute_state_vector(
         if state['n_signals'] < 2:
             continue
 
+        # Pass through signal_0 columns from the group
+        s0_start = group['signal_0_start'].to_list()[0] if 'signal_0_start' in group.columns else None
+        s0_center = group['signal_0_center'].to_list()[0] if 'signal_0_center' in group.columns else None
+
         # Build result row
         row = {
-            'I': I,
+            'signal_0_end': s0_end,
+            'signal_0_start': s0_start,
+            'signal_0_center': s0_center,
             'n_signals': state['n_signals'],
         }
         if cohort:

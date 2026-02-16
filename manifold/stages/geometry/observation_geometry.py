@@ -41,16 +41,17 @@ from manifold.io.writer import write_output
 def _score_cohort(cohort_data, cohort, centroid, baseline_std, pcs, signal_cols, eigenvalues):
     """Score a single cohort's observations against a baseline. Returns list of dicts."""
     try:
+        cohort_data = cohort_data.sort('signal_0')
         wide = cohort_data.pivot(
-            values='value', index='I', on='signal_id',
-        ).sort('I')
+            values='value', index='signal_0', on='signal_id',
+        ).sort('signal_0')
     except Exception:
         return []
 
     if wide is None or len(wide) < 1:
         return []
 
-    i_values = wide['I'].to_numpy()
+    s0_values = wide['signal_0'].to_numpy()
 
     available_cols = [c for c in signal_cols if c in wide.columns]
     if len(available_cols) < 2:
@@ -89,7 +90,7 @@ def _score_cohort(cohort_data, cohort, centroid, baseline_std, pcs, signal_cols,
     for i in range(len(x)):
         rows.append({
             'cohort': cohort,
-            'I': int(i_values[i]),
+            'signal_0': float(s0_values[i]),
             'centroid_distance': float(dists[i]),
             'centroid_distance_norm': float(dists_norm[i]),
             'pc1_projection': float(pc1_proj[i]),
@@ -197,7 +198,7 @@ def run(
     else:
         result = pl.DataFrame(schema={
             'cohort': pl.Utf8,
-            'I': pl.Int64,
+            'signal_0': pl.Float64,
             'centroid_distance': pl.Float64,
             'centroid_distance_norm': pl.Float64,
             'pc1_projection': pl.Float64,

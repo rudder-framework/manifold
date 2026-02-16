@@ -106,7 +106,7 @@ def run(
     results = []
 
     for signal_id in signals:
-        signal_data = obs.filter(pl.col('signal_id') == signal_id).sort('I')
+        signal_data = obs.filter(pl.col('signal_id') == signal_id).sort('signal_0')
 
         if has_cohort:
             # Process per cohort
@@ -114,12 +114,12 @@ def run(
             for cohort in cohorts:
                 cohort_data = signal_data.filter(pl.col('cohort') == cohort)
                 values = cohort_data['value'].to_numpy()
-                i_values = cohort_data['I'].to_numpy()
+                s0_values = cohort_data['signal_0'].to_numpy()
 
                 if intervention_enabled:
                     # Split pre/post intervention
-                    pre_mask = i_values < event_index
-                    post_mask = i_values >= event_index
+                    pre_mask = s0_values < event_index
+                    post_mask = s0_values >= event_index
 
                     pre_values = values[pre_mask]
                     post_values = values[post_mask]

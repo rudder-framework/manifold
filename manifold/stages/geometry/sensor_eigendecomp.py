@@ -38,20 +38,21 @@ from manifold.core.state.eigendecomp import (
 from manifold.io.writer import write_output
 
 
-def _aggregate_sensor_means(matrix: np.ndarray, i_values: np.ndarray,
+def _aggregate_sensor_means(matrix: np.ndarray, s0_values: np.ndarray,
                             agg_window: int, agg_stride: int):
     """
     Level 1: compute rolling per-sensor means.
 
     Args:
         matrix: (n_obs, n_signals) raw observation matrix
-        i_values: (n_obs,) I index values
+        s0_values: (n_obs,) signal_0 index values
         agg_window: number of raw observations per aggregation window
         agg_stride: stride between aggregation windows
 
     Returns:
         agg_matrix: (n_windows, n_signals) sensor means per window
-        agg_i: (n_windows,) I value at end of each window
+        agg_i: (n_windows,) signal_0 value at end of each window
+        agg_s0_start: (n_windows,) signal_0 value at start of each window
     """
     n_obs = len(matrix)
     effective_window = min(agg_window, n_obs)
@@ -60,6 +61,7 @@ def _aggregate_sensor_means(matrix: np.ndarray, i_values: np.ndarray,
 
     agg_rows = []
     agg_i = []
+    agg_s0_start = []
 
     for start in range(0, n_obs - effective_window + 1, agg_stride):
         end = start + effective_window
@@ -70,12 +72,13 @@ def _aggregate_sensor_means(matrix: np.ndarray, i_values: np.ndarray,
             means = np.nanmean(window, axis=0)
 
         agg_rows.append(means)
-        agg_i.append(i_values[end - 1])
+        agg_i.append(s0_values[end - 1])
+        agg_s0_start.append(s0_values[start])
 
     if not agg_rows:
-        return np.empty((0, matrix.shape[1])), np.empty(0, dtype=int)
+        return np.empty((0, matrix.shape[1])), np.empty(0, dtype=int), np.empty(0, dtype=int)
 
-    return np.array(agg_rows), np.array(agg_i)
+    return np.array(agg_rows), np.array(agg_i), np.array(agg_s0_start)
 
 
 def run(
@@ -132,28 +135,29 @@ def run(
         else:
             cohort_data = obs
 
-        # Pivot to wide: rows=I, cols=signal_id, values=value
+        # Pivot to wide: rows=signal_0, cols=signal_id, values=value
         try:
+            cohort_data = cohort_data.sort('signal_0')
             wide = cohort_data.pivot(
                 values='value',
-                index='I',
+                index='signal_0',
                 on='signal_id',
-            ).sort('I')
+            ).sort('signal_0')
         except Exception:
             continue
 
-        signal_cols = sorted([c for c in wide.columns if c != 'I'])
+        signal_cols = sorted([c for c in wide.columns if c != 'signal_0'])
         n_signals = len(signal_cols)
 
         if n_signals < 2:
             continue
 
-        i_values = wide['I'].to_numpy()
+        s0_values = wide['signal_0'].to_numpy()
         matrix_full = wide.select(signal_cols).to_numpy()
 
         # Level 1: aggregate into sensor means
-        agg_matrix, agg_i = _aggregate_sensor_means(
-            matrix_full, i_values, agg_window, agg_stride
+        agg_matrix, agg_i, agg_s0_start = _aggregate_sensor_means(
+            matrix_full, s0_values, agg_window, agg_stride
         )
 
         if len(agg_matrix) < 3:
@@ -175,7 +179,9 @@ def run(
             if window_clean.shape[0] < 3 or window_clean.shape[1] < 2:
                 all_results.append({
                     'cohort': cohort,
-                    'I': int(agg_i[i]),
+                    'signal_0_end': float(agg_i[i]),
+                    'signal_0_start': float(agg_s0_start[i]),
+                    'signal_0_center': (float(agg_s0_start[i]) + float(agg_i[i])) / 2,
                     'n_signals': n_signals,
                     'n_samples': window_clean.shape[0],
                     'effective_dim': np.nan,
@@ -200,7 +206,9 @@ def run(
             if np.isnan(result['effective_dim']):
                 all_results.append({
                     'cohort': cohort,
-                    'I': int(agg_i[i]),
+                    'signal_0_end': float(agg_i[i]),
+                    'signal_0_start': float(agg_s0_start[i]),
+                    'signal_0_center': (float(agg_s0_start[i]) + float(agg_i[i])) / 2,
                     'n_signals': n_signals,
                     'n_samples': window_clean.shape[0],
                     'effective_dim': np.nan,
@@ -233,10 +241,12 @@ def run(
             else:
                 eff_dim_entropy = np.nan
 
-            # Build row (I = end of aggregation window)
+            # Build row (signal_0_end = end of aggregation window)
             row = {
                 'cohort': cohort,
-                'I': int(agg_i[i]),
+                'signal_0_end': float(agg_i[i]),
+                'signal_0_start': float(agg_s0_start[i]),
+                'signal_0_center': (float(agg_s0_start[i]) + float(agg_i[i])) / 2,
                 'n_signals': result['n_signals'],
                 'n_samples': window_clean.shape[0],
                 'effective_dim': result['effective_dim'],
@@ -274,7 +284,9 @@ def run(
     else:
         df = pl.DataFrame(schema={
             'cohort': pl.Utf8,
-            'I': pl.UInt32,
+            'signal_0_end': pl.Float64,
+            'signal_0_start': pl.Float64,
+            'signal_0_center': pl.Float64,
             'n_signals': pl.Int64,
             'n_samples': pl.Int64,
             'effective_dim': pl.Float64,

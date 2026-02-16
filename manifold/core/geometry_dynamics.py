@@ -355,11 +355,11 @@ def compute_geometry_dynamics(
             cohort = None
             engine = group_key[0] if isinstance(group_key, tuple) else group_key
         unit_id = group['unit_id'][0] if 'unit_id' in group.columns else ''
-        # Sort by I
-        group = group.sort('I')
+        # Sort by signal_0_end
+        group = group.sort('signal_0_end')
 
-        I_values = group['I'].to_numpy()
-        n = len(I_values)
+        s0_values = group['signal_0_end'].to_numpy()
+        n = len(s0_values)
 
         if n < 3:
             continue
@@ -395,7 +395,7 @@ def compute_geometry_dynamics(
         # Build result rows - computed values only, NO classification
         for i in range(n):
             row = {
-                'I': int(I_values[i]),
+                'signal_0_end': float(s0_values[i]),
                 'engine': engine,
 
                 # Effective dimension dynamics
@@ -526,11 +526,11 @@ def compute_signal_dynamics(
             continue
         unit_id = group['unit_id'][0] if 'unit_id' in group.columns else ''
 
-        # Sort by I
-        group = group.sort('I')
+        # Sort by signal_0_end
+        group = group.sort('signal_0_end')
 
-        I_values = group['I'].to_numpy()
-        n = len(I_values)
+        s0_values = group['signal_0_end'].to_numpy()
+        n = len(s0_values)
 
         if n < 3:
             continue
@@ -552,14 +552,14 @@ def compute_signal_dynamics(
         for engine, dist_col, coh_col in engine_entries:
             if has_narrow_schema:
                 # Filter to this engine within the group
-                engine_group = group.filter(pl.col('engine') == engine).sort('I')
+                engine_group = group.filter(pl.col('engine') == engine).sort('signal_0_end')
                 if len(engine_group) < 3:
                     continue
-                I_values_eng = engine_group['I'].to_numpy()
+                s0_values_eng = engine_group['signal_0_end'].to_numpy()
                 distance = engine_group[dist_col].to_numpy()
                 coherence = engine_group[coh_col].to_numpy()
             else:
-                I_values_eng = I_values
+                s0_values_eng = s0_values
                 if coh_col not in group.columns:
                     continue
                 distance = group[dist_col].to_numpy()
@@ -574,10 +574,10 @@ def compute_signal_dynamics(
             coh_deriv = compute_derivatives(coherence, dt, smooth_window)
 
             # Build result rows - computed values only, NO classification
-            n_eng = len(I_values_eng)
+            n_eng = len(s0_values_eng)
             for i in range(n_eng):
                 row = {
-                    'I': int(I_values_eng[i]),
+                    'signal_0_end': float(s0_values_eng[i]),
                     'signal_id': signal_id,
                     'engine': engine,
 
@@ -669,10 +669,10 @@ def compute_pairwise_dynamics(
             cohort = None
             sig_a, sig_b, engine = group_key if isinstance(group_key, tuple) else (group_key, None, None)
         unit_id = group['unit_id'][0] if 'unit_id' in group.columns else ''
-        group = group.sort('I')
+        group = group.sort('signal_0_end')
 
-        I_values = group['I'].to_numpy()
-        n = len(I_values)
+        s0_values = group['signal_0_end'].to_numpy()
+        n = len(s0_values)
 
         if n < 3:
             continue
@@ -690,7 +690,7 @@ def compute_pairwise_dynamics(
 
         for i in range(n):
             row = {
-                'I': int(I_values[i]),
+                'signal_0_end': float(s0_values[i]),
                 'signal_a': sig_a,
                 'signal_b': sig_b,
                 'engine': engine,

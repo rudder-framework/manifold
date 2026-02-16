@@ -49,14 +49,15 @@ STAGE_DIRS = {
 
 
 def load_observations(data_path: str) -> pl.DataFrame:
-    """Load observations.parquet from a data directory."""
+    """Load observations.parquet from a data directory, sorted by signal_0."""
     p = Path(data_path)
     if p.is_file() and p.suffix == '.parquet':
-        return pl.read_parquet(str(p))
-    obs_path = p / 'observations.parquet'
-    if obs_path.exists():
-        return pl.read_parquet(str(obs_path))
-    raise FileNotFoundError(f"No observations.parquet in {data_path}")
+        df = pl.read_parquet(str(p))
+    elif (p / 'observations.parquet').exists():
+        df = pl.read_parquet(str(p / 'observations.parquet'))
+    else:
+        raise FileNotFoundError(f"No observations.parquet in {data_path}")
+    return df.sort('signal_0')
 
 
 def load_output(data_path: str, name: str) -> Optional[pl.DataFrame]:

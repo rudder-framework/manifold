@@ -253,7 +253,7 @@ def compute_signal_geometry(
     # TODO: Store PCs in state_geometry and load them here
 
     # Identify features
-    meta_cols = ['unit_id', 'I', 'signal_id']
+    meta_cols = ['unit_id', 'signal_0_start', 'signal_0_end', 'signal_0_center', 'signal_id']
     all_features = [c for c in signal_vector.columns if c not in meta_cols]
 
     # Determine feature groups
@@ -273,12 +273,12 @@ def compute_signal_geometry(
         print()
 
     # I is REQUIRED
-    if 'I' not in signal_vector.columns:
-        raise ValueError("Missing required column 'I'. Use temporal signal_vector.")
+    if 'signal_0_end' not in signal_vector.columns:
+        raise ValueError("Missing required column 'signal_0_end'. Use temporal signal_vector.")
 
     # Determine grouping columns - include cohort if present
     has_cohort = 'cohort' in signal_vector.columns
-    group_cols = ['cohort', 'I'] if has_cohort else ['I']
+    group_cols = ['cohort', 'signal_0_end'] if has_cohort else ['signal_0_end']
 
     # Process each (cohort, I) or just I
     results = []
@@ -294,19 +294,19 @@ def compute_signal_geometry(
 
     for i, (group_key, group) in enumerate(groups):
         if has_cohort:
-            cohort, I = group_key if isinstance(group_key, tuple) else (None, group_key)
+            cohort, s0_end = group_key if isinstance(group_key, tuple) else (None, group_key)
         else:
             cohort = None
-            I = group_key[0] if isinstance(group_key, tuple) else group_key
+            s0_end = group_key[0] if isinstance(group_key, tuple) else group_key
         unit_id = group['unit_id'].to_list()[0] if 'unit_id' in group.columns else ''
 
-        # Get state vector for this (cohort, I) or just I
+        # Get state vector for this (cohort, signal_0_end) or just signal_0_end
         if has_cohort and cohort:
             state_row = state_vector.filter(
-                (pl.col('cohort') == cohort) & (pl.col('I') == I)
+                (pl.col('cohort') == cohort) & (pl.col('signal_0_end') == s0_end)
             )
         else:
-            state_row = state_vector.filter(pl.col('I') == I)
+            state_row = state_vector.filter(pl.col('signal_0_end') == s0_end)
 
         if len(state_row) == 0:
             continue
@@ -365,7 +365,7 @@ def compute_signal_geometry(
             # Build result rows (narrow schema: one row per signal per engine)
             for geom in geom_results:
                 row = {
-                    'I': I,
+                    'signal_0_end': s0_end,
                     'signal_id': geom['signal_id'],
                     'engine': engine_name,
                     'distance': geom['distance'],

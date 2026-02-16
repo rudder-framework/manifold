@@ -90,7 +90,7 @@ def run(
     results = []
 
     for cohort in cohorts:
-        cohort_data = cv.filter(pl.col('cohort') == cohort).sort('I')
+        cohort_data = cv.filter(pl.col('cohort') == cohort).sort('signal_0_end')
         values = cohort_data[scalar_col].to_numpy().astype(float)
 
         # Remove NaN

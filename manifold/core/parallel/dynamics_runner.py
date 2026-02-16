@@ -31,7 +31,7 @@ def _process_entity(entity_id: str, obs: pl.DataFrame, params: Dict[str, Any]) -
     signals = entity_obs.select('signal_id').unique().to_series().to_list()
 
     # Check sampling uniformity
-    I_values = entity_obs.select('I').unique().sort('I').to_series().to_numpy()
+    I_values = entity_obs.select('signal_0').unique().sort('signal_0').to_series().to_numpy()
     sampling_cv = 0.0
     if len(I_values) > 1:
         dI = np.diff(I_values)
@@ -43,7 +43,7 @@ def _process_entity(entity_id: str, obs: pl.DataFrame, params: Dict[str, Any]) -
         sig_data = (
             entity_obs
             .filter(pl.col('signal_id') == signal_id)
-            .sort('I')
+            .sort('signal_0')
             .select('y')
             .to_series()
             .to_numpy()

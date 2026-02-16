@@ -31,7 +31,7 @@ from manifold.utils import safe_fmt
 
 
 # Columns that are trajectory coordinates (feature dimensions)
-_META_COLS = {'I', 'n_signals', 'cohort', 'mean_distance', 'max_distance', 'std_distance'}
+_META_COLS = {'signal_0_end', 'signal_0_start', 'signal_0_center', 'n_signals', 'cohort', 'mean_distance', 'max_distance', 'std_distance'}
 
 
 def run(
@@ -92,7 +92,7 @@ def run(
             print(f"Cohorts: {len(cohorts)}")
 
         for cohort in cohorts:
-            cohort_data = sv.filter(pl.col('cohort') == cohort).sort('I')
+            cohort_data = sv.filter(pl.col('cohort') == cohort).sort('signal_0_end')
             cohort_results = _process_trajectory(
                 cohort_data, feature_cols, window, stride, max_dim, cohort
             )
@@ -102,7 +102,7 @@ def run(
                 print(f"  {cohort}: {len(cohort_results)} windows")
     else:
         cohort_results = _process_trajectory(
-            sv.sort('I'), feature_cols, window, stride, max_dim, 'global'
+            sv.sort('signal_0_end'), feature_cols, window, stride, max_dim, 'global'
         )
         results.extend(cohort_results)
 
@@ -159,21 +159,29 @@ def _process_trajectory(
     if n < window:
         return []
 
-    I_values = data['I'].to_numpy()
+    s0_values = data['signal_0_end'].to_numpy()
     trajectory = data.select(feature_cols).to_numpy()
+
+    # Also get signal_0_start and signal_0_center if available
+    has_s0_start = 'signal_0_start' in data.columns
+    has_s0_center = 'signal_0_center' in data.columns
+    s0_start_values = data['signal_0_start'].to_numpy() if has_s0_start else None
+    s0_center_values = data['signal_0_center'].to_numpy() if has_s0_center else None
 
     results = []
 
     for start in range(0, n - window + 1, stride):
         end = start + window
         point_cloud = trajectory[start:end]
-        I_end = int(I_values[end - 1])  # Window end index (canonical I)
+        s0_end = float(s0_values[end - 1])
 
         metrics = compute(point_cloud, min_samples=10, max_dim=max_dim)
 
         row = {
             'cohort': cohort,
-            'I': I_end,
+            'signal_0_end': s0_end,
+            'signal_0_start': float(s0_start_values[start]) if has_s0_start else s0_end,
+            'signal_0_center': float(s0_center_values[(start + end - 1) // 2]) if has_s0_center else s0_end,
         }
         # Add all topology metrics (exclude engine metadata)
         for k, v in metrics.items():

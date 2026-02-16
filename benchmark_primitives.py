@@ -32,7 +32,7 @@ def load_signals() -> dict:
     for cohort, sig_id in SIGNALS:
         sub = df.filter(
             (pl.col("cohort") == cohort) & (pl.col("signal_id") == sig_id)
-        ).sort("I")
+        ).sort("signal_0")
         if len(sub) > 0:
             vals = sub["value"].to_numpy().astype(np.float64)
             label = f"{cohort}/{sig_id}"

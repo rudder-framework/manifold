@@ -54,16 +54,17 @@ def _pivot_cohort(obs: pl.DataFrame, cohort: str, has_cohort: bool) -> Optional[
         cohort_data = obs
 
     try:
+        cohort_data = cohort_data.sort('signal_0')
         wide = cohort_data.pivot(
-            values='value', index='I', on='signal_id',
-        ).sort('I')
+            values='value', index='signal_0', on='signal_id',
+        ).sort('signal_0')
     except Exception:
         return None
 
     if wide is None or len(wide) < 5:
         return None
 
-    signal_cols = sorted([c for c in wide.columns if c != 'I'])
+    signal_cols = sorted([c for c in wide.columns if c != 'signal_0'])
     x = wide.select(signal_cols).to_numpy().astype(float)
 
     # Handle NaN: interpolate

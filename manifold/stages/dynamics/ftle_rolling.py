@@ -85,9 +85,9 @@ def run(
             cohort_data = obs
 
         for signal_id in signals:
-            signal_data = cohort_data.filter(pl.col('signal_id') == signal_id).sort('I')
+            signal_data = cohort_data.filter(pl.col('signal_id') == signal_id).sort('signal_0')
             values = signal_data['value'].to_numpy()
-            i_values = signal_data['I'].to_numpy()
+            s0_values = signal_data['signal_0'].to_numpy()
 
             if len(values) < window_size:
                 continue
@@ -98,7 +98,7 @@ def run(
 
             for start in range(0, len(values) - window_size + 1, stride):
                 window = values[start:start + window_size]
-                window_i = i_values[start:start + window_size]
+                s0_values_window = s0_values[start:start + window_size]
 
                 # Reverse for backward FTLE
                 if direction == 'backward':
@@ -119,7 +119,9 @@ def run(
                     ftle_velocity = 0.0
 
                 signal_results.append({
-                    'I': int(window_i[window_size // 2]),  # Window center
+                    'signal_0_end': float(s0_values_window[-1]),
+                    'signal_0_start': float(s0_values_window[0]),
+                    'signal_0_center': (float(s0_values_window[0]) + float(s0_values_window[-1])) / 2,
                     'cohort': cohort,
                     'signal_id': signal_id,
                     'ftle': float(ftle_val),
@@ -128,8 +130,6 @@ def run(
                     'confidence': float(ftle_result['confidence']),
                     'embedding_dim': ftle_result['embedding_dim'],
                     'embedding_tau': ftle_result['embedding_tau'],
-                    'window_start': int(window_i[0]),
-                    'window_end': int(window_i[-1]),
                     'direction': direction,
                 })
 
@@ -154,7 +154,9 @@ def run(
         result = pl.DataFrame(results)
     else:
         result = pl.DataFrame(schema={
-            'I': pl.Int64,
+            'signal_0_end': pl.Float64,
+            'signal_0_start': pl.Float64,
+            'signal_0_center': pl.Float64,
             'cohort': pl.Utf8,
             'signal_id': pl.Utf8,
             'ftle': pl.Float64,
@@ -164,8 +166,6 @@ def run(
             'confidence': pl.Float64,
             'embedding_dim': pl.Int64,
             'embedding_tau': pl.Int64,
-            'window_start': pl.Int64,
-            'window_end': pl.Int64,
             'direction': pl.Utf8,
         })
 

@@ -34,7 +34,7 @@ def _process_entity(entity_id: str, obs: pl.DataFrame, params: Dict[str, Any]) -
         sig_data = (
             entity_obs
             .filter(pl.col('signal_id') == signal_id)
-            .sort('I')
+            .sort('signal_0')
             .select('y')
             .to_series()
             .to_numpy()

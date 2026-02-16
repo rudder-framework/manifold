@@ -194,7 +194,7 @@ def run(
     # Build per-cohort trajectories (scalar over I)
     cohort_trajectories = {}
     for cohort in cv['cohort'].unique().to_list():
-        cohort_data = cv.filter(pl.col('cohort') == cohort).sort('I')
+        cohort_data = cv.filter(pl.col('cohort') == cohort).sort('signal_0_end')
         values = cohort_data[scalar_col].to_numpy().astype(float)
         values_clean = values[np.isfinite(values)]
         if len(values_clean) >= min_samples:

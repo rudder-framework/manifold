@@ -75,7 +75,7 @@ def run(
     results = []
 
     for signal_id in signals:
-        signal_data = obs.filter(pl.col('signal_id') == signal_id).sort('I')
+        signal_data = obs.filter(pl.col('signal_id') == signal_id).sort('signal_0')
 
         if has_cohort:
             # Process per cohort

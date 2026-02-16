@@ -111,7 +111,7 @@ def run(
             print(f"Cohorts: {len(cohorts)}")
 
         for cohort in cohorts:
-            cohort_data = sg.filter(pl.col('cohort') == cohort).sort('I')
+            cohort_data = sg.filter(pl.col('cohort') == cohort).sort('signal_0_end')
 
             if len(cohort_data) == 0:
                 continue

@@ -71,10 +71,11 @@ def run(
             # Process per cohort
             cohorts = sig_data['cohort'].unique().to_list()
             for cohort in cohorts:
-                cohort_data = sig_data.filter(pl.col('cohort') == cohort).sort('I')
+                cohort_data = sig_data.filter(pl.col('cohort') == cohort).sort('signal_0')
                 y = cohort_data['value'].to_numpy()
+                s0_values = cohort_data['signal_0'].to_numpy()
 
-                # Detect breaks
+                # Detect breaks (returns array indices as 'I')
                 breaks = compute(
                     y,
                     signal_id=sig_id,
@@ -83,8 +84,10 @@ def run(
                     context_window=context_window,
                 )
 
-                # Add cohort to each break
+                # Translate array index → signal_0, add cohort
                 for brk in breaks:
+                    idx = brk.pop('I')
+                    brk['signal_0'] = float(s0_values[idx])
                     brk['cohort'] = cohort
 
                 all_breaks.extend(breaks)
@@ -95,10 +98,11 @@ def run(
                     print(f"  {cohort}/{sig_id}: {len(breaks)} breaks")
         else:
             # No cohort - original behavior
-            signal_data = sig_data.sort('I')
+            signal_data = sig_data.sort('signal_0')
             y = signal_data['value'].to_numpy()
+            s0_values = signal_data['signal_0'].to_numpy()
 
-            # Detect breaks
+            # Detect breaks (returns array indices as 'I')
             breaks = compute(
                 y,
                 signal_id=sig_id,
@@ -106,6 +110,11 @@ def run(
                 min_spacing=min_spacing,
                 context_window=context_window,
             )
+
+            # Translate array index → signal_0
+            for brk in breaks:
+                idx = brk.pop('I')
+                brk['signal_0'] = float(s0_values[idx])
 
             all_breaks.extend(breaks)
             summaries[sig_id] = summarize_breaks(breaks)
@@ -116,7 +125,7 @@ def run(
     # Build output DataFrame with appropriate schema
     base_schema = {
         'signal_id': pl.Utf8,
-        'I': pl.UInt32,
+        'signal_0': pl.Float64,
         'magnitude': pl.Float64,
         'direction': pl.Int8,
         'sharpness': pl.Float64,
@@ -201,7 +210,7 @@ Detects discontinuities in signals:
   - Gradual shifts: slow regime transitions
 
 Output schema (breaks.parquet):
-  signal_id, I, magnitude, direction, sharpness,
+  signal_id, signal_0, magnitude, direction, sharpness,
   duration, pre_level, post_level, snr
 
 Example:

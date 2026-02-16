@@ -270,7 +270,7 @@ def compute_state_geometry(
     state_vector = pl.read_parquet(state_vector_path)
 
     # Identify features
-    meta_cols = ['unit_id', 'I', 'signal_id']
+    meta_cols = ['unit_id', 'signal_0_start', 'signal_0_end', 'signal_0_center', 'signal_id']
     all_features = [c for c in signal_vector.columns if c not in meta_cols]
 
     # Determine feature groups
@@ -291,17 +291,17 @@ def compute_state_geometry(
 
     # Process each I (unit_id is cargo, not a compute key)
     results = []
-    groups = signal_vector.group_by(['I'], maintain_order=True)
-    n_groups = signal_vector.select(['I']).unique().height
+    groups = signal_vector.group_by(['signal_0_end'], maintain_order=True)
+    n_groups = signal_vector.select(['signal_0_end']).unique().height
 
     if verbose:
         print(f"Processing {n_groups} time points...")
 
-    for i, (I_tuple, group) in enumerate(groups):
-        I = I_tuple[0] if isinstance(I_tuple, tuple) else I_tuple
+    for i, (s0_tuple, group) in enumerate(groups):
+        s0_end = s0_tuple[0] if isinstance(s0_tuple, tuple) else s0_tuple
 
-        # Get state vector for this I
-        state_row = state_vector.filter(pl.col('I') == I)
+        # Get state vector for this signal_0_end
+        state_row = state_vector.filter(pl.col('signal_0_end') == s0_end)
 
         if len(state_row) == 0:
             continue
@@ -337,7 +337,7 @@ def compute_state_geometry(
             unit_id = group['unit_id'][0] if 'unit_id' in group.columns else ''
             row = {
                 'unit_id': unit_id,
-                'I': I,
+                'signal_0_end': s0_end,
                 'engine': engine_name,
                 'n_signals': eigen_result['n_signals'],
                 'n_features': eigen_result['n_features'],

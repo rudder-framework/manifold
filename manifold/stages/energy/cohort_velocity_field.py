@@ -54,7 +54,7 @@ def run(
         write_output(pl.DataFrame(), data_path, 'cohort_velocity_field', verbose=verbose)
         return pl.DataFrame()
 
-    feature_cols = [c for c in cv.columns if c not in ['cohort', 'I']]
+    feature_cols = [c for c in cv.columns if c not in ['cohort', 'signal_0_end', 'signal_0_start', 'signal_0_center']]
     cohorts = sorted(cv['cohort'].unique().to_list())
 
     if verbose:
@@ -64,12 +64,12 @@ def run(
     results = []
 
     for cohort in cohorts:
-        cohort_data = cv.filter(pl.col('cohort') == cohort).sort('I')
+        cohort_data = cv.filter(pl.col('cohort') == cohort).sort('signal_0_end')
 
         if len(cohort_data) < 3:
             continue
 
-        i_values = cohort_data['I'].to_numpy()
+        s0_values = cohort_data['signal_0_end'].to_numpy()
         x = cohort_data.select(feature_cols).to_numpy().astype(float)
 
         # Replace NaN with column means for differentiation
@@ -116,7 +116,7 @@ def run(
 
             results.append({
                 'cohort': cohort,
-                'I': int(i_values[i + 1]),  # I of second point in difference
+                'signal_0_end': float(s0_values[i + 1]),  # signal_0_end of second point in difference
                 'speed': float(speed[i]),
                 'acceleration_magnitude': float(accel_mag[i]),
                 'acceleration_parallel': float(a_parallel_scalar),

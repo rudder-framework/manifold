@@ -245,7 +245,7 @@ def validate_observations(
         return None
 
     # Required columns
-    required_cols = {'signal_id', 'I', 'value'}
+    required_cols = {'signal_id', 'signal_0', 'value'}
     actual_cols = set(df.columns)
 
     missing_cols = required_cols - actual_cols

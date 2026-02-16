@@ -167,7 +167,7 @@ def compute_from_signal_vector(
         # Use all numeric feature columns
         feature_columns = [
             c for c in signal_vector.columns
-            if c not in ['unit_id', 'I', 'signal_id', 'cohort']
+            if c not in ['unit_id', 'signal_0_start', 'signal_0_end', 'signal_0_center', 'signal_id', 'cohort']
             and signal_vector[c].dtype in [pl.Float64, pl.Float32, pl.Int64, pl.Int32]
         ]
 
@@ -175,11 +175,11 @@ def compute_from_signal_vector(
     # Each row is a time step (I), columns are signals
     signals_matrix = signal_vector.pivot(
         values=feature_columns[0] if feature_columns else 'value',
-        index='I',
+        index='signal_0_end',
         on='signal_id',
-    ).sort('I')
+    ).sort('signal_0_end')
 
-    signal_cols = [c for c in signals_matrix.columns if c != 'I']
+    signal_cols = [c for c in signals_matrix.columns if c != 'signal_0_end']
     matrix = signals_matrix.select(signal_cols).to_numpy()
 
     return compute(

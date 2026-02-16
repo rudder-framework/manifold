@@ -92,14 +92,14 @@ def run(
         if len(cohort_vel) == 0:
             continue
 
-        # Get I values that exist in both
-        ftle_i = set(cohort_ftle['I'].to_list())
-        vel_i = set(cohort_vel['I'].to_list())
-        common_i = sorted(ftle_i & vel_i)
+        # Get signal_0_end values that exist in both
+        ftle_s0 = set(cohort_ftle['signal_0_end'].to_list())
+        vel_s0 = set(cohort_vel['signal_0_end'].to_list())
+        common_s0 = sorted(ftle_s0 & vel_s0)
 
-        if len(common_i) < 3:
+        if len(common_s0) < 3:
             if verbose:
-                print(f"  Skipping cohort {cohort}: only {len(common_i)} common I values between ftle_rolling and velocity_field")
+                print(f"  Skipping cohort {cohort}: only {len(common_s0)} common signal_0_end values between ftle_rolling and velocity_field")
             continue
 
         # Process each signal
@@ -109,23 +109,23 @@ def run(
             sig_ftle = (
                 cohort_ftle
                 .filter(pl.col('signal_id') == signal_id)
-                .sort('I')
+                .sort('signal_0_end')
             )
 
             if len(sig_ftle) < 3:
                 continue
 
             ftle_values = sig_ftle['ftle'].to_numpy()
-            ftle_i_arr = sig_ftle['I'].to_numpy()
+            ftle_s0_arr = sig_ftle['signal_0_end'].to_numpy()
 
             # Compute FTLE gradient (temporal gradient)
             ftle_gradient = np.gradient(ftle_values)
 
-            for idx in range(len(ftle_i_arr)):
-                i_val = int(ftle_i_arr[idx])
+            for idx in range(len(ftle_s0_arr)):
+                s0_val = float(ftle_s0_arr[idx])
 
-                # Get velocity at this I
-                vel_row = cohort_vel.filter(pl.col('I') == i_val)
+                # Get velocity at this signal_0_end
+                vel_row = cohort_vel.filter(pl.col('signal_0_end') == s0_val)
                 if len(vel_row) == 0:
                     continue
 
@@ -163,8 +163,12 @@ def run(
                 else:
                     urgency_class = 'nominal'
 
+                # Pass through signal_0 coordinates from ftle_rolling
+                sig_ftle_row = sig_ftle.row(idx, named=True)
                 results.append({
-                    'I': i_val,
+                    'signal_0_end': s0_val,
+                    'signal_0_start': sig_ftle_row.get('signal_0_start', s0_val),
+                    'signal_0_center': sig_ftle_row.get('signal_0_center', s0_val),
                     'cohort': cohort,
                     'signal_id': signal_id,
                     'ftle_current': ftle_val,
@@ -181,7 +185,9 @@ def run(
         result = pl.DataFrame(results, infer_schema_length=None)
     else:
         result = pl.DataFrame(schema={
-            'I': pl.Int64,
+            'signal_0_end': pl.Float64,
+            'signal_0_start': pl.Float64,
+            'signal_0_center': pl.Float64,
             'cohort': pl.Utf8,
             'signal_id': pl.Utf8,
             'ftle_current': pl.Float64,

@@ -119,7 +119,7 @@ def run(
     data_path: str = ".",
     signal_column: str = 'signal_id',
     value_column: str = 'value',
-    index_column: str = 'I',
+    index_column: str = 'signal_0',
     min_samples: int = 100,
     verbose: bool = True,
 ) -> pl.DataFrame:

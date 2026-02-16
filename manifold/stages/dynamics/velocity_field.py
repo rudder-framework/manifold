@@ -94,19 +94,20 @@ def run(
 
         # Pivot to wide format
         try:
+            cohort_data = cohort_data.sort('signal_0')
             wide = cohort_data.pivot(
                 values='value',
-                index='I',
+                index='signal_0',
                 on='signal_id',
-            ).sort('I')
+            ).sort('signal_0')
         except Exception:
             continue
 
         if wide is None or len(wide) < 5:
             continue
 
-        i_values = wide['I'].to_numpy()
-        signal_cols = [c for c in wide.columns if c != 'I']
+        s0_values = wide['signal_0'].to_numpy()
+        signal_cols = [c for c in wide.columns if c != 'signal_0']
         x = wide.select(signal_cols).to_numpy().astype(float)
 
         # Z-score normalize each signal
@@ -174,7 +175,9 @@ def run(
             motion_dim = np.exp(-np.sum(dir_sq * np.log(dir_sq + 1e-12)))
 
             row = {
-                'I': int(i_values[i + 1]),  # Use I of the second point in difference
+                'signal_0_end': float(s0_values[i + 1]),
+                'signal_0_start': float(s0_values[max(0, i)]),
+                'signal_0_center': (float(s0_values[max(0, i)]) + float(s0_values[i + 1])) / 2,
                 'cohort': cohort,
                 'speed': float(speed[i]),
                 'acceleration_magnitude': float(accel_mag[i]),
@@ -191,7 +194,9 @@ def run(
             if include_components:
                 for j, sig in enumerate(signal_cols):
                     component_rows.append({
-                        'I': int(i_values[i + 1]),
+                        'signal_0_end': float(s0_values[i + 1]),
+                        'signal_0_start': float(s0_values[max(0, i)]),
+                        'signal_0_center': (float(s0_values[max(0, i)]) + float(s0_values[i + 1])) / 2,
                         'cohort': cohort,
                         'signal_id': sig,
                         'velocity': float(v[i, j]),
@@ -204,7 +209,9 @@ def run(
         result = pl.DataFrame(results)
     else:
         result = pl.DataFrame(schema={
-            'I': pl.Int64,
+            'signal_0_end': pl.Float64,
+            'signal_0_start': pl.Float64,
+            'signal_0_center': pl.Float64,
             'cohort': pl.Utf8,
             'speed': pl.Float64,
             'acceleration_magnitude': pl.Float64,

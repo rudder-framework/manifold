@@ -65,9 +65,13 @@ def get_intervention(manifest: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     return manifest.get('intervention')
 
 
-def get_coordinate_block(manifest: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    """Get coordinate config from manifest, or None if absent."""
-    return manifest.get('coordinate')
+def get_signal_0_metadata(manifest: Dict[str, Any]) -> Dict[str, Any]:
+    """Get signal_0 metadata {name, unit} from manifest, with defaults."""
+    block = manifest.get('signal_0', {})
+    return {
+        'name': block.get('name', 'signal_0'),
+        'unit': block.get('unit', ''),
+    }
 
 
 def get_segments(manifest: Dict[str, Any]) -> Optional[list]:

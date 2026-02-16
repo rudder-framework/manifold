@@ -3,7 +3,7 @@ Stage 25: Cohort Vector
 =======================
 
 Pivots state_geometry engine rows into wide cohort feature vectors.
-Each (cohort, I) gets one row with {engine}_{metric} columns.
+Each (cohort, signal_0_end) gets one row with {engine}_{metric} columns.
 
 This creates the input required by fleet stages (26-31).
 
@@ -11,7 +11,7 @@ Inputs:
     - state_geometry.parquet (from stage 03)
 
 Outputs:
-    - cohort_vector.parquet (one row per cohort per I window)
+    - cohort_vector.parquet (one row per cohort per signal_0_end window)
 """
 
 import polars as pl
@@ -97,7 +97,15 @@ def run(
                 pl.col(metric).filter(pl.col('engine') == engine).first().alias(col_name)
             )
 
-    result = sg.group_by('cohort', 'I').agg(agg_exprs).sort('cohort', 'I')
+    # Pass through coordinate columns if available
+    coord_passthrough = []
+    for coord_col in ['signal_0_start', 'signal_0_center']:
+        if coord_col in sg.columns:
+            coord_passthrough.append(
+                pl.col(coord_col).first().alias(coord_col)
+            )
+
+    result = sg.group_by('cohort', 'signal_0_end').agg(agg_exprs + coord_passthrough).sort('cohort', 'signal_0_end')
 
     # Add derived columns: eff_dim_rate (diff within cohort)
     rate_exprs = []
@@ -114,7 +122,7 @@ def run(
 
     if verbose:
         print(f"  Cohort vector: {result.shape}")
-        print(f"  Cohorts: {result['cohort'].n_unique()}, Windows: {result['I'].n_unique()}")
+        print(f"  Cohorts: {result['cohort'].n_unique()}, Windows: {result['signal_0_end'].n_unique()}")
 
     write_output(result, data_path, 'cohort_vector', verbose=verbose)
     return result

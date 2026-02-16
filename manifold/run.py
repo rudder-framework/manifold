@@ -183,13 +183,6 @@ def _run_cohort_worker(
     # Limit internal parallelism (signal_vector uses joblib)
     os.environ['LOKY_MAX_CPU_COUNT'] = '2'
 
-    # Initialize coordinate tagging in worker process (module state is not inherited)
-    from manifold.io.coordinate import get_coordinate_config as _build_coord_config
-    from manifold.io import writer as _writer
-    _coord_config = _build_coord_config(manifest, cohort_obs_path)
-    if _coord_config:
-        _writer.set_coordinate_config(_coord_config)
-
     output_dir = Path(cohort_output_dir)
 
     for module_path, stage_id in run_stages:
@@ -318,17 +311,6 @@ def run(
 
     manifest['_manifest_path'] = str(manifest_path)
     manifest['_data_dir'] = str(data_path)
-
-    # Initialize coordinate tagging (if manifest has a coordinate block)
-    from manifold.io.coordinate import get_coordinate_config as _build_coord_config
-    from manifold.io import writer as _writer
-    _coord_config = _build_coord_config(manifest, str(observations_path))
-    if _coord_config:
-        _writer.set_coordinate_config(_coord_config)
-        if verbose:
-            col = _coord_config['column']
-            src = _coord_config['source']
-            print(f"Coordinate: {col} (source={src})")
 
     # Safety: refuse to wipe if this looks like a domain root
     if (output_dir / 'observations.parquet').exists():
@@ -903,9 +885,9 @@ Per-signal windowed analysis: statistics, spectral, entropy, stability.
 
 | File | Grain | Description |
 |------|-------|-------------|
-| signal_vector.parquet | (signal_id, I) | Per-signal engine outputs |
-| signal_geometry.parquet | (signal_id, I) | Per-signal eigendecomposition |
-| signal_stability.parquet | (signal_id, I) | Hilbert + wavelet stability |
+| signal_vector.parquet | (signal_id, signal_0_end) | Per-signal engine outputs |
+| signal_geometry.parquet | (signal_id, signal_0_end) | Per-signal eigendecomposition |
+| signal_stability.parquet | (signal_id, signal_0_end) | Hilbert + wavelet stability |
 """,
 
     '2_system_state': """\
@@ -917,10 +899,10 @@ Cross-signal eigendecomposition: the core operation of Manifold.
 
 | File | Grain | Description |
 |------|-------|-------------|
-| state_vector.parquet | (cohort, I) | Cross-signal centroid per window |
-| state_geometry.parquet | (cohort, I) | Eigenvalues, effective dimension |
-| geometry_dynamics.parquet | (cohort, I) | Velocity/acceleration/jerk of eigenvalue trajectories |
-| sensor_eigendecomp.parquet | (cohort, I) | Rolling 2-level SVD |
+| state_vector.parquet | (cohort, signal_0_end) | Cross-signal centroid per window |
+| state_geometry.parquet | (cohort, signal_0_end) | Eigenvalues, effective dimension |
+| geometry_dynamics.parquet | (cohort, signal_0_end) | Velocity/acceleration/jerk of eigenvalue trajectories |
+| sensor_eigendecomp.parquet | (cohort, signal_0_end) | Rolling 2-level SVD |
 """,
 
     '3_health_scoring': """\
@@ -930,9 +912,9 @@ Cross-signal eigendecomposition: the core operation of Manifold.
 
 | File | Grain | Description |
 |------|-------|-------------|
-| breaks.parquet | (cohort, I) | Change-point detection |
+| breaks.parquet | (cohort, signal_0) | Change-point detection |
 | cohort_baseline.parquet | (cohort) | SVD on early-life observations |
-| observation_geometry.parquet | (cohort, I) | Per-observation scoring against baseline |
+| observation_geometry.parquet | (cohort, signal_0) | Per-observation scoring against baseline |
 """,
 
     '4_signal_relationships': """\
@@ -942,8 +924,8 @@ Cross-signal eigendecomposition: the core operation of Manifold.
 
 | File | Grain | Description |
 |------|-------|-------------|
-| signal_pairwise.parquet | (cohort, signal_a, signal_b, I) | Covariance, correlation, MI |
-| information_flow.parquet | (source, target, I) | Transfer entropy, Granger causality |
+| signal_pairwise.parquet | (cohort, signal_a, signal_b, signal_0_end) | Covariance, correlation, MI |
+| information_flow.parquet | (source, target, signal_0_end) | Transfer entropy, Granger causality |
 | segment_comparison.parquet | (cohort, signal_id) | Early vs late statistical tests |
 | info_flow_delta.parquet | (source, target) | Delta in information flow between segments |
 """,
@@ -955,15 +937,15 @@ Cross-signal eigendecomposition: the core operation of Manifold.
 
 | File | Grain | Description |
 |------|-------|-------------|
-| ftle.parquet | (cohort, I) | Finite-Time Lyapunov Exponents |
+| ftle.parquet | (cohort, signal_0_end) | Finite-Time Lyapunov Exponents |
 | lyapunov.parquet | (signal_id) | Largest Lyapunov exponent per signal |
 | cohort_thermodynamics.parquet | (cohort) | Shannon entropy from eigenvalue spectrum |
 | ftle_field.parquet | (cohort, grid_x, grid_y) | Local FTLE grid |
-| ftle_backward.parquet | (cohort, I) | Backward FTLE |
-| velocity_field.parquet | (cohort, I) | Speed, direction in state space |
-| ftle_rolling.parquet | (cohort, I) | Time-varying FTLE windows |
-| ridge_proximity.parquet | (cohort, I) | Urgency = v . grad(FTLE) |
-| persistent_homology.parquet | (cohort, I) | Betti numbers, persistence entropy |
+| ftle_backward.parquet | (cohort, signal_0_end) | Backward FTLE |
+| velocity_field.parquet | (cohort, signal_0_end) | Speed, direction in state space |
+| ftle_rolling.parquet | (cohort, signal_0_end) | Time-varying FTLE windows |
+| ridge_proximity.parquet | (cohort, signal_0_end) | Urgency = v . grad(FTLE) |
+| persistent_homology.parquet | (cohort, signal_0_end) | Betti numbers, persistence entropy |
 """,
 
     '6_fleet': """\
@@ -975,12 +957,12 @@ Requires `cohort_vector.parquet` (from stage 25) and n_cohorts >= 2.
 
 | File | Grain | Description |
 |------|-------|-------------|
-| cohort_vector.parquet | (cohort, I) | Wide-format cohort features pivoted from state_geometry |
+| cohort_vector.parquet | (cohort, signal_0_end) | Wide-format cohort features pivoted from state_geometry |
 | system_geometry.parquet | (cohort) | Fleet-level eigendecomposition |
 | cohort_pairwise.parquet | (cohort_a, cohort_b) | Distance between cohort vectors |
 | cohort_information_flow.parquet | (source, target) | Transfer entropy at fleet scale |
-| cohort_ftle.parquet | (cohort, I) | FTLE on cohort trajectories |
-| cohort_velocity_field.parquet | (cohort, I) | Drift at fleet scale |
+| cohort_ftle.parquet | (cohort, signal_0_end) | FTLE on cohort trajectories |
+| cohort_velocity_field.parquet | (cohort, signal_0_end) | Drift at fleet scale |
 """,
 }
 

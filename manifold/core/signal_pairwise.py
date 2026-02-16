@@ -245,7 +245,7 @@ def compute_signal_pairwise(
                 if verbose:
                     print(f"Eigenvector gating from loadings sidecar: {len(loadings_df)} rows")
                 for row in loadings_df.iter_rows(named=True):
-                    key = (row.get('cohort'), row.get('I'), row.get('engine'))
+                    key = (row.get('cohort'), row.get('signal_0_end'), row.get('engine'))
                     if key not in eigenvector_gating:
                         eigenvector_gating[key] = {}
                     if row.get('pc1_loading') is not None:
@@ -257,7 +257,7 @@ def compute_signal_pairwise(
                 if pc1_cols and verbose:
                     print(f"Eigenvector gating (legacy wide format): {len(pc1_cols)} signal loadings found")
                     for row in sg.iter_rows(named=True):
-                        key = (row.get('cohort'), row.get('I'), row.get('engine'))
+                        key = (row.get('cohort'), row.get('signal_0_end'), row.get('engine'))
                         loadings = {}
                         for col in pc1_cols:
                             sig_id = col.replace('pc1_signal_', '')
@@ -270,7 +270,7 @@ def compute_signal_pairwise(
                 print(f"Warning: Could not load eigenvector gating: {e}")
 
     # Identify features
-    meta_cols = ['unit_id', 'I', 'signal_id']
+    meta_cols = ['unit_id', 'signal_0_start', 'signal_0_end', 'signal_0_center', 'signal_id']
     all_features = [c for c in signal_vector.columns if c not in meta_cols]
 
     # Determine feature groups
@@ -286,8 +286,8 @@ def compute_signal_pairwise(
             feature_groups['full'] = all_features[:3]
 
     # I is REQUIRED
-    if 'I' not in signal_vector.columns:
-        raise ValueError("Missing required column 'I'. Use temporal signal_vector.")
+    if 'signal_0_end' not in signal_vector.columns:
+        raise ValueError("Missing required column 'signal_0_end'. Use temporal signal_vector.")
 
     if verbose:
         print(f"Feature groups: {list(feature_groups.keys())}")
@@ -295,7 +295,7 @@ def compute_signal_pairwise(
         # Estimate output size
         n_signals = signal_vector.select('signal_id').unique().height
         n_pairs = n_signals * (n_signals - 1) // 2
-        n_indices = signal_vector.select(['I']).unique().height
+        n_indices = signal_vector.select(['signal_0_end']).unique().height
         n_engines = len(feature_groups)
         print(f"Signals: {n_signals} → Pairs: {n_pairs}")
         print(f"Indices: {n_indices}")
@@ -304,7 +304,7 @@ def compute_signal_pairwise(
 
     # Determine grouping columns - include cohort if present
     has_cohort = 'cohort' in signal_vector.columns
-    group_cols = ['cohort', 'I'] if has_cohort else ['I']
+    group_cols = ['cohort', 'signal_0_end'] if has_cohort else ['signal_0_end']
 
     # Process each (cohort, I) or just I
     results = []
@@ -320,19 +320,19 @@ def compute_signal_pairwise(
 
     for i, (group_key, group) in enumerate(groups):
         if has_cohort:
-            cohort, I = group_key if isinstance(group_key, tuple) else (None, group_key)
+            cohort, s0_end = group_key if isinstance(group_key, tuple) else (None, group_key)
         else:
             cohort = None
-            I = group_key[0] if isinstance(group_key, tuple) else group_key
+            s0_end = group_key[0] if isinstance(group_key, tuple) else group_key
         unit_id = group['unit_id'].to_list()[0] if 'unit_id' in group.columns else ''
 
-        # Get state vector for this (cohort, I) or just I
+        # Get state vector for this (cohort, signal_0_end) or just signal_0_end
         if has_cohort and cohort:
             state_row = state_vector.filter(
-                (pl.col('cohort') == cohort) & (pl.col('I') == I)
+                (pl.col('cohort') == cohort) & (pl.col('signal_0_end') == s0_end)
             )
         else:
-            state_row = state_vector.filter(pl.col('I') == I)
+            state_row = state_vector.filter(pl.col('signal_0_end') == s0_end)
 
         signal_ids = group['signal_id'].to_list()
 
@@ -355,7 +355,7 @@ def compute_signal_pairwise(
                 centroid = np.mean(matrix[np.isfinite(matrix).all(axis=1)], axis=0) if len(matrix) > 0 else None
 
             # Get eigenvector loadings for this (cohort, I, engine) if available
-            gating_key = (cohort, I, engine_name)
+            gating_key = (cohort, s0_end, engine_name)
             pc1_loadings = eigenvector_gating.get(gating_key, {})
 
             # Compute pairwise
@@ -380,7 +380,7 @@ def compute_signal_pairwise(
                 needs_granger = coloading > coloading_threshold
 
                 row = {
-                    'I': I,
+                    'signal_0_end': s0_end,
                     'signal_a': signal_a,
                     'signal_b': signal_b,
                     'engine': engine_name,
@@ -441,7 +441,7 @@ CREATE OR REPLACE VIEW v_signal_pairwise_shape AS
 WITH signal_features AS (
     SELECT
         unit_id,
-        I,
+        signal_0_end,
         signal_id,
         kurtosis,
         skewness,
@@ -452,7 +452,7 @@ WITH signal_features AS (
 )
 SELECT
     a.unit_id,
-    a.I,
+    a.signal_0_end,
     a.signal_id AS signal_a,
     b.signal_id AS signal_b,
     'shape' AS engine,
@@ -471,7 +471,7 @@ SELECT
 FROM signal_features a
 JOIN signal_features b
     ON a.unit_id = b.unit_id
-    AND a.I = b.I
+    AND a.signal_0_end = b.signal_0_end
     AND a.signal_id < b.signal_id;  -- Only upper triangle
 """
 
@@ -505,7 +505,7 @@ def compute_signal_pairwise_sql(
     if verbose:
         n_signals = con.execute("SELECT COUNT(DISTINCT signal_id) FROM signal_vector").fetchone()[0]
         n_pairs = n_signals * (n_signals - 1) // 2
-        n_indices = con.execute("SELECT COUNT(DISTINCT I) FROM signal_vector").fetchone()[0]
+        n_indices = con.execute("SELECT COUNT(DISTINCT signal_0_end) FROM signal_vector").fetchone()[0]
         print(f"Signals: {n_signals} → Pairs: {n_pairs}")
         print(f"Indices: {n_indices}")
 
@@ -521,7 +521,7 @@ def compute_signal_pairwise_sql(
 
     # Export
     try:
-        result = con.execute("SELECT * FROM v_signal_pairwise_shape ORDER BY unit_id, I, signal_a, signal_b").pl()
+        result = con.execute("SELECT * FROM v_signal_pairwise_shape ORDER BY unit_id, signal_0_end, signal_a, signal_b").pl()
         result.write_parquet(output_path)
 
         if verbose:
@@ -596,7 +596,7 @@ def compute_pairwise_aggregations(
     sql = """
     SELECT
         unit_id,
-        I,
+        signal_0_end,
         engine,
         AVG(ABS(correlation)) AS mean_abs_correlation,
         AVG(distance) AS mean_distance,
@@ -604,8 +604,8 @@ def compute_pairwise_aggregations(
         SUM(CASE WHEN ABS(correlation) > 0.8 THEN 1 ELSE 0 END) AS high_corr_pairs,
         COUNT(*) AS n_pairs
     FROM pairwise
-    GROUP BY unit_id, I, engine
-    ORDER BY unit_id, I
+    GROUP BY unit_id, signal_0_end, engine
+    ORDER BY unit_id, signal_0_end
     """
 
     try:

@@ -62,7 +62,7 @@ def run(
         write_output(result, data_path, 'cohort_pairwise', verbose=verbose)
         return result
 
-    feature_cols = [c for c in cv.columns if c not in ['cohort', 'I']]
+    feature_cols = [c for c in cv.columns if c not in ['cohort', 'signal_0_end', 'signal_0_start', 'signal_0_center']]
 
     # Load system_geometry_loadings if available
     loadings = None
@@ -73,11 +73,11 @@ def run(
             if verbose:
                 print(f"Loaded system_geometry_loadings: {loadings.shape}")
 
-    i_values = sorted(cv['I'].unique().to_list())
+    s0_values = sorted(cv['signal_0_end'].unique().to_list())
     results = []
 
-    for I in i_values:
-        window = cv.filter(pl.col('I') == I)
+    for s0_end in s0_values:
+        window = cv.filter(pl.col('signal_0_end') == s0_end)
         cohorts = window['cohort'].to_list()
 
         if len(cohorts) < 2:
@@ -93,10 +93,10 @@ def run(
             if np.isfinite(vec).all():
                 cohort_vectors[cohort] = vec
 
-        # Get loadings for this I window if available
+        # Get loadings for this window if available
         window_loadings = {}
         if loadings is not None and 'pc1_loading' in loadings.columns:
-            wl = loadings.filter(pl.col('I') == I)
+            wl = loadings.filter(pl.col('signal_0_end') == s0_end)
             for row in wl.iter_rows(named=True):
                 window_loadings[row['cohort']] = row.get('pc1_loading')
 
@@ -129,7 +129,7 @@ def run(
                 correlation = None
 
             row = {
-                'I': I,
+                'signal_0_end': s0_end,
                 'cohort_a': cohort_a,
                 'cohort_b': cohort_b,
                 'distance': distance,

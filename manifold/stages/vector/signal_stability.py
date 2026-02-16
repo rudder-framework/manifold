@@ -173,20 +173,21 @@ def run(
         else:
             cohort_data = obs
 
-        # Pivot to wide: rows=I, cols=signal_id
+        # Pivot to wide: rows=signal_0, cols=signal_id
+        cohort_data = cohort_data.sort('signal_0')
         try:
             wide = cohort_data.pivot(
-                values='value', index='I', on='signal_id',
-            ).sort('I')
+                values='value', index='signal_0', on='signal_id',
+            ).sort('signal_0')
         except Exception:
             continue
 
-        available_signals = sorted([c for c in wide.columns if c != 'I'])
+        available_signals = sorted([c for c in wide.columns if c != 'signal_0'])
         if not available_signals:
             continue
 
-        I_vals = wide['I'].to_numpy()
-        n_obs = len(I_vals)
+        s0_vals = wide['signal_0'].to_numpy()
+        n_obs = len(s0_vals)
 
         effective_window = min(window_size, n_obs)
         if effective_window < 8:
@@ -200,7 +201,8 @@ def run(
         # Rolling windows
         for start in range(0, n_obs - effective_window + 1, stride):
             end = start + effective_window
-            window_I = int(I_vals[end - 1])
+            s0_end = float(s0_vals[end - 1])
+            s0_start = float(s0_vals[start])
 
             hilbert_metrics = []
             wavelet_metrics = []
@@ -219,7 +221,9 @@ def run(
 
             row = {
                 'cohort': cohort,
-                'I': window_I,
+                'signal_0_start': s0_start,
+                'signal_0_end': s0_end,
+                'signal_0_center': (s0_start + s0_end) / 2,
                 'n_signals': len(available_signals),
                 'n_hilbert_signals': len(hilbert_metrics),
                 'n_wavelet_signals': len(wavelet_metrics),
@@ -237,7 +241,9 @@ def run(
     else:
         schema = {
             'cohort': pl.Utf8,
-            'I': pl.Int64,
+            'signal_0_start': pl.Float64,
+            'signal_0_end': pl.Float64,
+            'signal_0_center': pl.Float64,
             'n_signals': pl.Int64,
             'n_hilbert_signals': pl.Int64,
             'n_wavelet_signals': pl.Int64,

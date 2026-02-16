@@ -56,18 +56,18 @@ def run(
         write_output(pl.DataFrame(), data_path, 'system_geometry', verbose=verbose)
         return pl.DataFrame()
 
-    # Identify feature columns (everything except cohort, I)
-    feature_cols = [c for c in cv.columns if c not in ['cohort', 'I']]
+    # Identify feature columns (everything except cohort and coordinate columns)
+    feature_cols = [c for c in cv.columns if c not in ['cohort', 'signal_0_end', 'signal_0_start', 'signal_0_center']]
 
     if verbose:
         print(f"Feature columns: {len(feature_cols)}")
 
-    i_values = sorted(cv['I'].unique().to_list())
+    s0_values = sorted(cv['signal_0_end'].unique().to_list())
     results = []
     loading_rows = []
 
-    for I in i_values:
-        window = cv.filter(pl.col('I') == I)
+    for s0_end in s0_values:
+        window = cv.filter(pl.col('signal_0_end') == s0_end)
         cohorts = window['cohort'].to_list()
         n_cohorts = len(cohorts)
 
@@ -105,7 +105,7 @@ def run(
 
         # Build result row
         row = {
-            'I': I,
+            'signal_0_end': s0_end,
             'n_cohorts': n_cohorts,
             'n_features': len(feature_cols),
         }
@@ -133,7 +133,7 @@ def run(
             n_pcs = min(3, signal_loadings.shape[1])
             for idx, cohort_name in enumerate(valid_cohorts[:len(signal_loadings)]):
                 lr = {
-                    'I': I,
+                    'signal_0_end': s0_end,
                     'cohort': cohort_name,
                     'pc1_loading': float(signal_loadings[idx, 0]),
                 }

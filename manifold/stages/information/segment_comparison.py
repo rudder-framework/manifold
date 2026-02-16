@@ -70,7 +70,7 @@ def run(
             print(f"Segments: {len(segments)}")
             for seg in segments:
                 end = seg['range'][1] if seg['range'][1] is not None else 'end'
-                print(f"  {seg['name']}: I in [{seg['range'][0]}, {end}]")
+                print(f"  {seg['name']}: signal_0 in [{seg['range'][0]}, {end}]")
     else:
         if verbose:
             print("Using percentage-based split: 20% pre, 80% post (per-cohort)")
@@ -97,8 +97,8 @@ def run(
         else:
             cohort_data = obs
 
-        # Get I range for this cohort
-        i_max = cohort_data['I'].max()
+        # Get signal_0 range for this cohort
+        i_max = cohort_data['signal_0'].max()
 
         # Compute per-cohort segments if using percentage-based split
         if segments is None:
@@ -119,17 +119,17 @@ def run(
 
             # Filter to segment
             seg_data = cohort_data.filter(
-                (pl.col('I') >= start_i) & (pl.col('I') <= end_i)
+                (pl.col('signal_0') >= start_i) & (pl.col('signal_0') <= end_i)
             )
 
             if len(seg_data) < 10:
                 continue
 
-            # Pivot to wide format: each row = one I, each column = signal
+            # Pivot to wide format: each row = one signal_0, each column = signal
             try:
                 wide = seg_data.pivot(
                     values='value',
-                    index='I',
+                    index='signal_0',
                     on='signal_id',
                 )
             except Exception:
@@ -138,12 +138,12 @@ def run(
             if wide is None or len(wide) < 5:
                 continue
 
-            # Get signal columns (exclude I)
-            signal_cols = [c for c in wide.columns if c != 'I']
+            # Get signal columns (exclude signal_0)
+            signal_cols = [c for c in wide.columns if c != 'signal_0']
             if len(signal_cols) < 2:
                 continue
 
-            # Build matrix (rows = I values, columns = signals)
+            # Build matrix (rows = signal_0 values, columns = signals)
             matrix = wide.select(signal_cols).to_numpy()
 
             # Remove rows with NaN
@@ -257,8 +257,8 @@ def main():
 Computes geometry per segment and deltas between segments.
 
 Default segments (can be overridden via manifest):
-  pre:  I in [0, 20]
-  post: I in [21, end]
+  pre:  signal_0 in [0, 20]
+  post: signal_0 in [21, end]
 
 Output schema:
   cohort, segment_a, segment_b,
@@ -275,7 +275,7 @@ Example:
     parser.add_argument('-d', '--data-path', default='.',
                         help='Root data directory (default: .)')
     parser.add_argument('--split-at', type=int, default=20,
-                        help='I value to split at (default: 20)')
+                        help='signal_0 value to split at (default: 20)')
     parser.add_argument('-q', '--quiet', action='store_true', help='Suppress output')
 
     args = parser.parse_args()

@@ -113,7 +113,7 @@ def compute_state_geometry(
     state_vector = pl.read_parquet(state_vector_path)
 
     # Identify features
-    meta_cols = ['unit_id', 'I', 'signal_id', 'cohort']
+    meta_cols = ['unit_id', 'signal_0_start', 'signal_0_end', 'signal_0_center', 'signal_id', 'cohort']
     all_features = [c for c in signal_vector.columns if c not in meta_cols]
 
     # Determine feature groups
@@ -133,7 +133,7 @@ def compute_state_geometry(
 
     # Determine grouping columns
     has_cohort = 'cohort' in signal_vector.columns
-    group_cols = ['cohort', 'I'] if has_cohort else ['I']
+    group_cols = ['cohort', 'signal_0_end'] if has_cohort else ['signal_0_end']
 
     # Process each group
     results = []
@@ -150,18 +150,22 @@ def compute_state_geometry(
 
     for i, (group_key, group) in enumerate(groups):
         if has_cohort:
-            cohort, I = group_key if isinstance(group_key, tuple) else (group_key, None)
+            cohort, s0_end = group_key if isinstance(group_key, tuple) else (group_key, None)
         else:
             cohort = None
-            I = group_key[0] if isinstance(group_key, tuple) else group_key
+            s0_end = group_key[0] if isinstance(group_key, tuple) else group_key
+
+        # Pass through signal_0 columns from the group
+        s0_start = group['signal_0_start'].to_list()[0] if 'signal_0_start' in group.columns else None
+        s0_center = group['signal_0_center'].to_list()[0] if 'signal_0_center' in group.columns else None
 
         # Get state vector for this group
         if has_cohort and 'cohort' in state_vector.columns:
             state_row = state_vector.filter(
-                (pl.col('I') == I) & (pl.col('cohort') == cohort)
+                (pl.col('signal_0_end') == s0_end) & (pl.col('cohort') == cohort)
             )
         else:
-            state_row = state_vector.filter(pl.col('I') == I)
+            state_row = state_vector.filter(pl.col('signal_0_end') == s0_end)
 
         if len(state_row) == 0:
             continue
@@ -197,7 +201,7 @@ def compute_state_geometry(
             # Guard: need at least 2 signals for eigendecomposition (variance requires N>=2)
             if len(matrix_clean) < 2:
                 if verbose and i == 0:
-                    print(f"  Skipping {engine_name} at I={I}: only {len(matrix_clean)} valid rows (need >=2)")
+                    print(f"  Skipping {engine_name} at signal_0_end={s0_end}: only {len(matrix_clean)} valid rows (need >=2)")
                 continue
 
             # Guard: skip if any column is constant (zero variance → degenerate SVD)
@@ -205,7 +209,7 @@ def compute_state_geometry(
             if np.any(col_std < 1e-12):
                 if verbose and i == 0:
                     const_cols = [available[k] for k in range(len(available)) if col_std[k] < 1e-12]
-                    print(f"  Skipping {engine_name} at I={I}: constant columns {const_cols}")
+                    print(f"  Skipping {engine_name} at signal_0_end={s0_end}: constant columns {const_cols}")
                 continue
 
             # Compute eigenvalues
@@ -214,7 +218,9 @@ def compute_state_geometry(
             # Build result row
             unit_id = group['unit_id'][0] if 'unit_id' in group.columns else ''
             row = {
-                'I': I,
+                'signal_0_end': s0_end,
+                'signal_0_start': s0_start,
+                'signal_0_center': s0_center,
                 'engine': engine_name,
                 'n_signals': eigen_result['n_signals'],
                 'n_features': eigen_result['n_features'],
@@ -291,7 +297,7 @@ def compute_state_geometry(
                 n_pcs = min(3, signal_loadings.shape[1])
                 for sig_idx, sig_id in enumerate(signal_ids[:len(signal_loadings)]):
                     loading_row = {
-                        'I': I,
+                        'signal_0_end': s0_end,
                         'engine': engine_name,
                         'signal_id': sig_id,
                         'pc1_loading': float(signal_loadings[sig_idx, 0]),
@@ -312,7 +318,7 @@ def compute_state_geometry(
                 if pc1_loadings is not None:
                     for feat_idx, feat_name in enumerate(available[:len(pc1_loadings)]):
                         feat_row = {
-                            'I': I,
+                            'signal_0_end': s0_end,
                             'engine': engine_name,
                             'feature': feat_name,
                             'pc1_loading': float(pc1_loadings[feat_idx]),

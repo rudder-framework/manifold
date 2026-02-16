@@ -47,7 +47,7 @@ def _compute_cohort(args):
     # Deserialize cohort data
     cohort_data = pl.read_ipc(cohort_data_bytes)
 
-    i_max = cohort_data['I'].max()
+    s0_max = cohort_data['signal_0'].max()
     signals = sorted(cohort_data['signal_id'].unique().to_list())
 
     # Compute Granger for each segment
@@ -56,19 +56,19 @@ def _compute_cohort(args):
     for seg in segments:
         seg_name = seg['name']
         start_i = seg['range'][0]
-        end_i = seg['range'][1] if seg['range'][1] is not None else i_max
+        end_i = seg['range'][1] if seg['range'][1] is not None else s0_max
 
         seg_data = cohort_data.filter(
-            (pl.col('I') >= start_i) & (pl.col('I') <= end_i)
+            (pl.col('signal_0') >= start_i) & (pl.col('signal_0') <= end_i)
         )
 
-        # Pivot to wide format (rows = I values, columns = signals)
+        # Pivot to wide format (rows = signal_0 values, columns = signals)
         try:
             wide = seg_data.pivot(
                 values='value',
-                index='I',
+                index='signal_0',
                 on='signal_id',
-            ).sort('I')
+            ).sort('signal_0')
         except Exception:
             continue
 
@@ -76,7 +76,7 @@ def _compute_cohort(args):
             continue
 
         # Compute pairwise Granger
-        signal_cols = [c for c in wide.columns if c != 'I']
+        signal_cols = [c for c in wide.columns if c != 'signal_0']
         granger_results = {}
 
         for source in signal_cols:
@@ -196,10 +196,10 @@ def run(
 
     if segments is None or len(segments) < 2:
         # Percentage-based default: 20% pre, 80% post (per-cohort adaptive)
-        i_max = int(obs['I'].max())
-        split_i = max(int(i_max * 0.20), min_samples)
+        s0_max = int(obs['signal_0'].max())
+        split_i = max(int(s0_max * 0.20), min_samples)
         if verbose:
-            print(f"No segments specified. Using 20/80 split at I={split_i} (i_max={i_max})")
+            print(f"No segments specified. Using 20/80 split at signal_0={split_i} (s0_max={s0_max})")
         segments = [
             {'name': 'pre', 'range': [0, split_i]},
             {'name': 'post', 'range': [split_i + 1, None]},
@@ -209,7 +209,7 @@ def run(
         print(f"Segments: {len(segments)}")
         for seg in segments:
             end = seg['range'][1] if seg['range'][1] is not None else 'end'
-            print(f"  {seg['name']}: I in [{seg['range'][0]}, {end}]")
+            print(f"  {seg['name']}: signal_0 in [{seg['range'][0]}, {end}]")
 
     if verbose:
         print(f"\nLoaded observations: {obs.shape}")
@@ -341,7 +341,7 @@ Example:
     parser.add_argument('-d', '--data-path', default='.',
                         help='Root data directory (default: .)')
     parser.add_argument('--split-at', type=int, default=20,
-                        help='I value to split at (default: 20)')
+                        help='signal_0 value to split at (default: 20)')
     parser.add_argument('--max-lag', type=int, default=5,
                         help='Maximum lag for Granger test (default: 5)')
     parser.add_argument('--min-samples', type=int, default=None,
