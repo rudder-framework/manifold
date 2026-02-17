@@ -2,7 +2,7 @@
 Manifold Sequencer
 ==================
 
-Orchestrates all 29 pipeline stages in dependency order.
+Orchestrates all 24 pipeline stages in dependency order.
 Pure orchestration — no computation here.
 
 All stages always run. No opt-in. No tiers.
@@ -11,7 +11,7 @@ Architecture: Manifold computes, Prime interprets.
     If it's linear algebra → Manifold.
     If it's SQL → Prime.
 
-Output: 29 parquet files in 6 named directories.
+Output: 27 parquet files in 5 directories (signal/, cohort/, cohort/cohort_dynamics/, system/, system/system_dynamics/).
 
 Usage:
     python -m manifold domains/rossler
@@ -28,16 +28,16 @@ from pathlib import Path
 from typing import List, Optional, Dict, Any
 
 from manifold.io.manifest import load_manifest
-from manifold.io.reader import STAGE_DIRS
+from manifold.io.reader import STAGE_DIRS, STAGE_FILENAMES
 
 
 # ═══════════════════════════════════════════════════════════════
-# STAGE REGISTRY — 29 stages, all always-on
+# STAGE REGISTRY — 24 stages, all always-on
 # ═══════════════════════════════════════════════════════════════
 
 # (module_path, stage_id) — module_path relative to manifold.stages
 ALL_STAGES = [
-    # 1_signal_features + 2_system_state (core geometry)
+    # signal/ + cohort/ (core geometry)
     ('vector.breaks',                    '00'),
     ('vector.signal_vector',             '01'),
     ('geometry.state_vector',            '02'),
@@ -46,32 +46,25 @@ ALL_STAGES = [
     ('information.signal_pairwise',      '06'),
     ('geometry.geometry_dynamics',       '07'),
 
-    # 5_evolution (trajectory analysis)
+    # cohort/cohort_dynamics/ (trajectory analysis)
     ('dynamics.ftle',                    '08'),
     ('dynamics.lyapunov',                '08_lyapunov'),
     ('dynamics.cohort_thermodynamics',   '09a'),
 
-    # 4_signal_relationships (coupling)
+    # cohort/ (coupling)
     ('information.information_flow',     '10'),
 
-    # 5_evolution (fields)
+    # cohort/cohort_dynamics/ (fields)
     ('dynamics.ftle_field',              '15'),
     ('dynamics.ftle_backward',           '17'),
 
-    # 4_signal_relationships (segments)
-    ('information.segment_comparison',   '18'),
-    ('information.info_flow_delta',      '19'),
-
-    # 2_system_state (rolling)
-    ('geometry.sensor_eigendecomp',      '20'),
-
-    # 5_evolution (motion + rolling + urgency)
+    # cohort/cohort_dynamics/ (motion + rolling + urgency)
     ('dynamics.velocity_field',          '21'),
     ('dynamics.ftle_rolling',            '22'),
     ('dynamics.ridge_proximity',         '23'),
     ('dynamics.persistent_homology',     '36'),
 
-    # 6_fleet (cohort_vector built from state_geometry, then fleet stages)
+    # system/ (system_vector built from cohort_geometry, then fleet stages)
     ('energy.cohort_vector',             '25'),
     ('energy.system_geometry',           '26'),
     ('energy.cohort_pairwise',           '27'),
@@ -79,13 +72,15 @@ ALL_STAGES = [
     ('energy.cohort_ftle',              '30'),
     ('energy.cohort_velocity_field',     '31'),
 
-    # 1_signal_features (stability)
+    # signal/ (stability)
     ('vector.signal_stability',          '33'),
-
-    # 3_regime_scoring (baseline + scoring)
-    ('geometry.cohort_baseline',         '34'),
-    ('geometry.observation_geometry',    '35'),
 ]
+
+# System-level stage IDs (fleet comparison, requires n_cohorts >= 2)
+SYSTEM_STAGE_IDS = {'25', '26', '27', '28', '30', '31'}
+
+# Output subdirectories that belong to system-level computation
+SYSTEM_SUBDIRS = {'system', 'system/system_dynamics'}
 
 # Stages that must run globally before parallel split (column pruning is cross-cohort)
 GLOBAL_FIRST_IDS = {'00', '01'}
@@ -93,7 +88,7 @@ GLOBAL_FIRST_IDS = {'00', '01'}
 # Stage IDs that can run independently per cohort (after global stages)
 COHORT_PARALLEL_IDS = {
     '02', '03', '05', '06', '07', '08', '08_lyapunov',
-    '09a', '10', '17', '18', '19', '20', '21', '22', '23', '36', '33',
+    '09a', '10', '17', '21', '22', '23', '36', '33',
 }
 
 
@@ -264,11 +259,57 @@ def _out(output_dir: Path, filename: str) -> str:
     """Resolve output path: output_dir / subdir / filename."""
     stem = filename.replace('.parquet', '')
     subdir = STAGE_DIRS.get(stem, '')
+    actual_filename = STAGE_FILENAMES.get(stem, filename)
     if subdir:
         d = output_dir / subdir
         d.mkdir(parents=True, exist_ok=True)
-        return str(d / filename)
-    return str(output_dir / filename)
+        return str(d / actual_filename)
+    return str(output_dir / actual_filename)
+
+
+def _resolve_system_mode(manifest: dict, obs_path: str, verbose: bool) -> bool:
+    """
+    Determine whether to skip system-level stages.
+
+    Reads system.mode from manifest (auto|force|skip).
+    When auto: skip if n_cohorts < 2.
+
+    Returns True if system stages should be skipped.
+    """
+    import polars as pl
+
+    mode = manifest.get('system', {}).get('mode', 'auto')
+    if mode not in ('auto', 'force', 'skip'):
+        if verbose:
+            print(f"  Warning: unknown system.mode '{mode}', defaulting to 'auto'")
+        mode = 'auto'
+
+    if mode == 'skip':
+        if verbose:
+            print("System mode: skip — skipping system-level computation")
+            print()
+        return True
+
+    if mode == 'force':
+        if verbose:
+            print("System mode: force — computing system level regardless of cohort count")
+            print()
+        return False
+
+    # mode == 'auto': count cohorts
+    obs = pl.read_parquet(obs_path)
+    if 'cohort' not in obs.columns:
+        n_cohorts = 1
+    else:
+        n_cohorts = obs['cohort'].n_unique()
+
+    if n_cohorts < 2:
+        if verbose:
+            print(f"Single cohort detected, skipping system-level computation (system.mode=auto)")
+            print()
+        return True
+
+    return False
 
 
 def run(
@@ -282,7 +323,7 @@ def run(
     """
     Run pipeline stages in dependency order.
 
-    All 29 stages run by default. Use stages/skip for debugging only.
+    All 24 stages run by default. Use stages/skip for debugging only.
 
     Args:
         observations_path: Path to observations.parquet
@@ -316,14 +357,20 @@ def run(
             f"Pass the output/ subdirectory, not the domain root."
         )
 
+    # Determine system-level mode before wiping output
+    skip_system = _resolve_system_mode(manifest, str(observations_path), verbose)
+    system_mode = manifest.get('system', {}).get('mode', 'auto')
+
     # Fresh start — remove old outputs
     if output_dir.exists():
         shutil.rmtree(output_dir)
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Create output subdirectories
+    # Create output subdirectories (skip system/ when not needed)
     for subdir in sorted(set(STAGE_DIRS.values())):
+        if skip_system and subdir in SYSTEM_SUBDIRS:
+            continue
         (output_dir / subdir).mkdir(parents=True, exist_ok=True)
     _write_readmes(output_dir)
 
@@ -340,6 +387,13 @@ def run(
         run_stages = [
             (mod, sid) for mod, sid in run_stages
             if sid not in skip
+        ]
+
+    # Remove system stages when skipping system-level computation
+    if skip_system:
+        run_stages = [
+            (mod, sid) for mod, sid in run_stages
+            if sid not in SYSTEM_STAGE_IDS
         ]
 
     # Determine parallelism from MANIFOLD_WORKERS env var (0 = auto-detect)
@@ -395,7 +449,7 @@ def run(
                         if verbose:
                             print(f"  Warning: {module_path} has no run() function, skipping")
                         continue
-                    _dispatch(module, module_path, stage_id, obs_path, output_dir, manifest, verbose, str(data_path))
+                    _dispatch(module, module_path, stage_id, obs_path, output_dir, manifest, verbose, str(data_path), system_mode)
                 except Exception as e:
                     if verbose:
                         print(f"  Error in {stage_label}: {e}")
@@ -509,7 +563,7 @@ def run(
                             print(f"  Warning: {module_path} has no run() function, skipping")
                         continue
 
-                    _dispatch(module, module_path, stage_id, obs_path, output_dir, manifest, verbose, str(data_path))
+                    _dispatch(module, module_path, stage_id, obs_path, output_dir, manifest, verbose, str(data_path), system_mode)
 
                 except Exception as e:
                     if verbose:
@@ -537,7 +591,7 @@ def run(
                         print(f"  Warning: {module_path} has no run() function, skipping")
                     continue
 
-                _dispatch(module, module_path, stage_id, obs_path, output_dir, manifest, verbose, str(data_path))
+                _dispatch(module, module_path, stage_id, obs_path, output_dir, manifest, verbose, str(data_path), system_mode)
 
             except Exception as e:
                 if verbose:
@@ -551,7 +605,10 @@ def run(
         # Report output
         total = 0
         for subdir in sorted(set(STAGE_DIRS.values())):
-            files = list((output_dir / subdir).glob('*.parquet'))
+            subdir_path = output_dir / subdir
+            if not subdir_path.exists():
+                continue
+            files = list(subdir_path.glob('*.parquet'))
             total += len(files)
             print(f"  {subdir}/ ({len(files)} files)")
         print(f"\n  Total: {total} parquet files")
@@ -570,6 +627,7 @@ def _dispatch(
     manifest: Dict[str, Any],
     verbose: bool,
     data_path_str: str = '',
+    system_mode: str = 'auto',
 ) -> None:
     """Dispatch a stage with the correct arguments and output path."""
 
@@ -608,7 +666,7 @@ def _dispatch(
     elif stage_name == 'state_geometry':
         module.run(
             _out(output_dir, 'signal_vector.parquet'),
-            _out(output_dir, 'state_vector.parquet'),
+            _out(output_dir, 'cohort_vector.parquet'),
             data_path=data_path_str,
             verbose=verbose,
         )
@@ -616,60 +674,33 @@ def _dispatch(
     elif stage_name == 'signal_geometry':
         module.run(
             _out(output_dir, 'signal_vector.parquet'),
-            _out(output_dir, 'state_vector.parquet'),
+            _out(output_dir, 'cohort_vector.parquet'),
             data_path=data_path_str,
-            state_geometry_path=_out(output_dir, 'state_geometry.parquet'),
+            cohort_geometry_path=_out(output_dir, 'cohort_geometry.parquet'),
             verbose=verbose,
         )
 
     elif stage_name == 'geometry_dynamics':
         module.run(
-            _out(output_dir, 'state_geometry.parquet'),
+            _out(output_dir, 'cohort_geometry.parquet'),
             data_path=data_path_str,
             verbose=verbose,
         )
-
-    elif stage_name == 'sensor_eigendecomp':
-        se_config = manifest.get('sensor_eigendecomp', {})
-        module.run(
-            obs_path,
-            data_path=data_path_str,
-            agg_window=se_config.get('agg_window', 30),
-            agg_stride=se_config.get('agg_stride', 5),
-            lookback=se_config.get('lookback', 30),
-            verbose=verbose,
-        )
-
-    elif stage_name == 'cohort_baseline':
-        module.run(obs_path, data_path=data_path_str, verbose=verbose)
-
-    elif stage_name == 'observation_geometry':
-        baseline_path = _out(output_dir, 'cohort_baseline.parquet')
-        if Path(baseline_path).exists():
-            module.run(
-                obs_path,
-                baseline_path,
-                data_path=data_path_str,
-                verbose=verbose,
-            )
-        else:
-            if verbose:
-                print("  Skipped (cohort_baseline.parquet not found -- run stage 34 first)")
 
     # ── information ──
 
     elif stage_name == 'signal_pairwise':
         module.run(
             _out(output_dir, 'signal_vector.parquet'),
-            _out(output_dir, 'state_vector.parquet'),
+            _out(output_dir, 'cohort_vector.parquet'),
             data_path=data_path_str,
-            state_geometry_path=_out(output_dir, 'state_geometry.parquet'),
+            cohort_geometry_path=_out(output_dir, 'cohort_geometry.parquet'),
             verbose=verbose,
         )
 
     elif stage_name == 'information_flow':
         import polars as _pl
-        pairwise_file = Path(_out(output_dir, 'signal_pairwise.parquet'))
+        pairwise_file = Path(_out(output_dir, 'cohort_pairwise.parquet'))
         if pairwise_file.exists() and len(_pl.read_parquet(str(pairwise_file))) > 0:
             module.run(
                 obs_path,
@@ -679,27 +710,9 @@ def _dispatch(
             )
         else:
             if verbose:
-                print("  Skipped (empty signal_pairwise)")
+                print("  Skipped (empty cohort_pairwise)")
             from manifold.io.writer import write_output as _write
-            _write(_pl.DataFrame(), data_path_str, 'information_flow', verbose=verbose)
-
-    elif stage_name == 'segment_comparison':
-        segments = _get_segments(manifest)
-        module.run(
-            obs_path,
-            data_path=data_path_str,
-            segments=segments,
-            verbose=verbose,
-        )
-
-    elif stage_name == 'info_flow_delta':
-        segments = _get_segments(manifest)
-        module.run(
-            obs_path,
-            data_path=data_path_str,
-            segments=segments,
-            verbose=verbose,
-        )
+            _write(_pl.DataFrame(), data_path_str, 'cohort_information_flow', verbose=verbose)
 
     # ── dynamics ──
 
@@ -715,17 +728,17 @@ def _dispatch(
         module.run(obs_path, data_path=data_path_str, verbose=verbose)
 
     elif stage_name == 'cohort_thermodynamics':
-        sg_path = _out(output_dir, 'state_geometry.parquet')
+        sg_path = _out(output_dir, 'cohort_geometry.parquet')
         if Path(sg_path).exists():
             module.run(sg_path, data_path=data_path_str, verbose=verbose)
         else:
             if verbose:
-                print("  Skipped (state_geometry.parquet not found)")
+                print("  Skipped (cohort_geometry.parquet not found)")
 
     elif stage_name == 'ftle_field':
         module.run(
-            _out(output_dir, 'state_vector.parquet'),
-            _out(output_dir, 'state_geometry.parquet'),
+            _out(output_dir, 'cohort_vector.parquet'),
+            _out(output_dir, 'cohort_geometry.parquet'),
             data_path=data_path_str,
             verbose=verbose,
         )
@@ -754,28 +767,28 @@ def _dispatch(
         )
 
     elif stage_name == 'persistent_homology':
-        sv_path = _out(output_dir, 'state_vector.parquet')
+        sv_path = _out(output_dir, 'cohort_vector.parquet')
         if Path(sv_path).exists():
             module.run(sv_path, data_path=data_path_str, verbose=verbose)
         else:
             if verbose:
-                print("  Skipped (state_vector.parquet not found)")
+                print("  Skipped (cohort_vector.parquet not found)")
 
     # ── energy (fleet) ──
 
     elif stage_name == 'cohort_vector':
-        sg_path = _out(output_dir, 'state_geometry.parquet')
+        sg_path = _out(output_dir, 'cohort_geometry.parquet')
         if Path(sg_path).exists():
             module.run(sg_path, data_path=data_path_str, verbose=verbose)
         else:
             if verbose:
-                print("  Skipped (state_geometry.parquet not found)")
+                print("  Skipped (cohort_geometry.parquet not found)")
 
     elif stage_name in (
         'system_geometry', 'cohort_pairwise', 'cohort_information_flow',
         'cohort_ftle', 'cohort_velocity_field',
     ):
-        _dispatch_fleet(module, stage_name, output_dir, verbose, data_path_str)
+        _dispatch_fleet(module, stage_name, output_dir, verbose, data_path_str, system_mode)
 
     else:
         if verbose:
@@ -788,42 +801,39 @@ def _dispatch_fleet(
     output_dir: Path,
     verbose: bool,
     data_path_str: str = '',
+    system_mode: str = 'auto',
 ) -> None:
     """
     Dispatch fleet-scale stages (26-31).
 
-    These require cohort_vector.parquet (produced by stage 25).
-    Guard: skip if cohort_vector missing or n_cohorts < 2.
+    These require system_vector.parquet (produced by stage 25).
+    Guard: skip if system_vector missing or n_cohorts < 2 (unless system.mode=force).
     """
     import polars as _pl
 
-    # cohort_vector could be in output root (from Prime) or in 6_fleet
-    cv_path = output_dir / 'cohort_vector.parquet'
-    if not cv_path.exists():
-        cv_path = output_dir / '6_fleet' / 'cohort_vector.parquet'
+    cv_path = Path(_out(output_dir, 'system_vector.parquet'))
     if not cv_path.exists():
         if verbose:
-            print("  Skipped (cohort_vector.parquet not found -- run stage 25 first)")
+            print("  Skipped (system_vector.parquet not found -- run stage 25 first)")
         return
 
     cv = _pl.read_parquet(str(cv_path))
     if len(cv) == 0:
         if verbose:
-            print("  Skipped (cohort_vector.parquet is empty)")
+            print("  Skipped (system_vector.parquet is empty)")
         return
-    if 'cohort' not in cv.columns or cv['cohort'].n_unique() < 2:
-        n = cv['cohort'].n_unique() if 'cohort' in cv.columns else 0
-        if verbose:
-            print(f"  Skipped (n_cohorts={n} < 2)")
-        return
+    if system_mode != 'force':
+        if 'cohort' not in cv.columns or cv['cohort'].n_unique() < 2:
+            n = cv['cohort'].n_unique() if 'cohort' in cv.columns else 0
+            if verbose:
+                print(f"  Skipped (n_cohorts={n} < 2)")
+            return
 
     if stage_name == 'system_geometry':
         module.run(str(cv_path), data_path=data_path_str, verbose=verbose)
 
     elif stage_name == 'cohort_pairwise':
-        loadings_path = output_dir / '6_fleet' / 'system_geometry_loadings.parquet'
-        if not loadings_path.exists():
-            loadings_path = output_dir / 'system_geometry_loadings.parquet'
+        loadings_path = Path(_out(output_dir, 'system_cohort_positions.parquet'))
         module.run(
             str(cv_path),
             data_path=data_path_str,
@@ -832,7 +842,7 @@ def _dispatch_fleet(
         )
 
     elif stage_name == 'cohort_information_flow':
-        pairwise_path = Path(_out(output_dir, 'cohort_pairwise.parquet'))
+        pairwise_path = Path(_out(output_dir, 'system_pairwise.parquet'))
         if pairwise_path.exists() and len(_pl.read_parquet(str(pairwise_path))) > 0:
             module.run(
                 str(cv_path),
@@ -842,9 +852,9 @@ def _dispatch_fleet(
             )
         else:
             if verbose:
-                print("  Skipped (empty cohort_pairwise)")
+                print("  Skipped (empty system_pairwise)")
             from manifold.io.writer import write_output as _write
-            _write(_pl.DataFrame(), data_path_str, 'cohort_information_flow', verbose=verbose)
+            _write(_pl.DataFrame(), data_path_str, 'system_information_flow', verbose=verbose)
 
     elif stage_name == 'cohort_ftle':
         module.run(str(cv_path), data_path=data_path_str, verbose=verbose)
@@ -860,25 +870,9 @@ def _find_typology(manifest: Dict[str, Any], output_dir: Path) -> Optional[str]:
     return str(typology_path) if typology_path.exists() else None
 
 
-def _get_segments(manifest: Dict[str, Any]) -> Optional[list]:
-    """Extract segments config from manifest."""
-    segments_config = manifest.get('segments')
-    if segments_config:
-        return segments_config
-
-    intervention = manifest.get('intervention')
-    if intervention and intervention.get('enabled'):
-        event_idx = intervention.get('event_index', 20)
-        return [
-            {'name': 'pre', 'range': [0, event_idx - 1]},
-            {'name': 'post', 'range': [event_idx, None]},
-        ]
-    return None
-
-
 _READMES = {
-    '1_signal_features': """\
-# 1. Signal Features
+    'signal': """\
+# Signal
 
 **What does each sensor look like?**
 
@@ -891,56 +885,35 @@ Per-signal windowed analysis: statistics, spectral, entropy, stability.
 | signal_stability.parquet | (signal_id, signal_0_end) | Hilbert + wavelet stability |
 """,
 
-    '2_system_state': """\
-# 2. System State
+    'cohort': """\
+# Cohort
 
-**What is the system's geometric structure?**
+**What is the system's geometric structure and signal relationships?**
 
-Cross-signal eigendecomposition: the core operation of Manifold.
+Cross-signal eigendecomposition and pairwise metrics per cohort.
 
 | File | Grain | Description |
 |------|-------|-------------|
-| state_vector.parquet | (cohort, signal_0_end) | Cross-signal centroid per window |
-| state_geometry.parquet | (cohort, signal_0_end) | Eigenvalues, effective dimension |
-| geometry_dynamics.parquet | (cohort, signal_0_end) | Velocity/acceleration/jerk of eigenvalue trajectories |
-| sensor_eigendecomp.parquet | (cohort, signal_0_end) | Rolling 2-level SVD |
+| cohort_geometry.parquet | (cohort, signal_0_end) | Eigenvalues, effective dimension |
+| cohort_vector.parquet | (cohort, signal_0_end) | Cross-signal centroid per window |
+| cohort_signal_positions.parquet | (cohort, signal_0_end, signal_id) | Signal loadings on PCs |
+| cohort_feature_loadings.parquet | (cohort, signal_0_end, feature) | Feature loadings on PC1 |
+| cohort_pairwise.parquet | (cohort, signal_a, signal_b, signal_0_end) | Covariance, correlation, MI |
+| cohort_information_flow.parquet | (source, target, signal_0_end) | Transfer entropy, Granger causality |
 """,
 
-    '3_regime_scoring': """\
-# 3. Regime Scoring
+    'cohort/cohort_dynamics': """\
+# Cohort Dynamics
 
-**What is the system's current regime?**
+**How is each cohort changing over time?**
 
 | File | Grain | Description |
 |------|-------|-------------|
 | breaks.parquet | (cohort, signal_0) | Change-point detection |
-| cohort_baseline.parquet | (cohort) | SVD on early-life observations |
-| observation_geometry.parquet | (cohort, signal_0) | Per-observation scoring against baseline |
-""",
-
-    '4_signal_relationships': """\
-# 4. Signal Relationships
-
-**How are sensors connected to each other?**
-
-| File | Grain | Description |
-|------|-------|-------------|
-| signal_pairwise.parquet | (cohort, signal_a, signal_b, signal_0_end) | Covariance, correlation, MI |
-| information_flow.parquet | (source, target, signal_0_end) | Transfer entropy, Granger causality |
-| segment_comparison.parquet | (cohort, signal_id) | Early vs late statistical tests |
-| info_flow_delta.parquet | (source, target) | Delta in information flow between segments |
-""",
-
-    '5_evolution': """\
-# 5. Evolution
-
-**How is the system changing over time?**
-
-| File | Grain | Description |
-|------|-------|-------------|
+| geometry_dynamics.parquet | (cohort, signal_0_end) | Velocity/acceleration/jerk of eigenvalue trajectories |
 | ftle.parquet | (cohort, signal_0_end) | Finite-Time Lyapunov Exponents |
 | lyapunov.parquet | (signal_id) | Largest Lyapunov exponent per signal |
-| cohort_thermodynamics.parquet | (cohort) | Shannon entropy from eigenvalue spectrum |
+| thermodynamics.parquet | (cohort) | Shannon entropy from eigenvalue spectrum |
 | ftle_field.parquet | (cohort, grid_x, grid_y) | Local FTLE grid |
 | ftle_backward.parquet | (cohort, signal_0_end) | Backward FTLE |
 | velocity_field.parquet | (cohort, signal_0_end) | Speed, direction in state space |
@@ -949,21 +922,31 @@ Cross-signal eigendecomposition: the core operation of Manifold.
 | persistent_homology.parquet | (cohort, signal_0_end) | Betti numbers, persistence entropy |
 """,
 
-    '6_fleet': """\
-# 6. Fleet
+    'system': """\
+# System
 
 **How does this compare across the fleet?**
 
-Requires `cohort_vector.parquet` (from stage 25) and n_cohorts >= 2.
+Requires `system_vector.parquet` (from stage 25) and n_cohorts >= 2.
 
 | File | Grain | Description |
 |------|-------|-------------|
-| cohort_vector.parquet | (cohort, signal_0_end) | Wide-format cohort features pivoted from state_geometry |
-| system_geometry.parquet | (cohort) | Fleet-level eigendecomposition |
-| cohort_pairwise.parquet | (cohort_a, cohort_b) | Distance between cohort vectors |
-| cohort_information_flow.parquet | (source, target) | Transfer entropy at fleet scale |
-| cohort_ftle.parquet | (cohort, signal_0_end) | FTLE on cohort trajectories |
-| cohort_velocity_field.parquet | (cohort, signal_0_end) | Drift at fleet scale |
+| system_geometry.parquet | (signal_0_end) | Fleet-level eigendecomposition |
+| system_vector.parquet | (cohort, signal_0_end) | Wide-format cohort features pivoted from cohort_geometry |
+| system_cohort_positions.parquet | (signal_0_end, cohort) | Cohort loadings on PCs |
+| system_pairwise.parquet | (cohort_a, cohort_b) | Distance between cohort vectors |
+| system_information_flow.parquet | (source, target) | Transfer entropy at fleet scale |
+""",
+
+    'system/system_dynamics': """\
+# System Dynamics
+
+**How is the fleet evolving over time?**
+
+| File | Grain | Description |
+|------|-------|-------------|
+| ftle.parquet | (cohort, signal_0_end) | FTLE on cohort trajectories |
+| velocity_field.parquet | (cohort, signal_0_end) | Drift at fleet scale |
 """,
 }
 
@@ -971,7 +954,10 @@ Requires `cohort_vector.parquet` (from stage 25) and n_cohorts >= 2.
 def _write_readmes(output_dir: Path) -> None:
     """Write README.md into each output subdirectory (idempotent)."""
     for subdir, content in _READMES.items():
-        readme_path = output_dir / subdir / 'README.md'
+        subdir_path = output_dir / subdir
+        if not subdir_path.exists():
+            continue
+        readme_path = subdir_path / 'README.md'
         if not readme_path.exists():
             readme_path.write_text(content)
 
@@ -982,7 +968,7 @@ def main():
         description="Manifold Pipeline",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-29 stages. All always-on.
+24 stages. All always-on.
 
 Usage:
   python -m manifold ~/domains/rossler

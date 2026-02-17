@@ -2,13 +2,13 @@
 Stage 25: Cohort Vector
 =======================
 
-Pivots state_geometry engine rows into wide cohort feature vectors.
+Pivots cohort_geometry engine rows into wide cohort feature vectors.
 Each (cohort, signal_0_end) gets one row with {engine}_{metric} columns.
 
 This creates the input required by fleet stages (26-31).
 
 Inputs:
-    - state_geometry.parquet (from stage 03)
+    - cohort_geometry.parquet (from stage 03)
 
 Outputs:
     - cohort_vector.parquet (one row per cohort per signal_0_end window)
@@ -20,7 +20,7 @@ from pathlib import Path
 from manifold.io.writer import write_output
 
 
-# Metrics to pivot from state_geometry (per engine)
+# Metrics to pivot from cohort_geometry (per engine)
 PIVOT_METRICS = [
     'effective_dim',
     'eigenvalue_1',
@@ -37,15 +37,15 @@ PIVOT_METRICS = [
 
 
 def run(
-    state_geometry_path: str,
+    cohort_geometry_path: str,
     data_path: str = ".",
     verbose: bool = True,
 ) -> pl.DataFrame:
     """
-    Pivot state_geometry by engine into wide cohort feature vectors.
+    Pivot cohort_geometry by engine into wide cohort feature vectors.
 
     Args:
-        state_geometry_path: Path to state_geometry.parquet
+        cohort_geometry_path: Path to cohort_geometry.parquet
         data_path: Data directory for output
         verbose: Print progress
 
@@ -55,25 +55,25 @@ def run(
     if verbose:
         print("=" * 70)
         print("STAGE 25: COHORT VECTOR")
-        print("Pivot state_geometry engines to wide feature vectors")
+        print("Pivot cohort_geometry engines to wide feature vectors")
         print("=" * 70)
 
-    sg_path = Path(state_geometry_path)
+    sg_path = Path(cohort_geometry_path)
     if not sg_path.exists():
         if verbose:
-            print(f"  state_geometry.parquet not found: {sg_path}")
-        write_output(pl.DataFrame(), data_path, 'cohort_vector', verbose=verbose)
+            print(f"  cohort_geometry.parquet not found: {sg_path}")
+        write_output(pl.DataFrame(), data_path, 'system_vector', verbose=verbose)
         return pl.DataFrame()
 
     sg = pl.read_parquet(str(sg_path))
 
     if verbose:
-        print(f"  Loaded state_geometry: {sg.shape}")
+        print(f"  Loaded cohort_geometry: {sg.shape}")
 
     if len(sg) == 0 or 'engine' not in sg.columns:
         if verbose:
             print("  Empty or missing engine column — skipping")
-        write_output(pl.DataFrame(), data_path, 'cohort_vector', verbose=verbose)
+        write_output(pl.DataFrame(), data_path, 'system_vector', verbose=verbose)
         return pl.DataFrame()
 
     # Ensure cohort column exists (single-cohort domains may omit it)
@@ -124,5 +124,5 @@ def run(
         print(f"  Cohort vector: {result.shape}")
         print(f"  Cohorts: {result['cohort'].n_unique()}, Windows: {result['signal_0_end'].n_unique()}")
 
-    write_output(result, data_path, 'cohort_vector', verbose=verbose)
+    write_output(result, data_path, 'system_vector', verbose=verbose)
     return result

@@ -10,13 +10,13 @@ Computes per signal, per engine, per index:
 - Contribution (projection magnitude)
 - Residual (orthogonal component)
 
-REQUIRES: signal_vector.parquet + state_vector.parquet + state_geometry.parquet
+REQUIRES: signal_vector.parquet + cohort_vector.parquet + cohort_geometry.parquet
 
 ARCHITECTURE: This is an ORCHESTRATOR that delegates all compute to primitives.
 All mathematical operations are performed by directly-imported primitive functions.
 
 Pipeline:
-    signal_vector + state_vector + state_geometry → signal_geometry.parquet → dynamics.parquet
+    signal_vector + cohort_vector + cohort_geometry → signal_geometry.parquet → dynamics.parquet
 """
 
 import numpy as np
@@ -118,8 +118,8 @@ def compute_signal_geometry_at_index(
     Args:
         signal_matrix: N_signals × D_features
         signal_ids: Names of signals
-        centroid: D_features centroid from state_vector
-        principal_components: Principal components from state_geometry (optional)
+        centroid: D_features centroid from cohort_vector
+        principal_components: Principal components from cohort_geometry (optional)
 
     Returns:
         List of dicts, one per signal
@@ -216,8 +216,8 @@ def compute_signal_geometry_at_index(
 
 def compute_signal_geometry(
     signal_vector: pl.DataFrame,
-    state_vector: pl.DataFrame,
-    state_geometry_path: Optional[str] = None,
+    cohort_vector: pl.DataFrame,
+    cohort_geometry_path: Optional[str] = None,
     feature_groups: Optional[Dict[str, List[str]]] = None,
     verbose: bool = True
 ) -> pl.DataFrame:
@@ -226,8 +226,8 @@ def compute_signal_geometry(
 
     Args:
         signal_vector: Signal vector DataFrame
-        state_vector: State vector DataFrame
-        state_geometry_path: Optional path to state_geometry.parquet for PCs
+        cohort_vector: State vector DataFrame
+        cohort_geometry_path: Optional path to cohort_geometry.parquet for PCs
         feature_groups: Dict mapping engine names to feature lists
         verbose: Print progress
 
@@ -242,7 +242,7 @@ def compute_signal_geometry(
 
     # Optionally load state geometry for principal components
     # (For now, we'll compute PC1 on the fly or use centroid)
-    # TODO: Store PCs in state_geometry and load them here
+    # TODO: Store PCs in cohort_geometry and load them here
 
     # Identify features
     meta_cols = ['unit_id', 'signal_0_start', 'signal_0_end', 'signal_0_center', 'signal_id']
@@ -294,11 +294,11 @@ def compute_signal_geometry(
 
         # Get state vector for this (cohort, signal_0_end) or just signal_0_end
         if has_cohort and cohort:
-            state_row = state_vector.filter(
+            state_row = cohort_vector.filter(
                 (pl.col('cohort') == cohort) & (pl.col('signal_0_end') == s0_end)
             )
         else:
-            state_row = state_vector.filter(pl.col('signal_0_end') == s0_end)
+            state_row = cohort_vector.filter(pl.col('signal_0_end') == s0_end)
 
         if len(state_row) == 0:
             continue
@@ -311,7 +311,7 @@ def compute_signal_geometry(
             if len(available) < 2:
                 continue
 
-            # Get centroid from state_vector
+            # Get centroid from cohort_vector
             # Try state_{engine}_{feature} first (legacy), then centroid_{feature} (v2)
             centroid_cols = [f'state_{engine_name}_{f}' for f in available]
             centroid_available = [c for c in centroid_cols if c in state_row.columns]

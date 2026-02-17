@@ -4,7 +4,7 @@ ENGINES Geometry Dynamics Engine
 The complete differential geometry framework.
 Computes derivatives and curvature for the geometry evolution over time.
 
-"You have position (state_vector).
+"You have position (cohort_vector).
  You have shape (eigenvalues).
  Now here are the derivatives."
 
@@ -22,7 +22,7 @@ ARCHITECTURE: This is an ORCHESTRATOR that delegates all compute to primitives.
 All mathematical operations are performed by directly-imported primitive functions.
 
 INPUT:
-- state_geometry.parquet (eigenvalues over time)
+- cohort_geometry.parquet (eigenvalues over time)
 - signal_geometry.parquet (signal positions over time)
 
 OUTPUT:
@@ -284,7 +284,7 @@ def detect_collapse(
 # ============================================================
 
 def compute_geometry_dynamics(
-    state_geometry: pl.DataFrame,
+    cohort_geometry: pl.DataFrame,
     dt: Optional[float] = None,
     smooth_window: Optional[int] = None,
     verbose: bool = True
@@ -298,7 +298,7 @@ def compute_geometry_dynamics(
     - total_variance
 
     Args:
-        state_geometry: State geometry DataFrame
+        cohort_geometry: State geometry DataFrame
         dt: Time step (from config if not provided)
         smooth_window: Smoothing window (from config if not provided)
         verbose: Print progress
@@ -318,22 +318,22 @@ def compute_geometry_dynamics(
         print("GEOMETRY DYNAMICS ENGINE")
         print("Differential geometry of state evolution")
         print("=" * 70)
-        print(f"Input: {len(state_geometry)} rows")
-        print(f"Columns: {state_geometry.columns}")
+        print(f"Input: {len(cohort_geometry)} rows")
+        print(f"Columns: {cohort_geometry.columns}")
 
     # Guard: empty input — return without writing an invalid 0-column parquet
-    if len(state_geometry) == 0 or 'engine' not in state_geometry.columns:
+    if len(cohort_geometry) == 0 or 'engine' not in cohort_geometry.columns:
         if verbose:
             print("  No state geometry data to process (empty input)")
         return pl.DataFrame()
 
     # Determine grouping columns - include cohort if present
-    has_cohort = 'cohort' in state_geometry.columns
+    has_cohort = 'cohort' in cohort_geometry.columns
     group_cols = ['cohort', 'engine'] if has_cohort else ['engine']
 
     # Process each (cohort, engine) or just engine
     results = []
-    groups = state_geometry.group_by(group_cols, maintain_order=True)
+    groups = cohort_geometry.group_by(group_cols, maintain_order=True)
 
     for group_key, group in groups:
         if has_cohort:

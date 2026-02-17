@@ -51,7 +51,7 @@ def run(
     if len(cv) == 0:
         if verbose:
             print("  Empty cohort_vector — skipping")
-        write_output(pl.DataFrame(), data_path, 'cohort_velocity_field', verbose=verbose)
+        write_output(pl.DataFrame(), data_path, 'system_velocity_field', verbose=verbose)
         return pl.DataFrame()
 
     feature_cols = [c for c in cv.columns if c not in ['cohort', 'signal_0_end', 'signal_0_start', 'signal_0_center']]
@@ -128,7 +128,7 @@ def run(
 
     result = pl.DataFrame(results) if results else pl.DataFrame()
 
-    write_output(result, data_path, 'cohort_velocity_field', verbose=verbose)
+    write_output(result, data_path, 'system_velocity_field', verbose=verbose)
 
     if verbose:
         print(f"Shape: {result.shape}")

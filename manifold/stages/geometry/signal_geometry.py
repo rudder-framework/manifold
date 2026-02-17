@@ -6,8 +6,8 @@ Orchestration - reads parquets, calls core engine, writes output.
 
 Inputs:
     - signal_vector.parquet
-    - state_vector.parquet
-    - state_geometry.parquet (optional, for principal components)
+    - cohort_vector.parquet
+    - cohort_geometry.parquet (optional, for principal components)
 
 Output:
     - signal_geometry.parquet
@@ -28,9 +28,9 @@ from manifold.io.writer import write_output
 
 def run(
     signal_vector_path: str,
-    state_vector_path: str,
+    cohort_vector_path: str,
     data_path: str = ".",
-    state_geometry_path: Optional[str] = None,
+    cohort_geometry_path: Optional[str] = None,
     verbose: bool = True,
 ) -> pl.DataFrame:
     """
@@ -38,9 +38,9 @@ def run(
 
     Args:
         signal_vector_path: Path to signal_vector.parquet
-        state_vector_path: Path to state_vector.parquet
+        cohort_vector_path: Path to cohort_vector.parquet
         data_path: Root data directory (for write_output)
-        state_geometry_path: Path to state_geometry.parquet (for PCs)
+        cohort_geometry_path: Path to cohort_geometry.parquet (for PCs)
         verbose: Print progress
 
     Returns:
@@ -53,12 +53,12 @@ def run(
         print("=" * 70)
 
     signal_vector = pl.read_parquet(signal_vector_path)
-    state_vector = pl.read_parquet(state_vector_path)
+    cohort_vector = pl.read_parquet(cohort_vector_path)
 
     result = compute_signal_geometry(
         signal_vector,
-        state_vector,
-        state_geometry_path=state_geometry_path,
+        cohort_vector,
+        cohort_geometry_path=cohort_geometry_path,
         verbose=verbose,
     )
 

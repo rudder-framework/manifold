@@ -18,7 +18,7 @@ import polars as pl
 from pathlib import Path
 
 from manifold.core.state.eigendecomp import compute as compute_eigendecomp
-from manifold.io.writer import write_output, write_sidecar
+from manifold.io.writer import write_output
 
 
 def run(
@@ -148,10 +148,10 @@ def run(
 
     write_output(result, data_path, 'system_geometry', verbose=verbose)
 
-    # Write loadings sidecar
+    # Write cohort loadings as first-class output
     if loading_rows:
         loadings_df = pl.DataFrame(loading_rows)
-        write_sidecar(loadings_df, data_path, 'system_geometry', 'loadings', verbose=verbose)
+        write_output(loadings_df, data_path, 'system_cohort_positions', verbose=verbose)
 
     return result
 
@@ -164,7 +164,7 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Eigendecomposition of cohort feature matrix per I window.
-Scale 2: same engine as state_geometry, applied to cohorts.
+Scale 2: same engine as cohort_geometry, applied to cohorts.
 
 Example:
   python -m engines.entry_points.stage_26_system_geometry \\

@@ -59,7 +59,7 @@ def run(
         if verbose:
             print("  Empty cohort_vector — skipping")
         result = pl.DataFrame()
-        write_output(result, data_path, 'cohort_pairwise', verbose=verbose)
+        write_output(result, data_path, 'system_pairwise', verbose=verbose)
         return result
 
     feature_cols = [c for c in cv.columns if c not in ['cohort', 'signal_0_end', 'signal_0_start', 'signal_0_center']]
@@ -153,7 +153,7 @@ def run(
 
     result = pl.DataFrame(results, infer_schema_length=len(results)) if results else pl.DataFrame()
 
-    write_output(result, data_path, 'cohort_pairwise', verbose=verbose)
+    write_output(result, data_path, 'system_pairwise', verbose=verbose)
 
     if verbose:
         print(f"Shape: {result.shape}")

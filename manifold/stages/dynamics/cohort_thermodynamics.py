@@ -5,7 +5,7 @@ Stage 09a: Cohort Thermodynamics Entry Point
 Pure orchestration - computes thermodynamic-like quantities for cohorts.
 
 Inputs:
-    - state_geometry.parquet
+    - cohort_geometry.parquet
     - cohort_evolution.parquet (optional)
 
 Output:
@@ -64,7 +64,7 @@ def compute_effective_temperature(velocities: np.ndarray) -> float:
 
 
 def run(
-    state_geometry_path: str,
+    cohort_geometry_path: str,
     cohort_evolution_path: Optional[str] = None,
     data_path: str = ".",
     verbose: bool = True,
@@ -73,7 +73,7 @@ def run(
     Compute thermodynamic quantities for cohorts.
 
     Args:
-        state_geometry_path: Path to state_geometry.parquet
+        cohort_geometry_path: Path to cohort_geometry.parquet
         cohort_evolution_path: Path to cohort_evolution.parquet (optional)
         data_path: Root data directory for output
         verbose: Print progress
@@ -88,10 +88,10 @@ def run(
         print("=" * 70)
 
     # Load state geometry
-    sg = pl.read_parquet(state_geometry_path)
+    sg = pl.read_parquet(cohort_geometry_path)
 
     if verbose:
-        print(f"Loaded state_geometry: {sg.shape}")
+        print(f"Loaded cohort_geometry: {sg.shape}")
 
     # Check for required columns
     has_effective_dim = 'effective_dim' in sg.columns
@@ -196,7 +196,7 @@ def run(
 
     # Write output
     if len(df) > 0:
-        write_output(df, data_path, 'cohort_thermodynamics', verbose=verbose)
+        write_output(df, data_path, 'thermodynamics', verbose=verbose)
 
     if verbose:
         print(f"Shape: {df.shape}")
@@ -230,10 +230,10 @@ Interpretation:
 
 Example:
   python -m engines.entry_points.stage_09a_cohort_thermodynamics \\
-      state_geometry.parquet -o cohort_thermodynamics.parquet
+      cohort_geometry.parquet -o cohort_thermodynamics.parquet
 """
     )
-    parser.add_argument('state_geometry', help='Path to state_geometry.parquet')
+    parser.add_argument('cohort_geometry', help='Path to cohort_geometry.parquet')
     parser.add_argument('--cohort-evolution', help='Path to cohort_evolution.parquet')
     parser.add_argument('-d', '--data-path', default='.',
                         help='Root data directory (default: .)')
@@ -242,7 +242,7 @@ Example:
     args = parser.parse_args()
 
     run(
-        args.state_geometry,
+        args.cohort_geometry,
         args.cohort_evolution,
         args.data_path,
         verbose=not args.quiet,

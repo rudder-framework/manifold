@@ -46,7 +46,7 @@ def write_output(
     Args:
         df: DataFrame to write (None or empty-schema → skip)
         data_path: Root data directory (e.g., domains/rossler)
-        name: Output name (e.g., 'signal_vector', 'state_geometry')
+        name: Output name (e.g., 'signal_vector', 'cohort_geometry')
         verbose: Print path on write
 
     Returns:
@@ -76,8 +76,8 @@ def write_sidecar(
     """
     Write a sidecar file alongside its parent.
 
-    Example: write_sidecar(df, path, 'state_geometry', 'loadings')
-    -> output/2_system_state/state_geometry_loadings.parquet
+    Example: write_sidecar(df, path, 'velocity_field', 'components')
+    -> output/cohort/cohort_dynamics/velocity_field_components.parquet
     """
     from manifold.io.reader import output_path
 

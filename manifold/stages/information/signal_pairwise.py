@@ -7,8 +7,8 @@ writes output.
 
 Inputs:
     - signal_vector.parquet
-    - state_vector.parquet
-    - state_geometry.parquet (optional, for eigenvector gating)
+    - cohort_vector.parquet
+    - cohort_geometry.parquet (optional, for eigenvector gating)
 
 Output:
     - signal_pairwise.parquet
@@ -28,7 +28,7 @@ from manifold.core.signal_pairwise import compute_signal_pairwise
 from manifold.io.writer import write_output
 
 
-def _load_eigenvector_gating(state_geometry_path: str, verbose: bool = True) -> dict:
+def _load_eigenvector_gating(cohort_geometry_path: str, verbose: bool = True) -> dict:
     """
     Build eigenvector gating dict from loadings sidecar (if available).
 
@@ -36,8 +36,8 @@ def _load_eigenvector_gating(state_geometry_path: str, verbose: bool = True) -> 
     """
     eigenvector_gating = {}
     try:
-        # Try narrow loadings sidecar first (new format)
-        loadings_path = str(Path(state_geometry_path).parent / 'state_geometry_loadings.parquet')
+        # Try cohort_signal_positions first (new format)
+        loadings_path = str(Path(cohort_geometry_path).parent / 'cohort_signal_positions.parquet')
         if Path(loadings_path).exists():
             loadings_df = pl.read_parquet(loadings_path)
             if verbose:
@@ -49,8 +49,8 @@ def _load_eigenvector_gating(state_geometry_path: str, verbose: bool = True) -> 
                 if row.get('pc1_loading') is not None:
                     eigenvector_gating[key][row['signal_id']] = row['pc1_loading']
         else:
-            # Backward compat: read wide pc1_signal_* columns from state_geometry
-            sg = pl.read_parquet(state_geometry_path)
+            # Backward compat: read wide pc1_signal_* columns from cohort_geometry
+            sg = pl.read_parquet(cohort_geometry_path)
             pc1_cols = [c for c in sg.columns if c.startswith('pc1_signal_')]
             if pc1_cols and verbose:
                 print(f"Eigenvector gating (legacy wide format): {len(pc1_cols)} signal loadings found")
@@ -72,9 +72,9 @@ def _load_eigenvector_gating(state_geometry_path: str, verbose: bool = True) -> 
 
 def run(
     signal_vector_path: str,
-    state_vector_path: str,
+    cohort_vector_path: str,
     data_path: str = ".",
-    state_geometry_path: Optional[str] = None,
+    cohort_geometry_path: Optional[str] = None,
     coloading_threshold: float = 0.1,
     verbose: bool = True,
 ) -> pl.DataFrame:
@@ -83,9 +83,9 @@ def run(
 
     Args:
         signal_vector_path: Path to signal_vector.parquet
-        state_vector_path: Path to state_vector.parquet
+        cohort_vector_path: Path to cohort_vector.parquet
         data_path: Root data directory (for write_output)
-        state_geometry_path: Path to state_geometry.parquet (for PC gating)
+        cohort_geometry_path: Path to cohort_geometry.parquet (for PC gating)
         coloading_threshold: Threshold for PC co-loading to flag Granger
         verbose: Print progress
 
@@ -99,21 +99,21 @@ def run(
         print("=" * 70)
 
     signal_vector = pl.read_parquet(signal_vector_path)
-    state_vector = pl.read_parquet(state_vector_path)
+    cohort_vector = pl.read_parquet(cohort_vector_path)
 
     # Build eigenvector gating dict from sidecar (if available)
     eigenvector_gating = {}
-    if state_geometry_path is not None:
-        eigenvector_gating = _load_eigenvector_gating(state_geometry_path, verbose=verbose)
+    if cohort_geometry_path is not None:
+        eigenvector_gating = _load_eigenvector_gating(cohort_geometry_path, verbose=verbose)
 
     result = compute_signal_pairwise(
         signal_vector,
-        state_vector,
+        cohort_vector,
         eigenvector_gating=eigenvector_gating,
         coloading_threshold=coloading_threshold,
         verbose=verbose,
     )
 
-    write_output(result, data_path, 'signal_pairwise', verbose=verbose)
+    write_output(result, data_path, 'cohort_pairwise', verbose=verbose)
 
     return result

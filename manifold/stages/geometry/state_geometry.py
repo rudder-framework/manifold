@@ -5,7 +5,7 @@
 Pure orchestration - calls eigendecomp engine from engines/state/eigendecomp.py.
 Computes the SHAPE of the signal distribution around each state.
 
-Stages: signal_vector.parquet + state_vector.parquet → state_geometry.parquet
+Stages: signal_vector.parquet + cohort_vector.parquet → cohort_geometry.parquet
 
 Key insight: effective_dim captures intrinsic dimensionality of the system.
 """
@@ -21,7 +21,7 @@ from manifold.core.state.eigendecomp import (
     enforce_eigenvector_continuity,
     bootstrap_effective_dim,
 )
-from manifold.io.writer import write_output, write_sidecar
+from manifold.io.writer import write_output
 
 
 # Feature groups
@@ -46,7 +46,7 @@ def compute_eigenvalues(
 
     Args:
         signal_matrix: N_signals × D_features
-        centroid: D_features centroid from state_vector
+        centroid: D_features centroid from cohort_vector
         min_signals: Minimum signals for reliable eigenvalues (2 = mathematical min)
         normalize: If True, Z-score normalize before SVD
 
@@ -81,20 +81,20 @@ def compute_eigenvalues(
     }
 
 
-def compute_state_geometry(
+def compute_cohort_geometry(
     signal_vector_path: str,
-    state_vector_path: str,
+    cohort_vector_path: str,
     data_path: str = ".",
     feature_groups: Optional[Dict[str, List[str]]] = None,
     max_eigenvalues: int = 5,
     verbose: bool = True
 ) -> pl.DataFrame:
     """
-    Compute state geometry (eigenvalues per engine per index).
+    Compute cohort geometry (eigenvalues per engine per index).
 
     Args:
         signal_vector_path: Path to signal_vector.parquet
-        state_vector_path: Path to state_vector.parquet
+        cohort_vector_path: Path to cohort_vector.parquet
         output_path: Output path
         feature_groups: Dict mapping engine names to feature lists
         max_eigenvalues: Maximum eigenvalues to store
@@ -110,7 +110,7 @@ def compute_state_geometry(
 
     # Load data
     signal_vector = pl.read_parquet(signal_vector_path)
-    state_vector = pl.read_parquet(state_vector_path)
+    cohort_vector = pl.read_parquet(cohort_vector_path)
 
     # Identify features
     meta_cols = ['unit_id', 'signal_0_start', 'signal_0_end', 'signal_0_center', 'signal_id', 'cohort']
@@ -159,15 +159,15 @@ def compute_state_geometry(
         s0_start = group['signal_0_start'].to_list()[0] if 'signal_0_start' in group.columns else None
         s0_center = group['signal_0_center'].to_list()[0] if 'signal_0_center' in group.columns else None
 
-        # Get state vector for this group
-        if has_cohort and 'cohort' in state_vector.columns:
-            state_row = state_vector.filter(
+        # Get cohort vector (centroid) for this group
+        if has_cohort and 'cohort' in cohort_vector.columns:
+            centroid_row = cohort_vector.filter(
                 (pl.col('signal_0_end') == s0_end) & (pl.col('cohort') == cohort)
             )
         else:
-            state_row = state_vector.filter(pl.col('signal_0_end') == s0_end)
+            centroid_row = cohort_vector.filter(pl.col('signal_0_end') == s0_end)
 
-        if len(state_row) == 0:
+        if len(centroid_row) == 0:
             continue
 
         # Compute eigenvalues for each engine
@@ -176,9 +176,9 @@ def compute_state_geometry(
             if len(available) < 2:
                 continue
 
-            # Get centroid from state_vector
+            # Get centroid from cohort_vector
             centroid_cols = [f'state_{engine_name}_{f}' for f in available]
-            centroid_available = [c for c in centroid_cols if c in state_row.columns]
+            centroid_available = [c for c in centroid_cols if c in centroid_row.columns]
 
             if len(centroid_available) != len(available):
                 # Compute centroid from data
@@ -189,7 +189,7 @@ def compute_state_geometry(
                 else:
                     continue
             else:
-                centroid = state_row.select(centroid_available).to_numpy().flatten()
+                centroid = centroid_row.select(centroid_available).to_numpy().flatten()
 
             # Get signal matrix
             matrix = group.select(available).to_numpy()
@@ -334,17 +334,17 @@ def compute_state_geometry(
 
     # Build DataFrame
     result = pl.DataFrame(results)
-    write_output(result, data_path, 'state_geometry', verbose=verbose)
+    write_output(result, data_path, 'cohort_geometry', verbose=verbose)
 
-    # Write signal loadings sidecar file (narrow schema)
+    # Write signal loadings as first-class output (narrow schema)
     if loading_rows:
         loadings_df = pl.DataFrame(loading_rows)
-        write_sidecar(loadings_df, data_path, 'state_geometry', 'loadings', verbose=verbose)
+        write_output(loadings_df, data_path, 'cohort_signal_positions', verbose=verbose)
 
-    # Write feature loadings sidecar file (narrow schema, replaces wide pc1_feat_* columns)
+    # Write feature loadings as first-class output (narrow schema)
     if feature_loading_rows:
         feat_loadings_df = pl.DataFrame(feature_loading_rows)
-        write_sidecar(feat_loadings_df, data_path, 'state_geometry', 'feature_loadings', verbose=verbose)
+        write_output(feat_loadings_df, data_path, 'cohort_feature_loadings', verbose=verbose)
 
         # Summary per engine
         if len(result) > 0 and 'engine' in result.columns:
@@ -367,14 +367,14 @@ def compute_state_geometry(
 # Alias for run_pipeline.py compatibility
 def run(
     signal_vector_path: str,
-    state_vector_path: str,
+    cohort_vector_path: str,
     data_path: str = ".",
     verbose: bool = True,
 ) -> pl.DataFrame:
-    """Run state geometry computation (wrapper for compute_state_geometry)."""
-    return compute_state_geometry(
+    """Run cohort geometry computation (wrapper for compute_cohort_geometry)."""
+    return compute_cohort_geometry(
         signal_vector_path,
-        state_vector_path,
+        cohort_vector_path,
         data_path,
         verbose=verbose,
     )
@@ -384,14 +384,14 @@ def main():
     import sys
 
     if len(sys.argv) < 3:
-        print("Usage: python 03_state_geometry.py <signal_vector.parquet> <state_vector.parquet> [output.parquet]")
+        print("Usage: python state_geometry.py <signal_vector.parquet> <cohort_vector.parquet> [output.parquet]")
         sys.exit(1)
 
     signal_path = sys.argv[1]
     state_path = sys.argv[2]
-    output_path = sys.argv[3] if len(sys.argv) > 3 else "state_geometry.parquet"
+    output_path = sys.argv[3] if len(sys.argv) > 3 else "cohort_geometry.parquet"
 
-    compute_state_geometry(signal_path, state_path, output_path)
+    compute_cohort_geometry(signal_path, state_path, output_path)
 
 
 if __name__ == "__main__":

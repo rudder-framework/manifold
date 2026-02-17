@@ -13,7 +13,7 @@ Persistent homology reveals the SHAPE of that attractor:
 - β₁ = 0 means no periodic structure
 
 Inputs:
-    - state_vector.parquet (centroid trajectory in feature space)
+    - cohort_vector.parquet (centroid trajectory in feature space)
 
 Output:
     - persistent_homology.parquet → 5_evolution/
@@ -35,7 +35,7 @@ _META_COLS = {'signal_0_end', 'signal_0_start', 'signal_0_center', 'n_signals', 
 
 
 def run(
-    state_vector_path: str,
+    cohort_vector_path: str,
     data_path: str = ".",
     window: int = 20,
     stride: int = 1,
@@ -52,7 +52,7 @@ def run(
         4. Record Betti numbers and persistence metrics
 
     Args:
-        state_vector_path: Path to state_vector.parquet
+        cohort_vector_path: Path to cohort_vector.parquet
         data_path: Root data directory for output
         window: Number of consecutive I-steps per point cloud
         stride: Step between windows
@@ -69,10 +69,10 @@ def run(
         print("=" * 70)
 
     # Load state vector
-    sv = pl.read_parquet(state_vector_path)
+    sv = pl.read_parquet(cohort_vector_path)
 
     if verbose:
-        print(f"Loaded state_vector: {sv.shape}")
+        print(f"Loaded cohort_vector: {sv.shape}")
 
     # Identify feature columns (everything that isn't metadata)
     feature_cols = [c for c in sv.columns if c not in _META_COLS]
@@ -207,10 +207,10 @@ Persistent homology reveals:
 
 Example:
   python -m manifold.stages.dynamics.persistent_homology \\
-      state_vector.parquet -o persistent_homology.parquet
+      cohort_vector.parquet -o persistent_homology.parquet
 """
     )
-    parser.add_argument('state_vector', help='Path to state_vector.parquet')
+    parser.add_argument('cohort_vector', help='Path to cohort_vector.parquet')
     parser.add_argument('-d', '--data-path', default='.',
                         help='Root data directory (default: .)')
     parser.add_argument('--window', type=int, default=20,
@@ -222,7 +222,7 @@ Example:
     args = parser.parse_args()
 
     run(
-        args.state_vector,
+        args.cohort_vector,
         args.data_path,
         window=args.window,
         stride=args.stride,

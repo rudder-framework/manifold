@@ -11,9 +11,9 @@ Four views per system window:
   3. Hilbert   — envelope (amplitude modulation) of feature trajectories
   4. Laplacian — graph coupling structure across signals
 
-Stages: signal_vector.parquet → state_vector.parquet
+Stages: signal_vector.parquet → cohort_vector.parquet
 
-The SHAPE (eigenvalues, effective_dim) is computed in 03_state_geometry.py.
+The SHAPE (eigenvalues, effective_dim) is computed in cohort_geometry (stage 03).
 """
 
 import numpy as np
@@ -101,7 +101,7 @@ def _extract_trajectories(
 
 
 
-def compute_state_vector(
+def compute_cohort_vector(
     signal_vector_path: str,
     typology_path: str,
     data_path: str = ".",
@@ -114,7 +114,7 @@ def compute_state_vector(
 
     The state vector captures WHERE the system is in feature space (centroid)
     plus HOW features are evolving (fourier, hilbert, laplacian views).
-    The SHAPE (eigenvalues, effective_dim) is computed in 03_state_geometry.py.
+    The SHAPE (eigenvalues, effective_dim) is computed in cohort_geometry (stage 03).
 
     Args:
         signal_vector_path: Path to signal_vector.parquet
@@ -298,7 +298,7 @@ def compute_state_vector(
 
     # Build DataFrame
     result = pl.DataFrame(results)
-    write_output(result, data_path, 'state_vector', verbose=verbose)
+    write_output(result, data_path, 'cohort_vector', verbose=verbose)
 
     return result
 
@@ -310,8 +310,8 @@ def run(
     typology_path: str = None,
     verbose: bool = True,
 ) -> pl.DataFrame:
-    """Run state vector computation (wrapper for compute_state_vector)."""
-    return compute_state_vector(
+    """Run cohort vector computation (wrapper for compute_cohort_vector)."""
+    return compute_cohort_vector(
         signal_vector_path,
         typology_path,
         data_path,
@@ -323,14 +323,14 @@ def main():
     import sys
 
     if len(sys.argv) < 3:
-        print("Usage: python 02_state_vector.py <signal_vector.parquet> <typology.parquet> [output.parquet]")
+        print("Usage: python state_vector.py <signal_vector.parquet> <typology.parquet> [output.parquet]")
         sys.exit(1)
 
     signal_path = sys.argv[1]
     typology_path = sys.argv[2]
-    output_path = sys.argv[3] if len(sys.argv) > 3 else "state_vector.parquet"
+    output_path = sys.argv[3] if len(sys.argv) > 3 else "cohort_vector.parquet"
 
-    compute_state_vector(signal_path, typology_path, output_path)
+    compute_cohort_vector(signal_path, typology_path, output_path)
 
 
 if __name__ == "__main__":

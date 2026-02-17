@@ -249,7 +249,7 @@ def run(
                 .otherwise(pl.col(col))
                 .alias(col)
             )
-        write_output(result, data_path, 'information_flow', verbose=verbose)
+        write_output(result, data_path, 'cohort_information_flow', verbose=verbose)
 
     if verbose:
         print(f"Shape: {result.shape}")

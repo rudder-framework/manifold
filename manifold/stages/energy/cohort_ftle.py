@@ -61,7 +61,7 @@ def run(
     if len(cv) == 0:
         if verbose:
             print("  Empty cohort_vector — skipping")
-        write_output(pl.DataFrame(), data_path, 'cohort_ftle', verbose=verbose)
+        write_output(pl.DataFrame(), data_path, 'system_ftle', verbose=verbose)
         return pl.DataFrame()
 
     # Find the primary scalar column: shape_effective_dim
@@ -79,7 +79,7 @@ def run(
         else:
             if verbose:
                 print("  No effective_dim column found — skipping")
-            write_output(pl.DataFrame(), data_path, 'cohort_ftle', verbose=verbose)
+            write_output(pl.DataFrame(), data_path, 'system_ftle', verbose=verbose)
             return pl.DataFrame()
 
     if verbose:
@@ -163,7 +163,7 @@ def run(
 
     result = pl.DataFrame(results, infer_schema_length=len(results)) if results else pl.DataFrame()
 
-    write_output(result, data_path, 'cohort_ftle', verbose=verbose)
+    write_output(result, data_path, 'system_ftle', verbose=verbose)
 
     if verbose:
         print(f"Shape: {result.shape}")

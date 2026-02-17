@@ -146,7 +146,7 @@ def run(
         if verbose:
             print("  Empty input — skipping")
         result = pl.DataFrame()
-        write_output(result, data_path, 'cohort_information_flow', verbose=verbose)
+        write_output(result, data_path, 'system_information_flow', verbose=verbose)
         return result
 
     # Find the primary scalar column
@@ -164,7 +164,7 @@ def run(
             if verbose:
                 print("  No effective_dim column found — skipping")
             result = pl.DataFrame()
-            write_output(result, data_path, 'cohort_information_flow', verbose=verbose)
+            write_output(result, data_path, 'system_information_flow', verbose=verbose)
             return result
 
     if verbose:
@@ -188,7 +188,7 @@ def run(
         if verbose:
             print("  No pairs flagged — skipping")
         result = pl.DataFrame()
-        write_output(result, data_path, 'cohort_information_flow', verbose=verbose)
+        write_output(result, data_path, 'system_information_flow', verbose=verbose)
         return result
 
     # Build per-cohort trajectories (scalar over I)
@@ -244,7 +244,7 @@ def run(
                 .alias(col)
             )
 
-    write_output(result, data_path, 'cohort_information_flow', verbose=verbose)
+    write_output(result, data_path, 'system_information_flow', verbose=verbose)
 
     if verbose:
         print(f"Shape: {result.shape}")

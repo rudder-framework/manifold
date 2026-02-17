@@ -9,42 +9,51 @@ from pathlib import Path
 from typing import Optional
 
 
-# Output directory mapping (29 files -> 6 directories)
+# Output directory mapping (27 files -> 5 directories)
 STAGE_DIRS = {
-    'signal_vector':        '1_signal_features',
-    'signal_geometry':      '1_signal_features',
-    'signal_stability':     '1_signal_features',
+    # signal/ — per-signal features
+    'signal_vector':              'signal',
+    'signal_geometry':            'signal',
+    'signal_stability':           'signal',
 
-    'state_vector':         '2_system_state',
-    'state_geometry':       '2_system_state',
-    'geometry_dynamics':    '2_system_state',
-    'sensor_eigendecomp':   '2_system_state',
+    # cohort/ — per-cohort geometry & relationships
+    'cohort_geometry':            'cohort',
+    'cohort_vector':              'cohort',
+    'cohort_signal_positions':    'cohort',
+    'cohort_feature_loadings':    'cohort',
+    'cohort_pairwise':            'cohort',
+    'cohort_information_flow':    'cohort',
 
-    'breaks':               '3_regime_scoring',
-    'cohort_baseline':      '3_regime_scoring',
-    'observation_geometry': '3_regime_scoring',
+    # cohort/cohort_dynamics/ — per-cohort dynamics
+    'breaks':                     'cohort/cohort_dynamics',
+    'geometry_dynamics':          'cohort/cohort_dynamics',
+    'ftle':                       'cohort/cohort_dynamics',
+    'lyapunov':                   'cohort/cohort_dynamics',
+    'thermodynamics':             'cohort/cohort_dynamics',
+    'ftle_field':                 'cohort/cohort_dynamics',
+    'ftle_backward':              'cohort/cohort_dynamics',
+    'velocity_field':             'cohort/cohort_dynamics',
+    'ftle_rolling':               'cohort/cohort_dynamics',
+    'ridge_proximity':            'cohort/cohort_dynamics',
+    'persistent_homology':        'cohort/cohort_dynamics',
 
-    'signal_pairwise':      '4_signal_relationships',
-    'information_flow':     '4_signal_relationships',
-    'segment_comparison':   '4_signal_relationships',
-    'info_flow_delta':      '4_signal_relationships',
+    # system/ — fleet-level geometry & relationships
+    'system_geometry':            'system',
+    'system_vector':              'system',
+    'system_cohort_positions':    'system',
+    'system_pairwise':            'system',
+    'system_information_flow':    'system',
 
-    'ftle':                 '5_evolution',
-    'lyapunov':             '5_evolution',
-    'cohort_thermodynamics': '5_evolution',
-    'ftle_field':           '5_evolution',
-    'ftle_backward':        '5_evolution',
-    'velocity_field':       '5_evolution',
-    'ftle_rolling':         '5_evolution',
-    'ridge_proximity':          '5_evolution',
-    'persistent_homology':      '5_evolution',
+    # system/system_dynamics/ — fleet-level dynamics
+    'system_ftle':                'system/system_dynamics',
+    'system_velocity_field':      'system/system_dynamics',
+}
 
-    'cohort_vector':                 '6_fleet',
-    'system_geometry':           '6_fleet',
-    'cohort_pairwise':           '6_fleet',
-    'cohort_information_flow':   '6_fleet',
-    'cohort_ftle':               '6_fleet',
-    'cohort_velocity_field':     '6_fleet',
+# Internal names that map to different output filenames
+# (avoids collision with cohort-level files in different directories)
+STAGE_FILENAMES = {
+    'system_ftle':           'ftle.parquet',
+    'system_velocity_field': 'velocity_field.parquet',
 }
 
 
@@ -64,11 +73,11 @@ def load_output(data_path: str, name: str) -> Optional[pl.DataFrame]:
     """
     Load a stage output by name.
 
-    Searches output/<subdir>/<name>.parquet first,
-    then output/<name>.parquet (flat fallback).
+    Searches output/<subdir>/<filename>.parquet first,
+    then output/<filename>.parquet (flat fallback).
     """
     output_dir = _get_output_dir(data_path)
-    filename = f"{name}.parquet"
+    filename = STAGE_FILENAMES.get(name, f"{name}.parquet")
 
     # Try subdirectory first
     subdir = STAGE_DIRS.get(name, '')
@@ -88,7 +97,7 @@ def load_output(data_path: str, name: str) -> Optional[pl.DataFrame]:
 def output_path(data_path: str, name: str) -> Path:
     """Get the output path for a stage output by name."""
     output_dir = _get_output_dir(data_path)
-    filename = f"{name}.parquet"
+    filename = STAGE_FILENAMES.get(name, f"{name}.parquet")
     subdir = STAGE_DIRS.get(name, '')
     if subdir:
         d = output_dir / subdir

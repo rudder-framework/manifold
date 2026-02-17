@@ -16,8 +16,8 @@ The same math that revealed the Interplanetary Transport Network.
 Different planets: your bearings, pumps, turbines.
 
 Dependencies:
-    - state_vector.parquet     (centroids = planets)
-    - state_geometry.parquet   (eigendecomp = reduced manifold)
+    - cohort_vector.parquet     (centroids = planets)
+    - cohort_geometry.parquet   (eigendecomp = reduced manifold)
     - cohorts.parquet          (basin assignments)
     - ftle.parquet             (single-trajectory FTLE for seeding)
 
@@ -347,8 +347,8 @@ def compute_basin_depth(
 
 
 def run(
-    state_vector_path: str,
-    state_geometry_path: str,
+    cohort_vector_path: str,
+    cohort_geometry_path: str,
     data_path: str = ".",
     grid_resolution: int = 20,
     neighborhood: float = 2.0,
@@ -358,8 +358,8 @@ def run(
     Compute local FTLE fields around centroids.
 
     Args:
-        state_vector_path: Path to state_vector.parquet
-        state_geometry_path: Path to state_geometry.parquet
+        cohort_vector_path: Path to cohort_vector.parquet
+        cohort_geometry_path: Path to cohort_geometry.parquet
         data_path: Root data directory for output
         grid_resolution: Grid points per axis
         neighborhood: Grid extent multiplier
@@ -375,15 +375,15 @@ def run(
         print("=" * 70)
     
     # Load inputs
-    state_vector = pl.read_parquet(state_vector_path)
-    state_geometry = pl.read_parquet(state_geometry_path)
+    cohort_vector = pl.read_parquet(cohort_vector_path)
+    cohort_geometry = pl.read_parquet(cohort_geometry_path)
     
     if verbose:
-        print(f"State vector: {state_vector.shape}")
-        print(f"State geometry: {state_geometry.shape}")
+        print(f"State vector: {cohort_vector.shape}")
+        print(f"State geometry: {cohort_geometry.shape}")
     
     # Get unique cohorts/engines
-    engines = state_geometry['engine'].unique().to_list() if 'engine' in state_geometry.columns else ['default']
+    engines = cohort_geometry['engine'].unique().to_list() if 'engine' in cohort_geometry.columns else ['default']
     
     ridge_results = []
     basin_results = []
@@ -393,12 +393,12 @@ def run(
             print(f"\nProcessing engine: {engine}")
         
         # Filter to this engine
-        if 'engine' in state_geometry.columns:
-            geo = state_geometry.filter(pl.col('engine') == engine)
-            sv = state_vector.filter(pl.col('engine') == engine) if 'engine' in state_vector.columns else state_vector
+        if 'engine' in cohort_geometry.columns:
+            geo = cohort_geometry.filter(pl.col('engine') == engine)
+            sv = cohort_vector.filter(pl.col('engine') == engine) if 'engine' in cohort_vector.columns else cohort_vector
         else:
-            geo = state_geometry
-            sv = state_vector
+            geo = cohort_geometry
+            sv = cohort_vector
         
         # Get eigenvalue columns for dimensionality reduction
         # Use first 2-3 principal components
@@ -426,8 +426,8 @@ def run(
                 print(f"  Need at least 2 cohorts for ridge detection, got {len(cohorts)}")
             continue
 
-        # Use eigenvalue columns from state_geometry as position coordinates
-        # These are the meaningful reduced-space positions, not arbitrary state_vector numerics
+        # Use eigenvalue columns from cohort_geometry as position coordinates
+        # These are the meaningful reduced-space positions, not arbitrary cohort_vector numerics
         numeric_cols = [c for c in eigen_cols if c in geo.columns]
 
         if not numeric_cols:
@@ -480,7 +480,7 @@ def run(
         if verbose:
             print(f"  Adjacent pairs: {len(pairs)}")
 
-        # Build trajectory array from state_geometry eigenvalue space
+        # Build trajectory array from cohort_geometry eigenvalue space
         # Each row is a point in the eigenvalue-reduced trajectory
         trajectories = geo.select(numeric_cols).to_numpy()
         trajectory_ids = geo['cohort'].to_numpy() if 'cohort' in geo.columns else np.zeros(len(geo))
@@ -601,11 +601,11 @@ in astrodynamics. Different planets: your bearings, pumps, turbines.
 
 Example:
   python -m engines.entry_points.stage_15_ftle_field \\
-      state_vector.parquet state_geometry.parquet -o ftle_field.parquet
+      cohort_vector.parquet cohort_geometry.parquet -o ftle_field.parquet
 """
     )
-    parser.add_argument('state_vector', help='Path to state_vector.parquet')
-    parser.add_argument('state_geometry', help='Path to state_geometry.parquet')
+    parser.add_argument('cohort_vector', help='Path to cohort_vector.parquet')
+    parser.add_argument('cohort_geometry', help='Path to cohort_geometry.parquet')
     parser.add_argument('-d', '--data-path', default='.',
                         help='Root data directory (default: .)')
     parser.add_argument('--grid-resolution', type=int, default=20,
@@ -617,8 +617,8 @@ Example:
     args = parser.parse_args()
 
     run(
-        args.state_vector,
-        args.state_geometry,
+        args.cohort_vector,
+        args.cohort_geometry,
         args.data_path,
         grid_resolution=args.grid_resolution,
         neighborhood=args.neighborhood,

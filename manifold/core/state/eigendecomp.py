@@ -4,8 +4,8 @@ Eigendecomposition Engine (State Geometry).
 Computes the SHAPE of the system in behavioral space via eigenvalues.
 This is HOW the system is distributed around its centroid.
 
-state_vector = centroid (WHERE)
-state_geometry = eigenvalues (SHAPE)
+cohort_vector = centroid (WHERE)
+cohort_geometry = eigenvalues (SHAPE)
 
 Key insight: effective_dim captures the system's intrinsic dimensionality.
 Dimensional collapse precedes regime transitions.
@@ -25,7 +25,7 @@ def compute(
     min_signals: int = 2,
 ) -> Dict[str, Any]:
     """
-    Compute state geometry (eigenvalues) from signal matrix.
+    Compute cohort geometry (eigenvalues) from signal matrix.
 
     Args:
         signal_matrix: 2D array (n_signals, n_features)
@@ -165,7 +165,7 @@ def compute_from_signal_vector(
     min_signals: int = 3,
 ) -> pl.DataFrame:
     """
-    Compute state geometry from signal_vector.parquet.
+    Compute cohort geometry from signal_vector.parquet.
 
     Args:
         signal_vector: DataFrame with signal features

@@ -86,7 +86,7 @@ class StagePrerequisites:
 # =============================================================================
 # Pipeline order: observations -> typology -> manifest -> signal_vector -> ...
 # Prime produces: observations.parquet, typology.parquet, manifest.yaml
-# ENGINES produces: signal_vector.parquet, state_vector.parquet, etc.
+# ENGINES produces: signal_vector.parquet, cohort_vector.parquet, etc.
 # =============================================================================
 
 STAGE_PREREQUISITES: Dict[str, StagePrerequisites] = {
@@ -101,22 +101,22 @@ STAGE_PREREQUISITES: Dict[str, StagePrerequisites] = {
     'state_vector': StagePrerequisites(
         stage_name='state_vector',
         required_files=['signal_vector.parquet', 'manifest.yaml'],
-        produces=['state_vector.parquet', 'state_geometry.parquet', 'signal_geometry.parquet'],
+        produces=['cohort_vector.parquet', 'cohort_geometry.parquet', 'signal_geometry.parquet'],
         depends_on=['signal_vector'],
-        description='Compute state centroids and geometry',
+        description='Compute cohort centroids and geometry',
     ),
 
     'geometry_pairwise': StagePrerequisites(
         stage_name='geometry_pairwise',
         required_files=['signal_vector.parquet', 'manifest.yaml'],
-        produces=['signal_pairwise.parquet'],
+        produces=['cohort_pairwise.parquet'],
         depends_on=['signal_vector'],
         description='Compute pairwise signal relationships',
     ),
 
     'geometry_laplace': StagePrerequisites(
         stage_name='geometry_laplace',
-        required_files=['state_vector.parquet', 'manifest.yaml'],
+        required_files=['cohort_vector.parquet', 'manifest.yaml'],
         produces=['geometry_dynamics.parquet', 'lyapunov.parquet', 'dynamics.parquet'],
         depends_on=['state_vector'],
         description='Compute dynamics and chaos measures',

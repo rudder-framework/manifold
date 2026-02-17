@@ -14,7 +14,7 @@ Manifest config:
 
 Inputs:
     - signal_vector.parquet
-    - state_geometry.parquet (optional, for comparison)
+    - cohort_geometry.parquet (optional, for comparison)
 
 Output:
     - segment_comparison.parquet

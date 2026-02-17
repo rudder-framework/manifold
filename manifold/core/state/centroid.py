@@ -4,8 +4,8 @@ Centroid Engine (State Vector).
 Computes the state vector as the centroid of all signals in feature space.
 This is WHERE the system is in behavioral space.
 
-state_vector = centroid + dispersion metrics
-state_geometry = eigenvalues (separate engine)
+cohort_vector = centroid + dispersion metrics
+cohort_geometry = eigenvalues (separate engine)
 """
 
 import numpy as np

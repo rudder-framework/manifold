@@ -2,8 +2,8 @@
 State Engines.
 
 System-level computations.
-- centroid: state_vector (WHERE the system is)
-- eigendecomp: state_geometry (SHAPE of the system)
+- centroid: cohort_vector (WHERE the system is)
+- eigendecomp: cohort_geometry (SHAPE of the system)
 """
 
 from . import centroid

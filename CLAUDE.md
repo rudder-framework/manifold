@@ -1,7 +1,7 @@
 # CLAUDE.md — Manifold
 
 Manifold is a domain-agnostic dynamical systems computation engine.
-It reads `observations.parquet` and produces 29 parquet files in 6 directories.
+It reads `observations.parquet` and produces 27 parquet files in 5 directories.
 
 **Design principle:** Stages orchestrate. Engines compute. Primitives (standalone package) do math.
 Each layer only calls the layer below it.
@@ -65,7 +65,7 @@ python -m manifold ~/domains/calce             # Full pipeline on calce
 ```
 
 The CLI resolves `data_path` into the three explicit paths and calls `run()`.
-All 29 stages run. No flags needed.
+All 24 stages run. No flags needed.
 
 **Virtual environment:** `./venv/` — always use it. Never create a new one.
 
@@ -150,11 +150,11 @@ Never reindex. Never use timestamps. Never skip values.
 **observations.parquet is sacred.** Never modify it. Never normalize it in place.
 Never add columns. It is READ ONLY.
 
-### Output: 29 parquet files in 6 directories
+### Output: 27 parquet files in 5 directories
 
 All output goes to `<data_dir>/output/`:
 
-#### `1_signal_features/` — "What does each signal look like?"
+#### `signal/` — "What does each signal look like?"
 
 | File | Stage | Group | Description |
 |------|-------|-------|-------------|
@@ -162,39 +162,26 @@ All output goes to `<data_dir>/output/`:
 | signal_geometry.parquet | 05 | geometry | Distance-to-centroid, coherence, projections |
 | signal_stability.parquet | 33 | vector | Hilbert + Wavelet analysis |
 
-#### `2_system_state/` — "What is the system's geometric structure?"
+#### `cohort/` — "What is the system's geometric structure and signal relationships?"
 
 | File | Stage | Group | Description |
 |------|-------|-------|-------------|
-| state_vector.parquet | 02 | geometry | Cross-signal centroid per window |
-| state_geometry.parquet | 03 | geometry | Eigenvalues, effective_dim, condition_number — **THE core output** |
-| geometry_dynamics.parquet | 07 | geometry | Velocity/jerk of geometry evolution |
-| sensor_eigendecomp.parquet | 20 | geometry | Rolling 2-level SVD |
+| cohort_geometry.parquet | 03 | geometry | Eigenvalues, effective_dim, condition_number — **THE core output** |
+| cohort_vector.parquet | 02 | geometry | Cross-signal centroid per window |
+| cohort_signal_positions.parquet | 03 | geometry | Signal loadings on PCs |
+| cohort_feature_loadings.parquet | 03 | geometry | Feature loadings on PC1 |
+| cohort_pairwise.parquet | 06 | information | Covariance matrix within each window |
+| cohort_information_flow.parquet | 10 | information | Granger causality, transfer entropy, copula |
 
-#### `3_regime_scoring/` — "What is the system's regime?"
+#### `cohort/cohort_dynamics/` — "How is each cohort changing over time?"
 
 | File | Stage | Group | Description |
 |------|-------|-------|-------------|
 | breaks.parquet | 00 | vector | Change-point detection (Heaviside/Dirac) |
-| cohort_baseline.parquet | 34 | geometry | SVD on early-life observations — baseline reference frame |
-| observation_geometry.parquet | 35 | geometry | Per-observation scoring against baseline |
-
-#### `4_signal_relationships/` — "How do signals relate to each other?"
-
-| File | Stage | Group | Description |
-|------|-------|-------|-------------|
-| signal_pairwise.parquet | 06 | information | Covariance matrix within each window |
-| information_flow.parquet | 10 | information | Granger causality, transfer entropy, copula |
-| segment_comparison.parquet | 18 | information | Segment-level statistical comparison |
-| info_flow_delta.parquet | 19 | information | Change in information flow over time |
-
-#### `5_evolution/` — "How is the system changing over time?"
-
-| File | Stage | Group | Description |
-|------|-------|-------|-------------|
+| geometry_dynamics.parquet | 07 | geometry | Velocity/jerk of geometry evolution |
 | ftle.parquet | 08 | dynamics | Finite-Time Lyapunov Exponents |
 | lyapunov.parquet | 08_lyapunov | dynamics | Largest Lyapunov exponent |
-| cohort_thermodynamics.parquet | 09a | dynamics | Temperature, entropy from eigenvalue spectra |
+| thermodynamics.parquet | 09a | dynamics | Temperature, entropy from eigenvalue spectra |
 | ftle_field.parquet | 15 | dynamics | Local FTLE grid (LCS/astrodynamics) |
 | ftle_backward.parquet | 17 | dynamics | Backward FTLE (attracting structures) |
 | velocity_field.parquet | 21 | dynamics | State-space velocity field |
@@ -202,29 +189,35 @@ All output goes to `<data_dir>/output/`:
 | ridge_proximity.parquet | 23 | dynamics | Urgency = v . grad(FTLE) |
 | persistent_homology.parquet | 36 | dynamics | Topological persistence (Betti numbers) |
 
-#### `6_fleet/` — "How do cohorts compare across the fleet?"
+#### `system/` — "How do cohorts compare across the fleet?"
 
 | File | Stage | Group | Description |
 |------|-------|-------|-------------|
-| cohort_vector.parquet | 25 | energy | Cohort-level feature vector (Scale 2 input) |
 | system_geometry.parquet | 26 | energy | SVD at cohort scale (Scale 2) |
-| cohort_pairwise.parquet | 27 | energy | Pairwise cohort comparison |
-| cohort_information_flow.parquet | 28 | energy | Granger at system scale |
-| cohort_ftle.parquet | 30 | energy | FTLE on cohort trajectories |
-| cohort_velocity_field.parquet | 31 | energy | Velocity field at fleet scale |
+| system_vector.parquet | 25 | energy | Cohort-level feature vector (Scale 2 input) |
+| system_cohort_positions.parquet | 26 | energy | Cohort loadings on PCs |
+| system_pairwise.parquet | 27 | energy | Pairwise cohort comparison |
+| system_information_flow.parquet | 28 | energy | Granger at system scale |
+
+#### `system/system_dynamics/` — "How is the fleet evolving over time?"
+
+| File | Stage | Group | Description |
+|------|-------|-------|-------------|
+| ftle.parquet | 30 | energy | FTLE on cohort trajectories |
+| velocity_field.parquet | 31 | energy | Velocity field at fleet scale |
 
 ---
 
-## 29 Stages, 5 Source Groups
+## 24 Stages, 5 Source Groups
 
 Stages live in `manifold/stages/<group>/` and run in dependency order (not strictly by group):
 
 | Group | Stages | Count |
 |-------|--------|-------|
 | **vector/** | breaks(00), signal_vector(01), signal_stability(33) | 3 |
-| **geometry/** | state_vector(02), state_geometry(03), signal_geometry(05), geometry_dynamics(07), sensor_eigendecomp(20), cohort_baseline(34), observation_geometry(35) | 7 |
+| **geometry/** | state_vector(02), state_geometry(03), signal_geometry(05), geometry_dynamics(07) | 4 |
 | **dynamics/** | ftle(08), lyapunov(08_lyapunov), cohort_thermodynamics(09a), ftle_field(15), ftle_backward(17), velocity_field(21), ftle_rolling(22), ridge_proximity(23), persistent_homology(36) | 9 |
-| **information/** | signal_pairwise(06), information_flow(10), segment_comparison(18), info_flow_delta(19) | 4 |
+| **information/** | signal_pairwise(06), information_flow(10) | 2 |
 | **energy/** | cohort_vector(25), system_geometry(26), cohort_pairwise(27), cohort_information_flow(28), cohort_ftle(30), cohort_velocity_field(31) | 6 |
 
 ---
@@ -234,8 +227,8 @@ Stages live in `manifold/stages/<group>/` and run in dependency order (not stric
 Same engines run at two scales:
 
 ```
-Scale 1:  signals → signal_vector → state_geometry     (per cohort)
-Scale 2:  cohort_vector → system_geometry               (across cohorts)
+Scale 1:  signals → signal_vector → cohort_geometry     (per cohort)
+Scale 2:  system_vector → system_geometry               (across cohorts)
 ```
 
 Eigendecomposition at Scale 1 tells you about individual system geometry.
@@ -314,9 +307,9 @@ Before modifying any file:
 
 ## Sibling Repos
 
-- **Prime** (`~/prime/`) — The interpreter. Reads Manifold's 29 parquet files via DuckDB SQL. Handles typology, classification, analysis, canary detection, brittleness scoring, ML features. Static HTML + DuckDB-WASM explorer for browser-based analysis.
+- **Prime** (`~/prime/`) — The interpreter. Reads Manifold's 27 parquet files via DuckDB SQL. Handles typology, classification, analysis, canary detection, brittleness scoring, ML features. Static HTML + DuckDB-WASM explorer for browser-based analysis.
 - **Primitives** (`~/primitives/`, PyPI: `pmtvs`) — Rust+Python math functions. Hurst, Lyapunov, FTLE, perm_entropy, ADF, spectral analysis. Shared by both Prime and Manifold.
-- **Manifold** (this repo) — The compute engine. `observations.parquet` in, 29 parquet files out.
+- **Manifold** (this repo) — The compute engine. `observations.parquet` in, 27 parquet files out.
 
 ---
 

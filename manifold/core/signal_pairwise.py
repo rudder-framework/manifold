@@ -9,7 +9,7 @@ Computes per pair, per engine, per index:
 - Distance (how far apart?)
 - Cosine similarity (same direction?)
 
-REQUIRES: signal_vector.parquet + state_vector.parquet (for context)
+REQUIRES: signal_vector.parquet + cohort_vector.parquet (for context)
 
 N signals → N²/2 unique pairs per index
 N ≈ 14 → ~91 pairs per index
@@ -19,7 +19,7 @@ ARCHITECTURE: This is an ORCHESTRATOR that delegates all compute to primitives.
 All mathematical operations are performed by directly-imported primitive functions.
 
 Pipeline:
-    signal_vector + state_vector → signal_pairwise.parquet → dynamics.parquet
+    signal_vector + cohort_vector → signal_pairwise.parquet → dynamics.parquet
 """
 
 import numpy as np
@@ -196,7 +196,7 @@ def compute_pairwise_at_index(
 
 def compute_signal_pairwise(
     signal_vector: pl.DataFrame,
-    state_vector: pl.DataFrame,
+    cohort_vector: pl.DataFrame,
     feature_groups: Optional[Dict[str, List[str]]] = None,
     eigenvector_gating: Optional[Dict] = None,
     coloading_threshold: float = 0.1,
@@ -211,7 +211,7 @@ def compute_signal_pairwise(
 
     Args:
         signal_vector: Signal vector DataFrame
-        state_vector: State vector DataFrame
+        cohort_vector: State vector DataFrame
         feature_groups: Dict mapping engine names to feature lists
         eigenvector_gating: Pre-built dict of eigenvector loadings for gating
         coloading_threshold: Threshold for PC co-loading to trigger Granger (default 0.5)
@@ -288,11 +288,11 @@ def compute_signal_pairwise(
 
         # Get state vector for this (cohort, signal_0_end) or just signal_0_end
         if has_cohort and cohort:
-            state_row = state_vector.filter(
+            state_row = cohort_vector.filter(
                 (pl.col('cohort') == cohort) & (pl.col('signal_0_end') == s0_end)
             )
         else:
-            state_row = state_vector.filter(pl.col('signal_0_end') == s0_end)
+            state_row = cohort_vector.filter(pl.col('signal_0_end') == s0_end)
 
         signal_ids = group['signal_id'].to_list()
 
@@ -305,7 +305,7 @@ def compute_signal_pairwise(
             # Get signal matrix
             matrix = group.select(available).to_numpy()
 
-            # Get centroid from state_vector (if available)
+            # Get centroid from cohort_vector (if available)
             centroid_cols = [f'state_{engine_name}_{f}' for f in available]
             centroid_available = [c for c in centroid_cols if c in state_row.columns]
 
