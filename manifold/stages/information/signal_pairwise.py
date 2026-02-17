@@ -2,7 +2,8 @@
 Stage 06: Signal Pairwise Entry Point
 =====================================
 
-Pure orchestration - calls engines/signal_pairwise.py for computation.
+Orchestration - reads parquets, builds eigenvector gating, calls core engine,
+writes output.
 
 Inputs:
     - signal_vector.parquet
@@ -19,13 +20,54 @@ Computes pairwise relationships between signals:
     - PC co-loading (for Granger gating)
 """
 
-import argparse
 import polars as pl
 from pathlib import Path
 from typing import Optional
 
 from manifold.core.signal_pairwise import compute_signal_pairwise
-from manifold.io.reader import output_path as resolve_output_path
+from manifold.io.writer import write_output
+
+
+def _load_eigenvector_gating(state_geometry_path: str, verbose: bool = True) -> dict:
+    """
+    Build eigenvector gating dict from loadings sidecar (if available).
+
+    Tries narrow loadings sidecar first, then falls back to legacy wide format.
+    """
+    eigenvector_gating = {}
+    try:
+        # Try narrow loadings sidecar first (new format)
+        loadings_path = str(Path(state_geometry_path).parent / 'state_geometry_loadings.parquet')
+        if Path(loadings_path).exists():
+            loadings_df = pl.read_parquet(loadings_path)
+            if verbose:
+                print(f"Eigenvector gating from loadings sidecar: {len(loadings_df)} rows")
+            for row in loadings_df.iter_rows(named=True):
+                key = (row.get('cohort'), row.get('signal_0_end'), row.get('engine'))
+                if key not in eigenvector_gating:
+                    eigenvector_gating[key] = {}
+                if row.get('pc1_loading') is not None:
+                    eigenvector_gating[key][row['signal_id']] = row['pc1_loading']
+        else:
+            # Backward compat: read wide pc1_signal_* columns from state_geometry
+            sg = pl.read_parquet(state_geometry_path)
+            pc1_cols = [c for c in sg.columns if c.startswith('pc1_signal_')]
+            if pc1_cols and verbose:
+                print(f"Eigenvector gating (legacy wide format): {len(pc1_cols)} signal loadings found")
+                for row in sg.iter_rows(named=True):
+                    key = (row.get('cohort'), row.get('signal_0_end'), row.get('engine'))
+                    loadings = {}
+                    for col in pc1_cols:
+                        sig_id = col.replace('pc1_signal_', '')
+                        if row[col] is not None:
+                            loadings[sig_id] = row[col]
+                    if loadings:
+                        eigenvector_gating[key] = loadings
+    except Exception as e:
+        if verbose:
+            print(f"Warning: Could not load eigenvector gating: {e}")
+
+    return eigenvector_gating
 
 
 def run(
@@ -56,57 +98,22 @@ def run(
         print("Pairwise relationships with eigenvector gating")
         print("=" * 70)
 
-    out = str(resolve_output_path(data_path, 'signal_pairwise'))
+    signal_vector = pl.read_parquet(signal_vector_path)
+    state_vector = pl.read_parquet(state_vector_path)
+
+    # Build eigenvector gating dict from sidecar (if available)
+    eigenvector_gating = {}
+    if state_geometry_path is not None:
+        eigenvector_gating = _load_eigenvector_gating(state_geometry_path, verbose=verbose)
+
     result = compute_signal_pairwise(
-        signal_vector_path,
-        state_vector_path,
-        out,
-        state_geometry_path=state_geometry_path,
+        signal_vector,
+        state_vector,
+        eigenvector_gating=eigenvector_gating,
         coloading_threshold=coloading_threshold,
         verbose=verbose,
     )
 
+    write_output(result, data_path, 'signal_pairwise', verbose=verbose)
+
     return result
-
-
-def main():
-    parser = argparse.ArgumentParser(
-        description="Stage 06: Signal Pairwise",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Computes pairwise relationships between signals with eigenvector gating.
-
-Uses PC co-loading to determine which pairs need Granger causality:
-  - High co-loading (both load onto same PC) → run Granger
-  - Low co-loading → skip expensive causality compute
-
-Example:
-  python -m engines.entry_points.stage_06_signal_pairwise \\
-      signal_vector.parquet state_vector.parquet \\
-      --state-geometry state_geometry.parquet \\
-      -o signal_pairwise.parquet
-"""
-    )
-    parser.add_argument('signal_vector', help='Path to signal_vector.parquet')
-    parser.add_argument('state_vector', help='Path to state_vector.parquet')
-    parser.add_argument('--state-geometry', help='Path to state_geometry.parquet (for PC gating)')
-    parser.add_argument('--coloading-threshold', type=float, default=0.1,
-                        help='Threshold for PC co-loading (default: 0.1)')
-    parser.add_argument('-d', '--data-path', default='.',
-                        help='Root data directory (default: .)')
-    parser.add_argument('-q', '--quiet', action='store_true', help='Suppress output')
-
-    args = parser.parse_args()
-
-    run(
-        args.signal_vector,
-        args.state_vector,
-        args.data_path,
-        state_geometry_path=args.state_geometry,
-        coloading_threshold=args.coloading_threshold,
-        verbose=not args.quiet,
-    )
-
-
-if __name__ == "__main__":
-    main()

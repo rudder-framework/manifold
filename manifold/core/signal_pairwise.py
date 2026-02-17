@@ -24,8 +24,6 @@ Pipeline:
 
 import numpy as np
 import polars as pl
-import duckdb
-from pathlib import Path
 from typing import List, Dict, Optional, Any, Tuple
 from itertools import combinations
 
@@ -197,27 +195,25 @@ def compute_pairwise_at_index(
 
 
 def compute_signal_pairwise(
-    signal_vector_path: str,
-    state_vector_path: str,
-    output_path: str = "signal_pairwise.parquet",
+    signal_vector: pl.DataFrame,
+    state_vector: pl.DataFrame,
     feature_groups: Optional[Dict[str, List[str]]] = None,
-    state_geometry_path: Optional[str] = None,
+    eigenvector_gating: Optional[Dict] = None,
     coloading_threshold: float = 0.1,
     verbose: bool = True
 ) -> pl.DataFrame:
     """
     Compute signal pairwise relationships.
 
-    NEW: Uses eigenvector co-loading to gate expensive pairwise operations.
+    Uses eigenvector co-loading to gate expensive pairwise operations.
     If two signals have high co-loading on same PC, run Granger causality.
     Otherwise, correlation/mutual_info can be derived from loadings.
 
     Args:
-        signal_vector_path: Path to signal_vector.parquet
-        state_vector_path: Path to state_vector.parquet
-        output_path: Output path
+        signal_vector: Signal vector DataFrame
+        state_vector: State vector DataFrame
         feature_groups: Dict mapping engine names to feature lists
-        state_geometry_path: Path to state_geometry.parquet (optional, for eigenvector gating)
+        eigenvector_gating: Pre-built dict of eigenvector loadings for gating
         coloading_threshold: Threshold for PC co-loading to trigger Granger (default 0.5)
         verbose: Print progress
 
@@ -230,44 +226,8 @@ def compute_signal_pairwise(
         print("Signal-to-signal relationships")
         print("=" * 70)
 
-    # Load data
-    signal_vector = pl.read_parquet(signal_vector_path)
-    state_vector = pl.read_parquet(state_vector_path)
-
-    # Load eigenvector loadings for gating (if provided)
-    eigenvector_gating = {}
-    if state_geometry_path is not None:
-        try:
-            # Try narrow loadings sidecar first (new format)
-            loadings_path = str(Path(state_geometry_path).parent / 'state_geometry_loadings.parquet')
-            if Path(loadings_path).exists():
-                loadings_df = pl.read_parquet(loadings_path)
-                if verbose:
-                    print(f"Eigenvector gating from loadings sidecar: {len(loadings_df)} rows")
-                for row in loadings_df.iter_rows(named=True):
-                    key = (row.get('cohort'), row.get('signal_0_end'), row.get('engine'))
-                    if key not in eigenvector_gating:
-                        eigenvector_gating[key] = {}
-                    if row.get('pc1_loading') is not None:
-                        eigenvector_gating[key][row['signal_id']] = row['pc1_loading']
-            else:
-                # Backward compat: read wide pc1_signal_* columns from state_geometry
-                sg = pl.read_parquet(state_geometry_path)
-                pc1_cols = [c for c in sg.columns if c.startswith('pc1_signal_')]
-                if pc1_cols and verbose:
-                    print(f"Eigenvector gating (legacy wide format): {len(pc1_cols)} signal loadings found")
-                    for row in sg.iter_rows(named=True):
-                        key = (row.get('cohort'), row.get('signal_0_end'), row.get('engine'))
-                        loadings = {}
-                        for col in pc1_cols:
-                            sig_id = col.replace('pc1_signal_', '')
-                            if row[col] is not None:
-                                loadings[sig_id] = row[col]
-                        if loadings:
-                            eigenvector_gating[key] = loadings
-        except Exception as e:
-            if verbose:
-                print(f"Warning: Could not load eigenvector gating: {e}")
+    if eigenvector_gating is None:
+        eigenvector_gating = {}
 
     # Identify features
     meta_cols = ['unit_id', 'signal_0_start', 'signal_0_end', 'signal_0_center', 'signal_id']
@@ -406,270 +366,6 @@ def compute_signal_pairwise(
 
     # Build DataFrame
     result = pl.DataFrame(results)
-    result.write_parquet(output_path)
-
-    if verbose:
-        print(f"\nSaved: {output_path}")
-        print(f"Shape: {result.shape}")
-
-        # Summary
-        if len(result) > 0:
-            pairwise_config = _get_pairwise_config()
-            high_threshold = pairwise_config['high_correlation_threshold']
-
-            print(f"\nCorrelation stats:")
-            corr_mean = result['correlation'].mean()
-            corr_std = result['correlation'].std()
-            print(f"  Mean: {corr_mean:.3f}" if corr_mean is not None else "  Mean: N/A")
-            print(f"  Std:  {corr_std:.3f}" if corr_std is not None else "  Std:  N/A")
-
-            high_corr = (result['correlation'].abs() > high_threshold).sum()
-            print(f"  High correlation pairs (|r|>{high_threshold}): {high_corr}")
 
     return result
 
-
-# ============================================================
-# SQL VERSION (faster for basic metrics)
-# ============================================================
-
-SIGNAL_PAIRWISE_SQL = """
--- Signal pairwise: signal-to-signal relationships
--- Self-join on signal_vector
-
-CREATE OR REPLACE VIEW v_signal_pairwise_shape AS
-WITH signal_features AS (
-    SELECT
-        unit_id,
-        signal_0_end,
-        signal_id,
-        kurtosis,
-        skewness,
-        crest_factor,
-        SQRT(kurtosis*kurtosis + skewness*skewness + crest_factor*crest_factor) AS norm
-    FROM signal_vector
-    WHERE kurtosis IS NOT NULL
-)
-SELECT
-    a.unit_id,
-    a.signal_0_end,
-    a.signal_id AS signal_a,
-    b.signal_id AS signal_b,
-    'shape' AS engine,
-
-    -- Distance
-    SQRT(
-        POWER(a.kurtosis - b.kurtosis, 2) +
-        POWER(a.skewness - b.skewness, 2) +
-        POWER(a.crest_factor - b.crest_factor, 2)
-    ) AS distance,
-
-    -- Cosine similarity
-    (a.kurtosis * b.kurtosis + a.skewness * b.skewness + a.crest_factor * b.crest_factor) /
-    NULLIF(a.norm * b.norm, 0) AS cosine_similarity
-
-FROM signal_features a
-JOIN signal_features b
-    ON a.unit_id = b.unit_id
-    AND a.signal_0_end = b.signal_0_end
-    AND a.signal_id < b.signal_id;  -- Only upper triangle
-"""
-
-
-def compute_signal_pairwise_sql(
-    signal_vector_path: str,
-    output_path: str = "signal_pairwise.parquet",
-    verbose: bool = True
-) -> pl.DataFrame:
-    """
-    Compute signal pairwise using SQL (faster).
-
-    Args:
-        signal_vector_path: Path to signal_vector.parquet
-        output_path: Output path
-        verbose: Print progress
-
-    Returns:
-        Signal pairwise DataFrame
-    """
-    if verbose:
-        print("=" * 70)
-        print("SIGNAL PAIRWISE (SQL)")
-        print("=" * 70)
-
-    con = duckdb.connect()
-
-    # Load data
-    con.execute(f"CREATE TABLE signal_vector AS SELECT * FROM read_parquet('{signal_vector_path}')")
-
-    if verbose:
-        n_signals = con.execute("SELECT COUNT(DISTINCT signal_id) FROM signal_vector").fetchone()[0]
-        n_pairs = n_signals * (n_signals - 1) // 2
-        n_indices = con.execute("SELECT COUNT(DISTINCT signal_0_end) FROM signal_vector").fetchone()[0]
-        print(f"Signals: {n_signals} → Pairs: {n_pairs}")
-        print(f"Indices: {n_indices}")
-
-    # Run SQL
-    for statement in SIGNAL_PAIRWISE_SQL.split(';'):
-        statement = statement.strip()
-        if statement and not statement.startswith('--'):
-            try:
-                con.execute(statement)
-            except Exception as e:
-                if verbose:
-                    print(f"  Warning: {e}")
-
-    # Export
-    try:
-        result = con.execute("SELECT * FROM v_signal_pairwise_shape ORDER BY unit_id, signal_0_end, signal_a, signal_b").pl()
-        result.write_parquet(output_path)
-
-        if verbose:
-            print(f"\nSaved: {output_path}")
-            print(f"Shape: {result.shape}")
-    except Exception as e:
-        if verbose:
-            print(f"Error: {e}")
-        result = pl.DataFrame()
-
-    con.close()
-
-    return result
-
-
-# ============================================================
-# AGGREGATIONS
-# ============================================================
-
-def compute_pairwise_aggregations(
-    pairwise_path: str,
-    output_dir: str = ".",
-    verbose: bool = True
-) -> Dict[str, pl.DataFrame]:
-    """
-    Compute aggregations on pairwise data.
-
-    Args:
-        pairwise_path: Path to signal_pairwise.parquet
-        output_dir: Output directory
-        verbose: Print progress
-
-    Returns:
-        Dict of aggregation DataFrames
-    """
-    if verbose:
-        print("\nComputing pairwise aggregations...")
-
-    con = duckdb.connect()
-    con.execute(f"CREATE TABLE pairwise AS SELECT * FROM read_parquet('{pairwise_path}')")
-
-    output_dir = Path(output_dir)
-    results = {}
-
-    # Aggregation: Most correlated pairs per unit
-    sql = """
-    SELECT
-        unit_id,
-        signal_a,
-        signal_b,
-        engine,
-        AVG(correlation) AS mean_correlation,
-        AVG(distance) AS mean_distance,
-        AVG(cosine_similarity) AS mean_cosine,
-        COUNT(*) AS n_observations
-    FROM pairwise
-    GROUP BY unit_id, signal_a, signal_b, engine
-    ORDER BY mean_correlation DESC
-    """
-
-    try:
-        by_pair = con.execute(sql).pl()
-        by_pair.write_parquet(output_dir / "pairwise_by_pair.parquet")
-        results['by_pair'] = by_pair
-        if verbose:
-            print(f"  Saved: pairwise_by_pair.parquet ({len(by_pair)} rows)")
-    except Exception as e:
-        if verbose:
-            print(f"  Warning: {e}")
-
-    # Aggregation: Coupling strength over time
-    sql = """
-    SELECT
-        unit_id,
-        signal_0_end,
-        engine,
-        AVG(ABS(correlation)) AS mean_abs_correlation,
-        AVG(distance) AS mean_distance,
-        STDDEV(correlation) AS std_correlation,
-        SUM(CASE WHEN ABS(correlation) > 0.8 THEN 1 ELSE 0 END) AS high_corr_pairs,
-        COUNT(*) AS n_pairs
-    FROM pairwise
-    GROUP BY unit_id, signal_0_end, engine
-    ORDER BY unit_id, signal_0_end
-    """
-
-    try:
-        over_time = con.execute(sql).pl()
-        over_time.write_parquet(output_dir / "pairwise_over_time.parquet")
-        results['over_time'] = over_time
-        if verbose:
-            print(f"  Saved: pairwise_over_time.parquet ({len(over_time)} rows)")
-    except Exception as e:
-        if verbose:
-            print(f"  Warning: {e}")
-
-    con.close()
-
-    return results
-
-
-# ============================================================
-# CLI
-# ============================================================
-
-def main():
-    import sys
-
-    usage = """
-Signal Pairwise Engine - Signal-to-signal relationships
-
-Usage:
-    python signal_pairwise.py <signal_vector.parquet> <state_vector.parquet> [output.parquet]
-    python signal_pairwise.py --sql <signal_vector.parquet> [output.parquet]
-    python signal_pairwise.py --aggregate <signal_pairwise.parquet> [output_dir]
-
-Computes per pair, per engine, per index:
-- Distance (Euclidean)
-- Cosine similarity
-- Correlation
-- Relative position to state
-
-This captures the internal structure of the signal cloud.
-"""
-
-    if len(sys.argv) < 2:
-        print(usage)
-        sys.exit(1)
-
-    if sys.argv[1] == '--sql':
-        signal_path = sys.argv[2]
-        output_path = sys.argv[3] if len(sys.argv) > 3 else "signal_pairwise.parquet"
-        compute_signal_pairwise_sql(signal_path, output_path)
-
-    elif sys.argv[1] == '--aggregate':
-        pairwise_path = sys.argv[2]
-        output_dir = sys.argv[3] if len(sys.argv) > 3 else "."
-        compute_pairwise_aggregations(pairwise_path, output_dir)
-
-    else:
-        if len(sys.argv) < 3:
-            print("Usage: python signal_pairwise.py <signal_vector.parquet> <state_vector.parquet> [output.parquet]")
-            sys.exit(1)
-        signal_path = sys.argv[1]
-        state_path = sys.argv[2]
-        output_path = sys.argv[3] if len(sys.argv) > 3 else "signal_pairwise.parquet"
-        compute_signal_pairwise(signal_path, state_path, output_path)
-
-
-if __name__ == "__main__":
-    main()
