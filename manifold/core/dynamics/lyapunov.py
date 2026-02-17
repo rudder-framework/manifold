@@ -10,6 +10,8 @@ ENGINES computes, Prime interprets:
     λ < 0: Stable (trajectories converge)
 """
 
+import warnings
+
 import numpy as np
 from typing import Dict, Any, Optional
 
@@ -85,7 +87,10 @@ def compute(
             'confidence': confidence,
         }
         
-    except Exception:
+    except (ValueError, np.linalg.LinAlgError):
+        return _empty_result()
+    except Exception as e:
+        warnings.warn(f"lyapunov.compute: {type(e).__name__}: {e}", RuntimeWarning, stacklevel=2)
         return _empty_result()
 
 

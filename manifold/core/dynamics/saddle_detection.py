@@ -10,6 +10,8 @@ ENGINES computes metrics. Prime interprets:
     - Crossed separatrix = changed attractor basin
 """
 
+import warnings
+
 import numpy as np
 from typing import Dict, Any, Optional, List
 
@@ -136,7 +138,10 @@ def compute(
             'n_valid': int(np.sum(~np.isnan(saddle_score))),
         }
 
-    except Exception:
+    except (ValueError, np.linalg.LinAlgError):
+        return _empty_result()
+    except Exception as e:
+        warnings.warn(f"saddle_detection.compute: {type(e).__name__}: {e}", RuntimeWarning, stacklevel=2)
         return _empty_result()
 
 
@@ -246,7 +251,10 @@ def compute_multivariate(
             'n_valid': int(np.sum(~np.isnan(saddle_score))),
         }
 
-    except Exception:
+    except (ValueError, np.linalg.LinAlgError):
+        return _empty_multivariate_result(n_signals, signal_names)
+    except Exception as e:
+        warnings.warn(f"saddle_detection.compute_multivariate: {type(e).__name__}: {e}", RuntimeWarning, stacklevel=2)
         return _empty_multivariate_result(n_signals, signal_names)
 
 

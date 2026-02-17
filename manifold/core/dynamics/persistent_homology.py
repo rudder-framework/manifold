@@ -18,6 +18,8 @@ From persistence diagrams, extracts:
 MANIFOLD computes topology. Prime interprets what fragmentation means.
 """
 
+import warnings
+
 import numpy as np
 from typing import Dict, Any, Optional
 
@@ -110,7 +112,10 @@ def compute(
             'n_points': len(trajectory),
         }
 
-    except Exception:
+    except (ValueError, np.linalg.LinAlgError):
+        return _empty_result()
+    except Exception as e:
+        warnings.warn(f"persistent_homology.compute: {type(e).__name__}: {e}", RuntimeWarning, stacklevel=2)
         return _empty_result()
 
 

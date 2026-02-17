@@ -12,6 +12,8 @@ Computes:
 Philosophy: Compute once, melt the mac, query forever.
 """
 
+import warnings
+
 import numpy as np
 from typing import Dict, Any, Optional, Tuple
 from scipy.spatial.distance import pdist
@@ -77,7 +79,10 @@ def compute(
             'n_embedded': len(embedded),
         }
         
-    except Exception:
+    except (ValueError, np.linalg.LinAlgError):
+        return _empty_result()
+    except Exception as e:
+        warnings.warn(f"attractor.compute: {type(e).__name__}: {e}", RuntimeWarning, stacklevel=2)
         return _empty_result()
 
 
