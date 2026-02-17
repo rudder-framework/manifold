@@ -41,13 +41,13 @@ def _extract_trajectories(
     window_rows: pl.DataFrame,
     feature_cols: List[str],
     signal_col: str = 'signal_id',
+    max_points: int = 32,
 ) -> Dict[str, Dict[str, np.ndarray]]:
     """
-    Extract per-signal feature trajectories from signal_vector rows
-    within a system window.
+    Extract per-signal feature trajectories from signal_vector rows.
 
-    Groups by signal_id, sorts by signal_0_center, extracts each feature
-    as a 1D array.
+    Takes the most recent max_points rows per signal (sorted by signal_0_center),
+    then extracts each feature as a 1D array with NaNs removed.
 
     Returns:
         {signal_id: {feature_name: trajectory_array}}
@@ -55,12 +55,11 @@ def _extract_trajectories(
     trajectories = {}
 
     for (sig_id,), sig_df in window_rows.group_by([signal_col]):
-        sig_sorted = sig_df.sort('signal_0_center')
+        sig_sorted = sig_df.sort('signal_0_center').tail(max_points)
         traj = {}
         for feat in feature_cols:
             if feat in sig_sorted.columns:
                 arr = sig_sorted[feat].to_numpy().astype(np.float64)
-                # Drop NaNs from edges
                 valid = np.isfinite(arr)
                 if valid.sum() > 0:
                     traj[feat] = arr[valid]
@@ -206,19 +205,19 @@ def compute_cohort_vector(
         s0_start = group['signal_0_start'].to_list()[0] if 'signal_0_start' in group.columns else None
         s0_center = group['signal_0_center'].to_list()[0] if 'signal_0_center' in group.columns else None
 
-        # Extract trajectories for fourier/hilbert/laplacian views
+        # Extract trajectories for fourier/hilbert/laplacian views.
+        # Collect all signal_vector rows up to s0_end (trailing window).
+        # _extract_trajectories takes the most recent max_points per signal.
         trajectories = None
-        if s0_start is not None and s0_end is not None:
+        if s0_end is not None:
             if has_cohort and cohort is not None:
                 window_rows = signal_vector.filter(
                     (pl.col('cohort') == cohort) &
-                    (pl.col('signal_0_center') >= s0_start) &
                     (pl.col('signal_0_center') <= s0_end)
                 )
             else:
                 window_rows = signal_vector.filter(
-                    (pl.col('signal_0_center') >= s0_start) &
-                    (pl.col('signal_0_center') <= s0_end)
+                    pl.col('signal_0_center') <= s0_end
                 )
             trajectories = _extract_trajectories(window_rows, composite_features, signal_col) or None
 
