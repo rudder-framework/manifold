@@ -21,13 +21,7 @@ import polars as pl
 from pathlib import Path
 from typing import List, Dict, Optional, Any
 
-# Import the actual computation from engine
-from manifold.core.state.centroid import compute as compute_centroid_engine
-from manifold.core.state.trajectory_views import (
-    compute_fourier_view,
-    compute_hilbert_view,
-    compute_laplacian_view,
-)
+from manifold.core.state.geometry_vector import compute_geometry_vector
 from manifold.io.writer import write_output
 
 
@@ -42,29 +36,6 @@ except ImportError:
     }
     FALLBACK_FEATURES = ['kurtosis', 'skewness', 'crest_factor']
 
-
-def compute_centroid(
-    signal_matrix: np.ndarray,
-    feature_names: List[str],
-    min_signals: int = 1
-) -> Dict[str, Any]:
-    """
-    Wrapper - delegates entirely to engine.
-
-    Args:
-        signal_matrix: N_signals × D_features matrix
-        feature_names: Names of features (columns)
-        min_signals: Minimum signals required
-
-    Returns:
-        Dict with centroid and distance statistics
-    """
-    return compute_centroid_engine(signal_matrix, min_signals=min_signals)
-
-
-# ═══════════════════════════════════════════════════════════════
-# Feature trajectory helpers (fourier, hilbert, laplacian views)
-# ═══════════════════════════════════════════════════════════════
 
 def _extract_trajectories(
     window_rows: pl.DataFrame,
@@ -231,47 +202,12 @@ def compute_cohort_vector(
         if composite_matrix.shape[0] < 1:
             continue
 
-        state = compute_centroid(composite_matrix, available_composite, min_signals=1)
-
-        # Skip if centroid engine returned zero valid signals
-        if state['n_signals'] < 1:
-            continue
-
         # Pass through signal_0 columns from the group
         s0_start = group['signal_0_start'].to_list()[0] if 'signal_0_start' in group.columns else None
         s0_center = group['signal_0_center'].to_list()[0] if 'signal_0_center' in group.columns else None
 
-        # Build result row
-        row = {
-            'signal_0_end': s0_end,
-            'signal_0_start': s0_start,
-            'signal_0_center': s0_center,
-            'n_signals': state['n_signals'],
-        }
-        if cohort:
-            row['cohort'] = cohort
-        if unit_id:
-            row['unit_id'] = unit_id
-
-        # Dispersion metrics
-        row['mean_distance'] = state['mean_distance']
-        row['max_distance'] = state['max_distance']
-        row['std_distance'] = state['std_distance']
-
-        # Per-engine centroids
-        if compute_per_engine:
-            for engine_name, features in feature_groups.items():
-                available = [f for f in features if f in group.columns]
-                if len(available) >= 2:
-                    matrix = group.select(available).to_numpy()
-                    engine_state = compute_centroid(matrix, available)
-                    for j, feat in enumerate(available):
-                        row[f'state_{engine_name}_{feat}'] = engine_state['centroid'][j]
-
-        # ── Trajectory views (per-window) ──────────────────────────
-        # Gather ALL signal_vector rows whose signal_0_center falls
-        # within this system window [s0_start, s0_end].
-        # This gives ~N rows per signal (N = window / stride).
+        # Extract trajectories for fourier/hilbert/laplacian views
+        trajectories = None
         if s0_start is not None and s0_end is not None:
             if has_cohort and cohort is not None:
                 window_rows = signal_vector.filter(
@@ -284,12 +220,29 @@ def compute_cohort_vector(
                     (pl.col('signal_0_center') >= s0_start) &
                     (pl.col('signal_0_center') <= s0_end)
                 )
+            trajectories = _extract_trajectories(window_rows, composite_features, signal_col) or None
 
-            trajectories = _extract_trajectories(window_rows, composite_features, signal_col)
-            if trajectories:
-                row.update(compute_fourier_view(trajectories, composite_features))
-                row.update(compute_hilbert_view(trajectories, composite_features))
-                row.update(compute_laplacian_view(trajectories, composite_features))
+        # Unified centroid + dispersion + per-engine centroids + trajectory views
+        gv = compute_geometry_vector(
+            composite_matrix,
+            available_composite,
+            feature_groups if compute_per_engine else {},
+            trajectories=trajectories,
+        )
+        if not gv:
+            continue
+
+        # Build result row
+        row = {
+            'signal_0_end': s0_end,
+            'signal_0_start': s0_start,
+            'signal_0_center': s0_center,
+        }
+        if cohort:
+            row['cohort'] = cohort
+        if unit_id:
+            row['unit_id'] = unit_id
+        row.update(gv)
 
         results.append(row)
 

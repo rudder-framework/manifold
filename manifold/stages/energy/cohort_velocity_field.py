@@ -7,22 +7,23 @@ Same finite-difference math as stage_21_velocity_field, applied to
 cohort trajectories over I windows.
 
 Inputs:
-    - cohort_vector.parquet
+    - cohort_geometry.parquet (pivoted internally via pivot_cohort_geometry)
 
 Output:
-    - cohort_velocity_field.parquet
+    - system_velocity_field.parquet
 """
 
 import numpy as np
 import polars as pl
 from pathlib import Path
 
+from manifold.core.fleet.pivot import pivot_cohort_geometry
 from manifold.io.writer import write_output
 from manifold.utils import safe_fmt
 
 
 def run(
-    cohort_vector_path: str,
+    cohort_geometry_path: str,
     data_path: str = ".",
     verbose: bool = True,
 ) -> pl.DataFrame:
@@ -30,7 +31,7 @@ def run(
     Compute velocity field for cohort trajectories through feature space.
 
     Args:
-        cohort_vector_path: Path to cohort_vector.parquet
+        cohort_geometry_path: Path to cohort_geometry.parquet
         data_path: Root data directory for output
         verbose: Print progress
 
@@ -43,14 +44,14 @@ def run(
         print("Velocity, acceleration, curvature of cohorts in feature space")
         print("=" * 70)
 
-    cv = pl.read_parquet(cohort_vector_path)
+    cv = pivot_cohort_geometry(pl.read_parquet(cohort_geometry_path))
 
     if verbose:
-        print(f"Loaded cohort_vector: {cv.shape}")
+        print(f"Pivoted cohort_geometry: {cv.shape}")
 
     if len(cv) == 0:
         if verbose:
-            print("  Empty cohort_vector — skipping")
+            print("  Empty cohort_geometry — skipping")
         write_output(pl.DataFrame(), data_path, 'system_velocity_field', verbose=verbose)
         return pl.DataFrame()
 

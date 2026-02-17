@@ -8,16 +8,17 @@ Uses the same FTLE engine as stage_08, with reduced min_samples (cohort
 trajectories are short — ~65 windows vs ~500+ signal samples).
 
 Inputs:
-    - cohort_vector.parquet
+    - cohort_geometry.parquet (pivoted internally via pivot_cohort_geometry)
 
 Output:
-    - cohort_ftle.parquet
+    - system_ftle.parquet
 """
 
 import numpy as np
 import polars as pl
 from pathlib import Path
 
+from manifold.core.fleet.pivot import pivot_cohort_geometry
 from manifold.core.dynamics.ftle import compute as compute_ftle
 from manifold.core.dynamics.formal_definitions import classify_stability
 from manifold.io.writer import write_output
@@ -25,7 +26,7 @@ from manifold.utils import safe_fmt
 
 
 def run(
-    cohort_vector_path: str,
+    cohort_geometry_path: str,
     data_path: str = ".",
     min_samples: int = 30,
     method: str = 'rosenstein',
@@ -38,7 +39,7 @@ def run(
     Reduced min_samples (30) because cohort trajectories are short.
 
     Args:
-        cohort_vector_path: Path to cohort_vector.parquet
+        cohort_geometry_path: Path to cohort_geometry.parquet
         data_path: Root data directory for output
         min_samples: Minimum samples required (default: 30, reduced from 200)
         method: 'rosenstein' or 'kantz'
@@ -53,14 +54,14 @@ def run(
         print("Finite-Time Lyapunov Exponents for cohort trajectories")
         print("=" * 70)
 
-    cv = pl.read_parquet(cohort_vector_path)
+    cv = pivot_cohort_geometry(pl.read_parquet(cohort_geometry_path))
 
     if verbose:
-        print(f"Loaded cohort_vector: {cv.shape}")
+        print(f"Pivoted cohort_geometry: {cv.shape}")
 
     if len(cv) == 0:
         if verbose:
-            print("  Empty cohort_vector — skipping")
+            print("  Empty cohort_geometry — skipping")
         write_output(pl.DataFrame(), data_path, 'system_ftle', verbose=verbose)
         return pl.DataFrame()
 

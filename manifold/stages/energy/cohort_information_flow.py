@@ -9,17 +9,18 @@ Each cohort's shape_effective_dim trajectory over I is the "time series"
 for causality analysis. Gate on needs_granger from cohort_pairwise.
 
 Inputs:
-    - cohort_vector.parquet (cohort feature trajectories)
-    - cohort_pairwise.parquet (pairs with needs_granger flags)
+    - cohort_geometry.parquet (pivoted internally via pivot_cohort_geometry)
+    - system_pairwise.parquet (pairs with needs_granger flags)
 
 Output:
-    - cohort_information_flow.parquet
+    - system_information_flow.parquet
 """
 
 import numpy as np
 import polars as pl
 from pathlib import Path
 
+from manifold.core.fleet.pivot import pivot_cohort_geometry
 from manifold.core.pairwise.causality import compute_all as compute_causality
 from manifold.core.pairwise.distance import compute_dtw as dynamic_time_warping
 from manifold.core.pairwise.correlation import compute_mutual_info
@@ -110,7 +111,7 @@ def _compute_pair(cohort_a: str, cohort_b: str, x: np.ndarray, y: np.ndarray) ->
 
 
 def run(
-    cohort_vector_path: str,
+    cohort_geometry_path: str,
     cohort_pairwise_path: str,
     data_path: str = ".",
     min_samples: int = 20,
@@ -120,8 +121,8 @@ def run(
     Compute information flow between cohort trajectories.
 
     Args:
-        cohort_vector_path: Path to cohort_vector.parquet
-        cohort_pairwise_path: Path to cohort_pairwise.parquet
+        cohort_geometry_path: Path to cohort_geometry.parquet
+        cohort_pairwise_path: Path to system_pairwise.parquet
         data_path: Root data directory (for write_output)
         min_samples: Minimum samples per cohort trajectory (default: 20, low for short series)
         verbose: Print progress
@@ -135,12 +136,12 @@ def run(
         print("Causality between cohort trajectories over I")
         print("=" * 70)
 
-    cv = pl.read_parquet(cohort_vector_path)
+    cv = pivot_cohort_geometry(pl.read_parquet(cohort_geometry_path))
     pairwise = pl.read_parquet(cohort_pairwise_path)
 
     if verbose:
-        print(f"Loaded cohort_vector: {cv.shape}")
-        print(f"Loaded cohort_pairwise: {pairwise.shape}")
+        print(f"Pivoted cohort_geometry: {cv.shape}")
+        print(f"Loaded system_pairwise: {pairwise.shape}")
 
     if len(cv) == 0 or len(pairwise) == 0:
         if verbose:

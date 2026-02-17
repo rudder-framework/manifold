@@ -806,36 +806,36 @@ def _dispatch_fleet(
     """
     Dispatch fleet-scale stages (26-31).
 
-    These require system_vector.parquet (produced by stage 25).
-    Guard: skip if system_vector missing or n_cohorts < 2 (unless system.mode=force).
+    These read cohort_geometry.parquet directly and pivot internally.
+    Guard: skip if cohort_geometry missing or n_cohorts < 2 (unless system.mode=force).
     """
     import polars as _pl
 
-    cv_path = Path(_out(output_dir, 'system_vector.parquet'))
-    if not cv_path.exists():
+    sg_path = Path(_out(output_dir, 'cohort_geometry.parquet'))
+    if not sg_path.exists():
         if verbose:
-            print("  Skipped (system_vector.parquet not found -- run stage 25 first)")
+            print("  Skipped (cohort_geometry.parquet not found)")
         return
 
-    cv = _pl.read_parquet(str(cv_path))
-    if len(cv) == 0:
+    sg = _pl.read_parquet(str(sg_path))
+    if len(sg) == 0:
         if verbose:
-            print("  Skipped (system_vector.parquet is empty)")
+            print("  Skipped (cohort_geometry.parquet is empty)")
         return
     if system_mode != 'force':
-        if 'cohort' not in cv.columns or cv['cohort'].n_unique() < 2:
-            n = cv['cohort'].n_unique() if 'cohort' in cv.columns else 0
+        if 'cohort' not in sg.columns or sg['cohort'].n_unique() < 2:
+            n = sg['cohort'].n_unique() if 'cohort' in sg.columns else 0
             if verbose:
                 print(f"  Skipped (n_cohorts={n} < 2)")
             return
 
     if stage_name == 'system_geometry':
-        module.run(str(cv_path), data_path=data_path_str, verbose=verbose)
+        module.run(str(sg_path), data_path=data_path_str, verbose=verbose)
 
     elif stage_name == 'cohort_pairwise':
         loadings_path = Path(_out(output_dir, 'system_cohort_positions.parquet'))
         module.run(
-            str(cv_path),
+            str(sg_path),
             data_path=data_path_str,
             system_geometry_loadings_path=str(loadings_path) if loadings_path.exists() else None,
             verbose=verbose,
@@ -845,7 +845,7 @@ def _dispatch_fleet(
         pairwise_path = Path(_out(output_dir, 'system_pairwise.parquet'))
         if pairwise_path.exists() and len(_pl.read_parquet(str(pairwise_path))) > 0:
             module.run(
-                str(cv_path),
+                str(sg_path),
                 str(pairwise_path),
                 data_path=data_path_str,
                 verbose=verbose,
@@ -857,10 +857,10 @@ def _dispatch_fleet(
             _write(_pl.DataFrame(), data_path_str, 'system_information_flow', verbose=verbose)
 
     elif stage_name == 'cohort_ftle':
-        module.run(str(cv_path), data_path=data_path_str, verbose=verbose)
+        module.run(str(sg_path), data_path=data_path_str, verbose=verbose)
 
     elif stage_name == 'cohort_velocity_field':
-        module.run(str(cv_path), data_path=data_path_str, verbose=verbose)
+        module.run(str(sg_path), data_path=data_path_str, verbose=verbose)
 
 
 def _find_typology(manifest: Dict[str, Any], output_dir: Path) -> Optional[str]:
@@ -927,12 +927,12 @@ Cross-signal eigendecomposition and pairwise metrics per cohort.
 
 **How does this compare across the fleet?**
 
-Requires `system_vector.parquet` (from stage 25) and n_cohorts >= 2.
+Requires `cohort_geometry.parquet` and n_cohorts >= 2.
 
 | File | Grain | Description |
 |------|-------|-------------|
 | system_geometry.parquet | (signal_0_end) | Fleet-level eigendecomposition |
-| system_vector.parquet | (cohort, signal_0_end) | Wide-format cohort features pivoted from cohort_geometry |
+| system_vector.parquet | (signal_0_end) | Cross-cohort centroid per window |
 | system_cohort_positions.parquet | (signal_0_end, cohort) | Cohort loadings on PCs |
 | system_pairwise.parquet | (cohort_a, cohort_b) | Distance between cohort vectors |
 | system_information_flow.parquet | (source, target) | Transfer entropy at fleet scale |

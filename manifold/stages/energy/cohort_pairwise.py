@@ -7,11 +7,11 @@ Same distance/correlation/cosine primitives as signal_pairwise,
 applied at the cohort level.
 
 Inputs:
-    - cohort_vector.parquet
-    - system_geometry_loadings.parquet (optional, for pc1_coloading)
+    - cohort_geometry.parquet (pivoted internally via pivot_cohort_geometry)
+    - system_cohort_positions.parquet (optional, for pc1_coloading)
 
 Output:
-    - cohort_pairwise.parquet
+    - system_pairwise.parquet
 """
 
 import numpy as np
@@ -20,12 +20,13 @@ from pathlib import Path
 from itertools import combinations
 from typing import Optional
 
+from manifold.core.fleet.pivot import pivot_cohort_geometry
 from manifold.io.writer import write_output
 from manifold.utils import safe_fmt
 
 
 def run(
-    cohort_vector_path: str,
+    cohort_geometry_path: str,
     data_path: str = ".",
     system_geometry_loadings_path: Optional[str] = None,
     pc_coloading_threshold: float = 0.3,
@@ -35,9 +36,9 @@ def run(
     Compute pairwise metrics between cohorts at each I window.
 
     Args:
-        cohort_vector_path: Path to cohort_vector.parquet
+        cohort_geometry_path: Path to cohort_geometry.parquet
         data_path: Root data directory (for write_output)
-        system_geometry_loadings_path: Optional path to system_geometry_loadings.parquet
+        system_geometry_loadings_path: Optional path to system_cohort_positions.parquet
         pc_coloading_threshold: Threshold for flagging needs_granger
         verbose: Print progress
 
@@ -50,14 +51,14 @@ def run(
         print("Pairwise distance, correlation, cosine between cohorts per I")
         print("=" * 70)
 
-    cv = pl.read_parquet(cohort_vector_path)
+    cv = pivot_cohort_geometry(pl.read_parquet(cohort_geometry_path))
 
     if verbose:
-        print(f"Loaded cohort_vector: {cv.shape}")
+        print(f"Pivoted cohort_geometry: {cv.shape}")
 
     if len(cv) == 0:
         if verbose:
-            print("  Empty cohort_vector — skipping")
+            print("  Empty cohort_geometry — skipping")
         result = pl.DataFrame()
         write_output(result, data_path, 'system_pairwise', verbose=verbose)
         return result

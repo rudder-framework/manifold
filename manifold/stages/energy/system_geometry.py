@@ -2,15 +2,15 @@
 Stage 26: System Geometry Entry Point
 =====================================
 
-Eigendecomposition of cohort_vector matrix (cohorts x features) per I window.
+Eigendecomposition of cohort feature matrix (cohorts x features) per I window.
 This is Scale 2: same eigendecomp engine, but applied to cohorts instead of signals.
 
 Inputs:
-    - cohort_vector.parquet
+    - cohort_geometry.parquet (pivoted internally via pivot_cohort_geometry)
 
 Outputs:
     - system_geometry.parquet (one row per I: eigenvalues, effective_dim, etc.)
-    - system_geometry_loadings.parquet (one row per cohort per I: pc1..3 loadings)
+    - system_cohort_positions.parquet (one row per cohort per I: pc1..3 loadings)
 """
 
 import numpy as np
@@ -18,11 +18,12 @@ import polars as pl
 from pathlib import Path
 
 from manifold.core.state.eigendecomp import compute as compute_eigendecomp
+from manifold.core.fleet.pivot import pivot_cohort_geometry
 from manifold.io.writer import write_output
 
 
 def run(
-    cohort_vector_path: str,
+    cohort_geometry_path: str,
     data_path: str = ".",
     max_eigenvalues: int = 5,
     verbose: bool = True,
@@ -31,8 +32,8 @@ def run(
     Compute system geometry via eigendecomposition of cohort feature matrix.
 
     Args:
-        cohort_vector_path: Path to cohort_vector.parquet
-        output_path: Output path for system_geometry.parquet
+        cohort_geometry_path: Path to cohort_geometry.parquet
+        data_path: Root data directory for output
         max_eigenvalues: Maximum eigenvalues to store
         verbose: Print progress
 
@@ -45,14 +46,14 @@ def run(
         print("Eigendecomposition of cohort feature matrix per I window")
         print("=" * 70)
 
-    cv = pl.read_parquet(cohort_vector_path)
+    cv = pivot_cohort_geometry(pl.read_parquet(cohort_geometry_path))
 
     if verbose:
-        print(f"Loaded cohort_vector: {cv.shape}")
+        print(f"Pivoted cohort_geometry: {cv.shape}")
 
     if len(cv) == 0:
         if verbose:
-            print("  Empty cohort_vector — skipping")
+            print("  Empty cohort_geometry — skipping")
         write_output(pl.DataFrame(), data_path, 'system_geometry', verbose=verbose)
         return pl.DataFrame()
 
