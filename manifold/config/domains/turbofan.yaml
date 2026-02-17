@@ -1,11 +1,11 @@
 # ENGINES Turbofan Domain Configuration
-# Overrides for aerospace turbofan degradation analysis (C-MAPSS style)
+# Overrides for aerospace turbofan evolution analysis (C-MAPSS style)
 #
 # Characteristics:
 # - High signal count (21+ sensors)
-# - Degradation trajectories
+# - Evolution trajectories
 # - Multi-regime operation
-# - Run-to-failure data
+# - Run-to-completion data
 
 # Geometry overrides
 geometry:
@@ -44,11 +44,11 @@ dynamics:
     dt: 1.0
     smooth_window: 5
 
-  # Collapse detection tuned for degradation
+  # Collapse detection tuned for evolution
   collapse:
-    # More sensitive to degradation trends
+    # More sensitive to evolution trends
     threshold_velocity: -0.05
-    # Longer sustained period for real degradation
+    # Longer sustained period for real evolution
     min_collapse_length: 10
 
 # Pairwise overrides

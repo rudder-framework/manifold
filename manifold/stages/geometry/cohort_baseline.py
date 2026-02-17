@@ -2,14 +2,14 @@
 Stage 34: Fleet Baseline Entry Point
 =====================================
 
-SVD on early-life observations from the FLEET to establish a shared healthy
+SVD on early-life observations from the FLEET to establish a shared baseline
 reference. All cohorts (train AND test) are scored against this same baseline.
 
 Two modes:
     fleet (default): ONE baseline from all cohorts' early-life pooled together.
                      Use for single-regime datasets (FD001, FD003).
     per_cohort:      One baseline per cohort (original behavior).
-                     Use when each cohort has genuinely different healthy states.
+                     Use when each cohort has genuinely different baseline states.
 
 Inputs:
     - observations.parquet
@@ -20,8 +20,8 @@ Output:
 Columns:
     - baseline_centroid: mean sensor vector from early-life
     - baseline_eigenvalues: SVD spectrum of early-life covariance
-    - baseline_effective_dim: dimensionality of healthy behavior
-    - baseline_total_variance: total energy in healthy state
+    - baseline_effective_dim: dimensionality of baseline behavior
+    - baseline_total_variance: total energy in baseline state
     - principal_directions: first k eigenvectors (stored as JSON)
 
 Mathematical foundation:
@@ -131,7 +131,7 @@ def run(
     verbose: bool = True,
 ) -> pl.DataFrame:
     """
-    Compute healthy baseline via SVD on early-life observations.
+    Compute baseline via SVD on early-life observations.
 
     Args:
         observations_path: Path to observations.parquet
@@ -303,10 +303,10 @@ def run(
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Stage 34: Fleet/Cohort Baseline (Healthy Reference)",
+        description="Stage 34: Fleet/Cohort Baseline (Baseline Reference)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-SVD on early-life observations to establish healthy reference.
+SVD on early-life observations to establish baseline reference.
 
 Fleet mode (default): pools all cohorts' early-life into ONE baseline.
 Per-cohort mode: computes individual baselines per cohort.

@@ -4,12 +4,12 @@ ENGINES SQL Engines - Pure SQL computations via DuckDB.
 Fast primitives for statistics, z-scores, correlations, and regime assignment.
 
 Available SQL engines:
-- zscore: Z-score normalization and anomaly detection (sensitive to outliers)
-- mad_anomaly: MAD-based anomaly detection (robust to outliers)
+- zscore: Z-score normalization and departure detection (sensitive to outliers)
+- mad_departure: MAD-based departure detection (robust to outliers)
 - statistics: Summary statistics per signal
 - correlation: Correlation matrix
 
-See docs/NORMALIZATION.md for guidance on zscore vs mad_anomaly.
+See docs/NORMALIZATION.md for guidance on zscore vs mad_departure.
 """
 
 from pathlib import Path

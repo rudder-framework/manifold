@@ -10,7 +10,7 @@ over finite windows and slides forward. That's FTLE by definition.
 The FTLE framing unlocks capabilities:
     - Time-varying instability field (not just one number)
     - Ridges in FTLE field = Lagrangian Coherent Structures (LCS)
-    - LCS = regime boundaries, transition corridors, failure basins
+    - LCS = regime boundaries, transition corridors, attraction basins
 
 Same math that revealed the Interplanetary Transport Network in astrodynamics.
 Different planets: your bearings, pumps, turbines.
@@ -29,7 +29,7 @@ ENGINES computes FTLE, Prime interprets:
 Bidirectional FTLE reveals full Lagrangian Coherent Structure:
     - Forward: where trajectories come FROM
     - Backward: where trajectories go TO
-    - Combined: regime boundaries, transition corridors, failure basins
+    - Combined: regime boundaries, transition corridors, attraction basins
 """
 
 import argparse

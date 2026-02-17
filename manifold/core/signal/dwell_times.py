@@ -16,7 +16,7 @@ Outputs:
     n_dwells        - Total number of dwell periods
 
 Physics:
-    - High dwell_cv → irregular holding times → degrading control
+    - High dwell_cv → irregular holding times → irregular control
     - Increasing dwell_max → system getting stuck
     - Decreasing dwell_min → chattering / instability
     - dwell_mean trending down → faster state cycling

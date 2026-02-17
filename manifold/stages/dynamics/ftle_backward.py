@@ -17,7 +17,7 @@ Inputs:
 Output:
     - ftle_backward.parquet
 
-ENGINES computes FTLE values. Prime interprets attractors as failure states.
+ENGINES computes FTLE values. Prime interprets attractors as regime states.
 """
 
 import argparse
@@ -59,7 +59,7 @@ def main():
 Computes backward FTLE (attracting structures).
 
 Backward FTLE = Lyapunov exponent on time-reversed trajectory.
-Reveals where trajectories converge TO (failure attractors).
+Reveals where trajectories converge TO (attracting structures).
 
 Use with stage_08 (forward FTLE) for complete LCS analysis.
 

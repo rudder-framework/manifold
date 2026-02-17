@@ -30,15 +30,6 @@ from .persistent_homology import compute as compute_persistent_homology
 from .formal_definitions import (
     AttractorType,
     StabilityType,
-    FailureMode,
-    TippingType,
-    SystemTypology,
-    GeometryMetrics,
-    MassMetrics,
-    EarlyWarningSignals,
-    FormalAssessment,
-    classify_failure_mode,
-    classify_tipping_type,
     classify_stability,
 )
 
@@ -62,16 +53,6 @@ __all__ = [
     # Enums
     'AttractorType',
     'StabilityType',
-    'FailureMode',
-    'TippingType',
-    'SystemTypology',
-    # Dataclasses
-    'GeometryMetrics',
-    'MassMetrics',
-    'EarlyWarningSignals',
-    'FormalAssessment',
     # Classification
-    'classify_failure_mode',
-    'classify_tipping_type',
     'classify_stability',
 ]

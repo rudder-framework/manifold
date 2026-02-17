@@ -4,7 +4,7 @@
 -- Computes z-score for each observation within its signal.
 -- Input: observations table with (cohort, signal_id, I, value)
 -- Note: cohort is optional - uses COALESCE to handle NULL
--- Output: enriched observations with z_score and is_anomaly columns
+-- Output: enriched observations with z_score and is_departure columns
 -- =============================================================================
 
 WITH signal_stats AS (
@@ -28,7 +28,7 @@ SELECT
     CASE
         WHEN s.std_value > 1e-10 AND ABS((o.value - s.mean_value) / s.std_value) > 3 THEN TRUE
         ELSE FALSE
-    END AS is_anomaly
+    END AS is_departure
 FROM observations o
 INNER JOIN signal_stats s
     ON COALESCE(o.cohort, '_default') = s.cohort

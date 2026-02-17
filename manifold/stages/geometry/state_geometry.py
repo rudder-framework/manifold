@@ -7,7 +7,7 @@ Computes the SHAPE of the signal distribution around each state.
 
 Stages: signal_vector.parquet + state_vector.parquet → state_geometry.parquet
 
-Key insight: effective_dim shows 63% importance in predicting RUL.
+Key insight: effective_dim captures intrinsic dimensionality of the system.
 """
 
 import numpy as np

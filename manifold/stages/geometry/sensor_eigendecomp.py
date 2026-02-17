@@ -5,8 +5,8 @@ Stage 20: Rolling Sensor Eigendecomposition
 Per-cohort rolling eigendecomposition of the sensor observation matrix.
 Captures how sensor inter-correlation structure evolves over the index range.
 
-Key finding: effective_dim of sensor covariance correlates r=0.849 with
-remaining useful life across N=249 turbofan engines (FD_004).
+Key finding: effective_dim of sensor covariance tracks dimensional evolution
+across cohorts.
 
 Input:
     observations.parquet (cohort, signal_id, I, value)

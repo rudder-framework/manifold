@@ -8,7 +8,7 @@ Platform: macOS Darwin 25.2.0, Apple Silicon (arm64), Python 3.14.2
 
 | Stage | Name | Time | Output Dir |
 |-------|------|-----:|------------|
-| 00 | breaks | 36.1s | 3_health_scoring |
+| 00 | breaks | 36.1s | 3_regime_scoring |
 | 01 | signal_vector | 123.2s | 1_signal_features |
 | 02 | state_vector | 1.4s | 2_system_state |
 | 03 | state_geometry | 23.4s | 2_system_state |
@@ -34,8 +34,8 @@ Platform: macOS Darwin 25.2.0, Apple Silicon (arm64), Python 3.14.2
 | 30 | cohort_ftle | 0.0s | 6_fleet (skipped) |
 | 31 | cohort_velocity_field | 0.0s | 6_fleet (skipped) |
 | 33 | signal_stability | 141.9s | 1_signal_features |
-| 34 | cohort_baseline | 0.3s | 3_health_scoring |
-| 35 | observation_geometry | 0.4s | 3_health_scoring |
+| 34 | cohort_baseline | 0.3s | 3_regime_scoring |
+| 35 | observation_geometry | 0.4s | 3_regime_scoring |
 | | **TOTAL** | **1041.2s** | |
 
 Wall clock: **17 min 21s**

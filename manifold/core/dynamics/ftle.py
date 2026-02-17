@@ -10,7 +10,7 @@ FTLE:
     - Works on finite windows → time-varying field
     - Handles transient, non-stationary data
     - Ridges in FTLE field = Lagrangian Coherent Structures (LCS)
-    - LCS = regime boundaries, transition corridors, failure basins
+    - LCS = regime boundaries, transition corridors, attraction basins
 
 The astrodynamics of your bearings.
 

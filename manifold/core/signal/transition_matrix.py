@@ -20,8 +20,8 @@ Outputs:
 
 Physics:
     - trans_self_loop increasing → system getting stuck, losing mobility
-    - trans_entropy decreasing → transitions becoming predictable (degradation)
-    - trans_asymmetry increasing → system becoming irreversible (wear direction)
+    - trans_entropy decreasing → transitions becoming predictable (regime narrowing)
+    - trans_asymmetry increasing → system becoming irreversible (asymmetric drift)
     - trans_sparsity increasing → fewer paths available (state space collapse)
 """
 

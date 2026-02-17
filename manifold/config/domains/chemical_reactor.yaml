@@ -3,7 +3,7 @@
 #
 # Characteristics:
 # - Continuous process
-# - Multiple fault modes
+# - Multiple operating regimes
 # - Strong correlations between variables
 # - Strict operating constraints
 
@@ -37,7 +37,7 @@ dynamics:
     smooth_window: 3
 
   collapse:
-    # Chemical processes may show faster degradation
+    # Chemical processes may show faster evolution
     threshold_velocity: -0.15
     min_collapse_length: 3
 

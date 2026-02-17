@@ -82,7 +82,7 @@ ALL_STAGES = [
     # 1_signal_features (stability)
     ('vector.signal_stability',          '33'),
 
-    # 3_health_scoring (baseline + scoring)
+    # 3_regime_scoring (baseline + scoring)
     ('geometry.cohort_baseline',         '34'),
     ('geometry.observation_geometry',    '35'),
 ]
@@ -905,10 +905,10 @@ Cross-signal eigendecomposition: the core operation of Manifold.
 | sensor_eigendecomp.parquet | (cohort, signal_0_end) | Rolling 2-level SVD |
 """,
 
-    '3_health_scoring': """\
-# 3. Health Scoring
+    '3_regime_scoring': """\
+# 3. Regime Scoring
 
-**How healthy is this system right now?**
+**What is the system's current regime?**
 
 | File | Grain | Description |
 |------|-------|-------------|

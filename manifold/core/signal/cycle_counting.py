@@ -1,8 +1,8 @@
 """
 Cycle Counting Engine.
 
-Rainflow cycle counting for fatigue analysis.
-Counts stress/strain cycles and their ranges.
+Rainflow cycle counting and range accumulation.
+Counts signal cycles and their ranges.
 """
 
 import numpy as np
@@ -17,7 +17,7 @@ def compute(y: np.ndarray) -> Dict[str, float]:
         y: Signal values (stress, strain, load)
 
     Returns:
-        dict with n_cycles, max_range, mean_range, damage_index,
+        dict with n_cycles, max_range, mean_range, cycle_accumulation,
               n_full_cycles, n_half_cycles
     """
     result = {
@@ -26,7 +26,7 @@ def compute(y: np.ndarray) -> Dict[str, float]:
         'n_half_cycles': 0,
         'max_range': np.nan,
         'mean_range': np.nan,
-        'damage_index': np.nan
+        'cycle_accumulation': np.nan
     }
 
     # Handle NaN values
@@ -50,9 +50,9 @@ def compute(y: np.ndarray) -> Dict[str, float]:
                 n_full = sum(1 for c in counts if c == 1.0)
                 n_half = sum(1 for c in counts if c == 0.5)
 
-                # Damage index using Palmgren-Miner (S-N slope of 3)
+                # Accumulation using Palmgren-Miner (S-N slope of 3)
                 max_range = max(ranges) if ranges else 1.0
-                damage = sum((r / max_range) ** 3 * c for r, c in zip(ranges, counts))
+                accumulation = sum((r / max_range) ** 3 * c for r, c in zip(ranges, counts))
 
                 result = {
                     'n_cycles': int(sum(counts)),
@@ -60,7 +60,7 @@ def compute(y: np.ndarray) -> Dict[str, float]:
                     'n_half_cycles': n_half,
                     'max_range': float(max(ranges)),
                     'mean_range': float(np.mean(ranges)),
-                    'damage_index': float(damage)
+                    'cycle_accumulation': float(accumulation)
                 }
                 return result
 
@@ -97,7 +97,7 @@ def compute(y: np.ndarray) -> Dict[str, float]:
         mean_range = float(np.mean(ranges))
 
         # Damage calculation (each half-cycle contributes 0.5)
-        damage = float(np.sum((ranges / max_range) ** 3) * 0.5)
+        accumulation = float(np.sum((ranges / max_range) ** 3) * 0.5)
 
         result = {
             'n_cycles': n_full + n_remaining,
@@ -105,7 +105,7 @@ def compute(y: np.ndarray) -> Dict[str, float]:
             'n_half_cycles': n_remaining,
             'max_range': max_range,
             'mean_range': mean_range,
-            'damage_index': damage
+            'cycle_accumulation': accumulation
         }
 
     except Exception:

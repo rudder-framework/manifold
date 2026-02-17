@@ -3,7 +3,7 @@ Stage 35: Observation Geometry Entry Point
 ==========================================
 
 Per-cycle geometric scoring against the baseline established in stage 34.
-This is the real-time health indicator — computable from a single observation.
+This is the per-observation regime indicator — computable from a single observation.
 
 Inputs:
     - observations.parquet
@@ -13,9 +13,9 @@ Output:
     - observation_geometry.parquet
 
 Per (cohort, I), computes:
-    - centroid_distance: ||x(I) - centroid_baseline||  (how far from healthy)
+    - centroid_distance: ||x(I) - centroid_baseline||  (how far from baseline)
     - centroid_distance_norm: normalized by sqrt(n_signals)
-    - pc1_projection: x(I) . PC1  (where along primary degradation axis)
+    - pc1_projection: x(I) . PC1  (where along primary variation axis)
     - pc2_projection: x(I) . PC2  (lateral displacement)
     - mahalanobis_approx: weighted distance using baseline eigenvalues
     - sensor_norm: ||x(I)||  (total magnitude)
@@ -122,7 +122,7 @@ def run(
     if verbose:
         print("=" * 70)
         print("STAGE 35: OBSERVATION GEOMETRY")
-        print("Per-cycle geometric scoring against healthy baseline")
+        print("Per-cycle geometric scoring against baseline")
         print("=" * 70)
 
     obs = pl.read_parquet(observations_path)
@@ -214,14 +214,14 @@ def run(
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Stage 35: Observation Geometry (Per-Cycle Health Score)",
+        description="Stage 35: Observation Geometry (Per-Cycle Regime Score)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-Computes per-cycle distance from healthy baseline for each cohort.
+Computes per-cycle distance from baseline for each cohort.
 
 Key outputs:
-  centroid_distance:     How far from healthy (Euclidean)
-  pc1_projection:        Where along primary degradation axis
+  centroid_distance:     How far from baseline (Euclidean)
+  pc1_projection:        Where along primary variation axis
   mahalanobis_approx:    Distance weighted by baseline eigenvalues
 
 Example:

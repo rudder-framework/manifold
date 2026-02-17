@@ -7,9 +7,8 @@ This is HOW the system is distributed around its centroid.
 state_vector = centroid (WHERE)
 state_geometry = eigenvalues (SHAPE)
 
-Key insight: effective_dim shows 63% importance in predicting
-remaining useful life (RUL). Systems collapse dimensionally
-before failure.
+Key insight: effective_dim captures the system's intrinsic dimensionality.
+Dimensional collapse precedes regime transitions.
 """
 
 import numpy as np

@@ -1,7 +1,7 @@
 -- =============================================================================
--- MAD-Based Anomaly Detection (SQL)
+-- MAD-Based Departure Detection (SQL)
 -- =============================================================================
--- Robust anomaly detection using Median Absolute Deviation (MAD).
+-- Robust departure detection using Median Absolute Deviation (MAD).
 --
 -- Unlike z-score which uses mean/std (sensitive to outliers), MAD uses
 -- median/MAD which has a 50% breakdown point - can handle up to 50% outliers.
@@ -11,7 +11,7 @@
 -- (0.6745 is the consistency constant for normal distribution)
 --
 -- Input: observations table with (unit_id, signal_id, I, value)
--- Output: enriched observations with mad_score and is_anomaly columns
+-- Output: enriched observations with mad_score and is_departure columns
 --
 -- Threshold: |mad_score| > 3.5 is a common robust threshold
 -- (equivalent to ~3σ for Gaussian, but robust to outliers)
@@ -53,7 +53,7 @@ signal_mad AS (
     GROUP BY unit_id, signal_id, median_value
 )
 
--- Step 4: Compute modified z-score and flag anomalies
+-- Step 4: Compute modified z-score and flag departures
 SELECT
     o.unit_id,
     o.signal_id,
@@ -67,11 +67,11 @@ SELECT
         WHEN s.mad_value > 1e-10 THEN 0.6745 * (o.value - s.median_value) / s.mad_value
         ELSE 0
     END AS mad_score,
-    -- Robust anomaly threshold: |mad_score| > 3.5
+    -- Robust departure threshold: |mad_score| > 3.5
     CASE
         WHEN s.mad_value > 1e-10 AND ABS(0.6745 * (o.value - s.median_value) / s.mad_value) > 3.5 THEN TRUE
         ELSE FALSE
-    END AS is_anomaly,
+    END AS is_departure,
     -- Severity levels based on MAD score
     CASE
         WHEN s.mad_value <= 1e-10 THEN 'CONSTANT'
@@ -95,7 +95,7 @@ ORDER BY o.unit_id, o.signal_id, o.I;
 -- Window size should match characteristic time of the signal
 -- =============================================================================
 
--- CREATE OR REPLACE VIEW v_rolling_mad_anomaly AS
+-- CREATE OR REPLACE VIEW v_rolling_mad_departure AS
 -- WITH rolling_stats AS (
 --     SELECT
 --         unit_id,
@@ -139,5 +139,5 @@ ORDER BY o.unit_id, o.signal_id, o.I;
 --     CASE
 --         WHEN rolling_mad > 1e-10 AND ABS(0.6745 * (value - rolling_median) / rolling_mad) > 3.5 THEN TRUE
 --         ELSE FALSE
---     END AS is_anomaly
+--     END AS is_departure
 -- FROM rolling_mad;

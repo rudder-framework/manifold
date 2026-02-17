@@ -1,6 +1,6 @@
 # ENGINES Engines & Primitives Reference
 
-> Mathematical foundations for signal processing, dynamical systems analysis, and predictive diagnostics.
+> Mathematical foundations for signal processing, dynamical systems analysis, and signal analysis.
 
 ---
 

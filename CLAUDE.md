@@ -171,12 +171,12 @@ All output goes to `<data_dir>/output/`:
 | geometry_dynamics.parquet | 07 | geometry | Velocity/jerk of geometry evolution |
 | sensor_eigendecomp.parquet | 20 | geometry | Rolling 2-level SVD |
 
-#### `3_health_scoring/` — "How healthy is the system?"
+#### `3_regime_scoring/` — "What is the system's regime?"
 
 | File | Stage | Group | Description |
 |------|-------|-------|-------------|
 | breaks.parquet | 00 | vector | Change-point detection (Heaviside/Dirac) |
-| cohort_baseline.parquet | 34 | geometry | SVD on early-life observations — healthy reference frame |
+| cohort_baseline.parquet | 34 | geometry | SVD on early-life observations — baseline reference frame |
 | observation_geometry.parquet | 35 | geometry | Per-observation scoring against baseline |
 
 #### `4_signal_relationships/` — "How do signals relate to each other?"
@@ -238,7 +238,7 @@ Scale 1:  signals → signal_vector → state_geometry     (per cohort)
 Scale 2:  cohort_vector → system_geometry               (across cohorts)
 ```
 
-Eigendecomposition at Scale 1 tells you about individual system health.
+Eigendecomposition at Scale 1 tells you about individual system geometry.
 Eigendecomposition at Scale 2 tells you about fleet-wide patterns.
 
 ---

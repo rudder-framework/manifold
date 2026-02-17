@@ -44,7 +44,7 @@ normalized, _ = zscore_normalize(centered, axis=0)
 - Stage 07 (geometry_dynamics): Computes velocity/acceleration/jerk of `effective_dim`, `eigenvalue_1`, `total_variance` — all derived from z-scored eigenvalues
 - Stage 09a (cohort_thermodynamics): Computes temperature from `var(diff(effective_dim))` and entropy from eigenvalue spectrum — effective_dim is derived from z-scored eigenvalues
 - Stage 34 (cohort_baseline): Reads state_geometry for baseline comparison
-- Stage 35 (observation_geometry): Reads state_geometry for health scoring
+- Stage 35 (observation_geometry): Reads state_geometry for regime scoring
 - Stage 25 (cohort_vector): Aggregates state_geometry metrics across cohorts
 - Stage 26 (system_geometry): Performs eigendecomposition at fleet level on state_geometry outputs
 

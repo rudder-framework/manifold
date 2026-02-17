@@ -1,4 +1,4 @@
-"""Geometry group — system state, eigendecomposition, health scoring."""
+"""Geometry group — system state, eigendecomposition, regime scoring."""
 from manifold.stages.geometry.state_vector import run as run_state_vector
 from manifold.stages.geometry.state_geometry import run as run_state_geometry
 from manifold.stages.geometry.signal_geometry import run as run_signal_geometry

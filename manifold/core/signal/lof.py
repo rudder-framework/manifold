@@ -1,7 +1,7 @@
 """
 LOF Engine.
 
-Local Outlier Factor for anomaly detection in phase space.
+Local Outlier Factor for departure detection in phase space.
 """
 
 import numpy as np

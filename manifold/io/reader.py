@@ -20,9 +20,9 @@ STAGE_DIRS = {
     'geometry_dynamics':    '2_system_state',
     'sensor_eigendecomp':   '2_system_state',
 
-    'breaks':               '3_health_scoring',
-    'cohort_baseline':      '3_health_scoring',
-    'observation_geometry': '3_health_scoring',
+    'breaks':               '3_regime_scoring',
+    'cohort_baseline':      '3_regime_scoring',
+    'observation_geometry': '3_regime_scoring',
 
     'signal_pairwise':      '4_signal_relationships',
     'information_flow':     '4_signal_relationships',
