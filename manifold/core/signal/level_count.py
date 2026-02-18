@@ -24,6 +24,8 @@ Physics:
 import numpy as np
 from typing import Dict, Any
 
+from manifold.primitives.information.entropy import shannon_entropy as _shannon_entropy
+
 
 MIN_SAMPLES = 4
 
@@ -68,8 +70,8 @@ def compute(y: np.ndarray, n_bins: int = 10) -> Dict[str, Any]:
     # Probabilities for each level
     probs = counts / counts.sum()
 
-    # Shannon entropy in bits
-    entropy = -np.sum(probs * np.log2(probs + 1e-12))
+    # Shannon entropy in bits (via primitives)
+    entropy = _shannon_entropy(levels, base=2)
 
     # Dominant level fraction
     dominant = float(np.max(probs))

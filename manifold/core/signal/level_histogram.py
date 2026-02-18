@@ -25,6 +25,8 @@ Physics:
 import numpy as np
 from typing import Dict, Any
 
+from manifold.primitives.information.entropy import shannon_entropy as _shannon_entropy
+
 
 MIN_SAMPLES = 4
 
@@ -67,9 +69,10 @@ def compute(y: np.ndarray, n_bins: int = 10) -> Dict[str, Any]:
     probs = counts / n
 
     # Uniformity: 1 - normalized KL divergence from uniform
-    uniform = np.ones(k) / k
-    kl = np.sum(probs * np.log2((probs + 1e-12) / (uniform + 1e-12)))
+    # KL(p||u) = H(p,u) - H(p) = log(k) - H(p)
+    h_p = _shannon_entropy(levels, base=2)
     max_kl = np.log2(k) if k > 1 else 1.0
+    kl = max(0.0, max_kl - h_p)
     uniformity = float(1.0 - min(kl / max(max_kl, 1e-12), 1.0))
 
     # Gini coefficient (concentration)

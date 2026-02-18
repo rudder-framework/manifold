@@ -23,6 +23,7 @@ from manifold.primitives.dynamical.lyapunov import (
     lyapunov_rosenstein,
     lyapunov_kantz,
 )
+from manifold.primitives.pairwise.regression import linear_regression
 
 
 def compute(
@@ -162,15 +163,10 @@ def compute_trend(lyap_values: np.ndarray) -> Dict[str, float]:
             'lyapunov_r2': np.nan,
         }
 
-    x = np.arange(len(lyap_values))[valid]
+    x = np.arange(len(lyap_values))[valid].astype(float)
     y = lyap_values[valid]
 
-    slope, intercept = np.polyfit(x, y, 1)
-
-    y_pred = slope * x + intercept
-    ss_res = np.sum((y - y_pred) ** 2)
-    ss_tot = np.sum((y - np.mean(y)) ** 2)
-    r2 = 1 - (ss_res / ss_tot) if ss_tot > 0 else 0
+    slope, _, r2, _ = linear_regression(x, y)
 
     return {
         'lyapunov_slope': float(slope),

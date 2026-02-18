@@ -131,12 +131,13 @@ def compute_signal_geometry_at_index(
     N, D = signal_matrix.shape
     results = []
 
-    centroid_norm = np.linalg.norm(centroid)
+    _zero = np.zeros_like(centroid)
+    centroid_norm = euclidean_distance(centroid, _zero)
 
     # If we have PCs, use first for coherence
     if principal_components is not None and len(principal_components) > 0:
         pc1 = principal_components[0]
-        pc1_norm = np.linalg.norm(pc1)
+        pc1_norm = euclidean_distance(pc1, np.zeros_like(pc1))
     else:
         # Fall back to centroid direction as PC1 proxy
         pc1 = centroid
@@ -159,7 +160,7 @@ def compute_signal_geometry_at_index(
 
         # Impute NaN features with centroid values (signal is "at the centroid" for missing features)
         signal_clean = np.where(np.isfinite(signal), signal, centroid)
-        signal_norm = np.linalg.norm(signal_clean)
+        signal_norm = euclidean_distance(signal_clean, np.zeros_like(signal_clean))
 
         # ─────────────────────────────────────────────────
         # DISTANCE to centroid → ENGINES PRIMITIVE
@@ -173,7 +174,7 @@ def compute_signal_geometry_at_index(
         if signal_norm > min_norm and pc1_norm > min_norm:
             # Center signal first for coherence
             centered = signal_clean - centroid
-            centered_norm = np.linalg.norm(centered)
+            centered_norm = euclidean_distance(centered, np.zeros_like(centered))
             if centered_norm > min_norm:
                 # Use ENGINES cosine_similarity for coherence
                 coherence = cosine_similarity(centered, pc1)
@@ -198,7 +199,7 @@ def compute_signal_geometry_at_index(
         if centroid_norm > min_norm:
             projection_on_centroid = (np.dot(signal_clean, centroid) / (centroid_norm ** 2)) * centroid
             residual_vector = signal_clean - projection_on_centroid
-            residual = np.linalg.norm(residual_vector)
+            residual = euclidean_distance(residual_vector, np.zeros_like(residual_vector))
         else:
             residual = signal_norm
 

@@ -2,7 +2,7 @@
 Manifold Sequencer
 ==================
 
-Orchestrates all 24 pipeline stages in dependency order.
+Orchestrates all 25 pipeline stages in dependency order.
 Pure orchestration — no computation here.
 
 All stages always run. No opt-in. No tiers.
@@ -11,7 +11,7 @@ Architecture: Manifold computes, Prime interprets.
     If it's linear algebra → Manifold.
     If it's SQL → Prime.
 
-Output: 27 parquet files in 5 directories (signal/, cohort/, cohort/cohort_dynamics/, system/, system/system_dynamics/).
+Output: 28 parquet files in 6 directories (signal/, cohort/, cohort/cohort_dynamics/, system/, system/system_dynamics/, parameterization/).
 
 Usage:
     python -m manifold domains/rossler
@@ -32,7 +32,7 @@ from manifold.io.reader import STAGE_DIRS, STAGE_FILENAMES
 
 
 # ═══════════════════════════════════════════════════════════════
-# STAGE REGISTRY — 24 stages, all always-on
+# STAGE REGISTRY — 25 stages, all always-on
 # ═══════════════════════════════════════════════════════════════
 
 # (module_path, stage_id) — module_path relative to manifold.stages
@@ -42,6 +42,7 @@ ALL_STAGES = [
     ('vector.signal_vector',             '01'),
     ('geometry.state_vector',            '02'),
     ('geometry.state_geometry',          '03'),
+    ('geometry.signal_dominance',       '03b'),
     ('geometry.signal_geometry',         '05'),
     ('information.signal_pairwise',      '06'),
     ('geometry.geometry_dynamics',       '07'),
@@ -404,6 +405,14 @@ def run(
         n_workers = os.cpu_count() or 2
 
     if verbose:
+        # Resolve backend info
+        from manifold.primitives._config import USE_RUST
+        try:
+            import pmtvs
+            backend_info = f"pmtvs ({'Rust' if USE_RUST else 'Python'})"
+        except ImportError:
+            backend_info = "Python (pmtvs not installed)"
+
         print("=" * 70)
         print("MANIFOLD PIPELINE")
         print("=" * 70)
@@ -412,6 +421,7 @@ def run(
         print(f"Output:   {output_dir}")
         print(f"Stages:   {len(run_stages)}")
         print(f"Workers:  {n_workers} ({'parallel' if n_workers > 1 else 'sequential'})")
+        print(f"Backend:  {backend_info}")
         print()
 
     obs_path = str(observations_path)
@@ -677,6 +687,13 @@ def _dispatch(
             _out(output_dir, 'cohort_vector.parquet'),
             data_path=data_path_str,
             cohort_geometry_path=_out(output_dir, 'cohort_geometry.parquet'),
+            verbose=verbose,
+        )
+
+    elif stage_name == 'signal_dominance':
+        module.run(
+            _out(output_dir, 'cohort_signal_positions.parquet'),
+            data_path=data_path_str,
             verbose=verbose,
         )
 
@@ -968,7 +985,7 @@ def main():
         description="Manifold Pipeline",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-24 stages. All always-on.
+25 stages. All always-on.
 
 Usage:
   python -m manifold ~/domains/rossler

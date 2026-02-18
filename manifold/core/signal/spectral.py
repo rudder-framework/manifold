@@ -1,19 +1,18 @@
 """
 Spectral Engine.
 
-Imports from primitives/individual/spectral.py (canonical).
-Adds spectral_slope not in primitives.
+Delegates to pmtvs spectral primitives.
 """
 
 import numpy as np
 from typing import Dict
 from manifold.primitives.individual.spectral import (
-    psd,
     dominant_frequency,
     spectral_centroid,
     spectral_bandwidth,
     spectral_entropy,
 )
+from manifold.primitives.individual.spectral_features import spectral_slope
 
 
 def compute(y: np.ndarray, sample_rate: float = 1.0) -> Dict[str, float]:
@@ -40,11 +39,9 @@ def compute(y: np.ndarray, sample_rate: float = 1.0) -> Dict[str, float]:
     y = y[~np.isnan(y)]
     n = len(y)
 
-    # Absolute minimum check - real validation happens in runner (PR2)
     if n < 4:
         return result
 
-    # Check for constant signal
     if np.std(y) < 1e-10:
         result['spectral_entropy'] = 0.0
         result['spectral_centroid'] = 0.0
@@ -53,20 +50,10 @@ def compute(y: np.ndarray, sample_rate: float = 1.0) -> Dict[str, float]:
         result['dominant_freq'] = 0.0
         return result
 
-    # Use primitives — no broad try/except; let failures propagate to dispatch layer
     result['dominant_freq'] = dominant_frequency(y, fs=sample_rate)
     result['spectral_entropy'] = spectral_entropy(y, fs=sample_rate, normalize=True)
     result['spectral_centroid'] = spectral_centroid(y, fs=sample_rate)
     result['spectral_bandwidth'] = spectral_bandwidth(y, fs=sample_rate)
-
-    # Spectral slope (not in primitives - compute here)
-    freqs, Pxx = psd(y, fs=sample_rate)
-    mask = freqs > 0
-    if np.sum(mask) > 3:
-        log_freqs = np.log10(freqs[mask])
-        log_psd = np.log10(Pxx[mask] + 1e-10)
-        if np.std(log_psd) > 1e-10:
-            slope, _ = np.polyfit(log_freqs, log_psd, 1)
-            result['spectral_slope'] = float(slope)
+    result['spectral_slope'] = spectral_slope(y, fs=sample_rate)
 
     return result

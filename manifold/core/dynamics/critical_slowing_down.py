@@ -28,7 +28,9 @@ Outputs:
 
 import numpy as np
 from typing import Dict, Any, Optional, Tuple
-from scipy.stats import linregress
+
+from manifold.primitives.pairwise.regression import linear_regression
+from manifold.primitives.pairwise.correlation import kendall_tau as _kendall_tau
 
 
 def compute(
@@ -66,8 +68,8 @@ def compute(
 
     # Optionally detrend (important for non-stationary data)
     if detrend:
-        t = np.arange(n)
-        slope, intercept, _, _, _ = linregress(t, values)
+        t = np.arange(n, dtype=float)
+        slope, intercept, _, _ = linear_regression(t, values)
         values = values - (slope * t + intercept)
 
     # Compute rolling statistics
@@ -99,13 +101,13 @@ def compute(
     skewness_series = np.array(skewness_series)
 
     # Compute trends
-    t = np.arange(len(autocorr_series))
+    t = np.arange(len(autocorr_series), dtype=float)
 
     # Autocorrelation trend (should increase before tipping)
-    ac_slope, ac_intercept, ac_r, _, _ = linregress(t, autocorr_series)
+    ac_slope, _, ac_r2, _ = linear_regression(t, autocorr_series)
 
     # Variance trend (should increase before tipping)
-    var_slope, var_intercept, var_r, _, _ = linregress(t, variance_series)
+    var_slope, _, var_r2, _ = linear_regression(t, variance_series)
 
     # Current values (end of series)
     current_autocorr = autocorr_series[-1]
@@ -148,9 +150,9 @@ def compute(
 
         # Trends
         'autocorr_trend': float(ac_slope),
-        'autocorr_trend_r2': float(ac_r ** 2),
+        'autocorr_trend_r2': float(ac_r2),
         'variance_trend': float(var_slope),
-        'variance_trend_r2': float(var_r ** 2),
+        'variance_trend_r2': float(var_r2),
         'variance_ratio': float(current_variance / baseline_variance) if baseline_variance > 0 else None,
 
         # Composite
@@ -274,8 +276,6 @@ def kendall_tau_trend(
     Kendall tau is more robust to outliers than linear regression.
     Used in Dakos et al. (2012) for CSD detection.
     """
-    from scipy.stats import kendalltau
-
     values = np.asarray(values).flatten()
     n = len(values)
 
@@ -300,27 +300,27 @@ def kendall_tau_trend(
     autocorr_series = np.array(autocorr_series)
     variance_series = np.array(variance_series)
 
-    t = np.arange(len(autocorr_series))
+    t = np.arange(len(autocorr_series), dtype=float)
 
     # Kendall tau for autocorrelation trend
     valid_ac = ~np.isnan(autocorr_series)
     if valid_ac.sum() > 5:
-        tau_ac, p_ac = kendalltau(t[valid_ac], autocorr_series[valid_ac])
+        tau_ac = _kendall_tau(t[valid_ac], autocorr_series[valid_ac])
     else:
-        tau_ac, p_ac = np.nan, np.nan
+        tau_ac = np.nan
 
     # Kendall tau for variance trend
     valid_var = ~np.isnan(variance_series)
     if valid_var.sum() > 5:
-        tau_var, p_var = kendalltau(t[valid_var], variance_series[valid_var])
+        tau_var = _kendall_tau(t[valid_var], variance_series[valid_var])
     else:
-        tau_var, p_var = np.nan, np.nan
+        tau_var = np.nan
 
     return {
         'tau_autocorr': float(tau_ac) if np.isfinite(tau_ac) else None,
-        'tau_autocorr_pvalue': float(p_ac) if np.isfinite(p_ac) else None,
+        'tau_autocorr_pvalue': None,
         'tau_variance': float(tau_var) if np.isfinite(tau_var) else None,
-        'tau_variance_pvalue': float(p_var) if np.isfinite(p_var) else None,
+        'tau_variance_pvalue': None,
     }
 
 

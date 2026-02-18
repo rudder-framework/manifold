@@ -32,6 +32,8 @@ Relationship to other engines:
 import numpy as np
 from typing import Dict, Any
 
+from manifold.primitives.information.entropy import shannon_entropy as _shannon_entropy
+
 
 MIN_SAMPLES = 4
 
@@ -84,7 +86,7 @@ def compute(y: np.ndarray, n_bins: int = 10) -> Dict[str, Any]:
     # Balance: normalized entropy of occupancy distribution
     # 1.0 = all states equally occupied, 0.0 = single state
     if k > 1:
-        entropy = -np.sum(fractions * np.log2(fractions + 1e-12))
+        entropy = _shannon_entropy(levels, base=2)
         max_entropy = np.log2(k)
         balance = float(entropy / max_entropy) if max_entropy > 0 else 0.0
     else:

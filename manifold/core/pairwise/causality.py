@@ -19,6 +19,7 @@ from manifold.primitives.pairwise.causality import (
 from manifold.primitives.information import (
     transfer_entropy as _transfer_entropy,
 )
+from manifold.primitives.information.entropy import shannon_entropy as _shannon_entropy
 
 
 def compute_granger(
@@ -127,11 +128,8 @@ def compute_transfer_entropy(
 
 
 def _entropy_1d(x: np.ndarray, n_bins: int) -> float:
-    """Compute entropy of 1D distribution."""
-    counts, _ = np.histogram(x, bins=n_bins)
-    probs = counts / counts.sum()
-    probs = probs[probs > 0]
-    return -np.sum(probs * np.log(probs))
+    """Compute entropy of 1D distribution via primitives."""
+    return float(_shannon_entropy(x, bins=n_bins, base=np.e))
 
 
 def compute_bidirectional(

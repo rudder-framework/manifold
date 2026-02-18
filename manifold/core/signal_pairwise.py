@@ -111,7 +111,7 @@ def compute_pairwise_at_index(
             euclidean_distance(signal_matrix[i], centroid)
             for i in range(N)
         ])
-        centroid_norm = np.linalg.norm(centroid)
+        centroid_norm = euclidean_distance(centroid, np.zeros_like(centroid))
         if centroid_norm > epsilon:
             # Projections onto centroid direction
             projections = (signal_matrix @ centroid) / centroid_norm

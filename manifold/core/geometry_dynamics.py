@@ -2,7 +2,7 @@
 ENGINES Geometry Dynamics Engine
 
 The complete differential geometry framework.
-Computes derivatives and curvature for the geometry evolution over time.
+Computes derivatives and curvature for the geometry evolution over windows.
 
 "You have position (cohort_vector).
  You have shape (eigenvalues).
@@ -22,8 +22,8 @@ ARCHITECTURE: This is an ORCHESTRATOR that delegates all compute to primitives.
 All mathematical operations are performed by directly-imported primitive functions.
 
 INPUT:
-- cohort_geometry.parquet (eigenvalues over time)
-- signal_geometry.parquet (signal positions over time)
+- cohort_geometry.parquet (eigenvalues per window)
+- signal_geometry.parquet (signal positions per window)
 
 OUTPUT:
 - geometry_dynamics.parquet (system-level dynamics)
@@ -92,8 +92,8 @@ def compute_derivatives(
     ARCHITECTURE: Pure orchestration - delegates all math to ENGINES primitives.
 
     Args:
-        x: Time series values
-        dt: Time step (from config if not provided)
+        x: Ordered series values
+        dt: Index step between consecutive points (from config if not provided)
         smooth_window: Smoothing window for noise reduction (from config if not provided)
 
     Returns:
@@ -140,7 +140,7 @@ def compute_derivatives(
     # ─────────────────────────────────────────────────
     # 1D CURVATURE: κ = |d²x/dt²| / (1 + (dx/dt)²)^(3/2)
     # Note: curvature is for 2D trajectories (x, y)
-    # For 1D time series, we compute curvature directly
+    # For 1D series, we compute curvature directly
     # ─────────────────────────────────────────────────
     denom = (1 + dx**2)**1.5
     curvature = np.where(denom > 1e-10, np.abs(d2x) / denom, 0)
@@ -168,10 +168,10 @@ def compute_phase_space(
     ARCHITECTURE: Pure orchestration - delegates to ENGINES primitive.
 
     Takens' theorem: The attractor can be reconstructed from
-    a single time series using delay coordinates.
+    a single ordered series using delay coordinates.
 
     Args:
-        x: Time series
+        x: Ordered series
         embedding_dim: Number of dimensions (from config if not provided)
         tau: Time delay (from config if not provided)
 
@@ -201,13 +201,13 @@ def detect_collapse(
     min_collapse_length: Optional[int] = None
 ) -> Dict[str, Any]:
     """
-    Detect dimensional collapse in effective_dim time series.
+    Detect dimensional collapse in effective_dim series.
 
     Collapse = sustained negative velocity in effective_dim
     indicating the system is losing degrees of freedom.
 
     Args:
-        effective_dim: Effective dimension over time
+        effective_dim: Effective dimension per window
         threshold_velocity: Velocity below this = collapsing (from config if not provided)
         sustained_fraction: Fraction of points that must be collapsing (from config if not provided)
         min_collapse_length: Minimum consecutive points for collapse (from config if not provided)
@@ -299,7 +299,7 @@ def compute_geometry_dynamics(
 
     Args:
         cohort_geometry: State geometry DataFrame
-        dt: Time step (from config if not provided)
+        dt: Index step between consecutive windows (from config if not provided)
         smooth_window: Smoothing window (from config if not provided)
         verbose: Print progress
 
@@ -354,7 +354,7 @@ def compute_geometry_dynamics(
         if n < 3:
             continue
 
-        # Extract time series
+        # Extract series
         effective_dim = group['effective_dim'].to_numpy()
         eigenvalue_1 = group['eigenvalue_1'].to_numpy()
         total_variance = group['total_variance'].to_numpy()

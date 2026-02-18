@@ -2,7 +2,7 @@
 Mean Time Between Engine
 ========================
 
-Computes per-state mean consecutive run lengths, then summarizes
+Computes per-state mean consecutive run lengths (in samples), then summarizes
 across states into fixed-width statistics.
 
 Returns summary statistics, NOT per-state columns
@@ -23,8 +23,8 @@ Physics:
     - mtb_cv high → some states much stickier than others
     - mtb_cv low → all states have similar dwell times
     - mtb_max / mtb_min diverging → asymmetric state dynamics
-    - This is the discrete equivalent of autocorrelation time —
-      how long does the system stay in each state?
+    - This is the discrete equivalent of autocorrelation length —
+      how many consecutive samples does the system stay in each state?
 
 Relationship to other engines:
     dwell_times       → statistics across ALL runs (pooled across states)
@@ -47,7 +47,7 @@ MIN_SAMPLES = 4
 
 def compute(y: np.ndarray, n_bins: int = 10) -> Dict[str, Any]:
     """
-    Compute mean time between transitions per state, then summarize.
+    Compute mean samples between transitions per state, then summarize.
 
     Parameters
     ----------

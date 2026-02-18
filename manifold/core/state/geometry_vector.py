@@ -13,6 +13,7 @@ from manifold.core.state.trajectory_views import (
     compute_fourier_view,
     compute_hilbert_view,
     compute_laplacian_view,
+    compute_wavelet_view,
 )
 
 
@@ -63,5 +64,6 @@ def compute_geometry_vector(
         result.update(compute_fourier_view(trajectories, feature_names))
         result.update(compute_hilbert_view(trajectories, feature_names))
         result.update(compute_laplacian_view(trajectories, feature_names))
+        result.update(compute_wavelet_view(trajectories, feature_names))
 
     return result

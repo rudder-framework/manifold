@@ -28,6 +28,8 @@ Physics:
 import numpy as np
 from typing import Dict, Any
 
+from manifold.primitives.information.entropy import shannon_entropy as _shannon_entropy
+
 
 MIN_SAMPLES = 4
 
@@ -100,10 +102,9 @@ def compute(y: np.ndarray, n_bins: int = 10) -> Dict[str, Any]:
     # Transition entropy: average entropy of each row
     row_entropies = []
     for i in range(k):
-        row = T_prob[i]
-        row_nonzero = row[row > 0]
-        if len(row_nonzero) > 0:
-            h = -np.sum(row_nonzero * np.log2(row_nonzero))
+        from_i = mapped[1:][mapped[:-1] == i]
+        if len(from_i) > 0:
+            h = _shannon_entropy(from_i, base=2)
             row_entropies.append(h)
     trans_entropy = float(np.mean(row_entropies)) if row_entropies else 0.0
 

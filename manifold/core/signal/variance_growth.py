@@ -10,6 +10,8 @@ import warnings
 import numpy as np
 from typing import Dict
 
+from manifold.primitives.pairwise.regression import linear_regression
+
 
 def compute(y: np.ndarray) -> Dict[str, float]:
     """
@@ -60,9 +62,9 @@ def compute(y: np.ndarray) -> Dict[str, float]:
             }
 
         # Fit log-log slope: var ~ n^alpha
-        log_sizes = np.log(sizes)
-        log_vars = np.log(variances)
-        slope, _ = np.polyfit(log_sizes, log_vars, 1)
+        log_sizes = np.log(np.array(sizes, dtype=float))
+        log_vars = np.log(np.array(variances, dtype=float))
+        slope, _, _, _ = linear_regression(log_sizes, log_vars)
 
         # Variance ratio: var(full) / var(half) normalized by size ratio
         var_full = np.var(cumsum)

@@ -21,6 +21,7 @@ from manifold.primitives.pairwise.correlation import (
 from manifold.primitives.pairwise.information import (
     mutual_information as _mutual_info,
 )
+from manifold.primitives.information.entropy import shannon_entropy as _shannon_entropy
 
 
 def compute(
@@ -109,7 +110,7 @@ def compute_cross_correlation(
         right = xcorr[center+1:][::-1]
         min_len = min(len(left), len(right))
         if min_len > 0:
-            xcorr_symmetric = float(np.corrcoef(left[:min_len], right[:min_len])[0, 1])
+            xcorr_symmetric = float(_correlation(left[:min_len], right[:min_len]))
         else:
             xcorr_symmetric = np.nan
     else:
@@ -171,11 +172,8 @@ def compute_mutual_info(
 
 
 def _entropy_1d(x: np.ndarray, n_bins: int) -> float:
-    """Compute entropy of 1D distribution."""
-    counts, _ = np.histogram(x, bins=n_bins)
-    probs = counts / counts.sum()
-    probs = probs[probs > 0]
-    return -np.sum(probs * np.log(probs))
+    """Compute entropy of 1D distribution via primitives."""
+    return float(_shannon_entropy(x, bins=n_bins, base=np.e))
 
 
 def compute_all(

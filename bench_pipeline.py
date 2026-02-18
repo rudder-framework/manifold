@@ -41,10 +41,10 @@ def main():
 
     # Check Rust status
     try:
-        from manifold_rs import individual
-        rust_status = "LOADED"
+        import pmtvs
+        rust_status = f"pmtvs ({pmtvs.BACKEND})"
     except ImportError:
-        rust_status = "NOT AVAILABLE"
+        rust_status = "NOT AVAILABLE (pmtvs not installed)"
 
     print("=" * 70)
     print("MANIFOLD PIPELINE BENCHMARK")

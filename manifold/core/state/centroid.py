@@ -12,6 +12,8 @@ import numpy as np
 import polars as pl
 from typing import Dict, Any, Optional, List
 
+from manifold.primitives.individual.similarity import euclidean_distance
+
 
 def compute(signal_matrix: np.ndarray, min_signals: int = 2) -> Dict[str, Any]:
     """
@@ -51,7 +53,7 @@ def compute(signal_matrix: np.ndarray, min_signals: int = 2) -> Dict[str, Any]:
     # Distance metrics from fully-valid rows only (no NaN imputation for distances)
     all_valid = np.isfinite(signal_matrix).all(axis=1)
     if all_valid.sum() >= 2:
-        distances = np.linalg.norm(signal_matrix[all_valid] - centroid, axis=1)
+        distances = np.array([euclidean_distance(row, centroid) for row in signal_matrix[all_valid]])
         mean_distance = float(np.mean(distances))
         max_distance = float(np.max(distances))
         std_distance = float(np.std(distances))
@@ -167,8 +169,7 @@ def compute_weighted(
     centroid = np.average(signal_matrix, axis=0, weights=weights)
 
     # Distance metrics
-    centered = signal_matrix - centroid
-    distances = np.linalg.norm(centered, axis=1)
+    distances = np.array([euclidean_distance(row, centroid) for row in signal_matrix])
 
     return {
         'centroid': centroid,

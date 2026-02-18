@@ -9,12 +9,15 @@ from pathlib import Path
 from typing import Optional
 
 
-# Output directory mapping (27 files -> 5 directories)
+# Output directory mapping (28 files -> 6 directories)
 STAGE_DIRS = {
     # signal/ — per-signal features
     'signal_vector':              'signal',
     'signal_geometry':            'signal',
     'signal_stability':           'signal',
+
+    # parameterization/ — derived rankings for Prime
+    'signal_dominance':           'parameterization',
 
     # cohort/ — per-cohort geometry & relationships
     'cohort_geometry':            'cohort',

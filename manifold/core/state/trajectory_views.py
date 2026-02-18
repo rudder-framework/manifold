@@ -5,8 +5,11 @@ Computes per-window views of feature trajectories:
 - Fourier view: spectral analysis of feature trajectories
 - Hilbert view: envelope (amplitude modulation) of feature trajectories
 - Laplacian view: graph coupling structure across signals
+- Wavelet view: multi-scale energy distribution of feature trajectories
 
 Pure computation — numpy/dict in, dict out. No file I/O.
+
+Delegates to pmtvs primitives for all spectral, wavelet, and correlation math.
 """
 
 import warnings
@@ -16,7 +19,10 @@ from typing import List, Dict
 
 from manifold.primitives.individual.spectral import spectral_profile
 from manifold.primitives.individual.hilbert import envelope
+from manifold.primitives.individual.stability import wavelet_stability as _wavelet_stability
 from manifold.primitives.matrix.graph import laplacian_matrix, laplacian_eigenvalues
+from manifold.primitives.pairwise.regression import linear_regression
+from manifold.primitives.pairwise.correlation import correlation as _correlation
 
 
 def compute_fourier_view(
@@ -83,8 +89,10 @@ def compute_hilbert_view(
             means.append(m)
 
             if len(env) >= 2:
-                trend = np.polyfit(np.arange(len(env)), env, 1)[0]
-                trends.append(float(trend))
+                slope, _, _, _ = linear_regression(
+                    np.arange(len(env), dtype=float), env
+                )
+                trends.append(float(slope))
             else:
                 trends.append(np.nan)
 
@@ -144,13 +152,18 @@ def compute_laplacian_view(
         padded[i, :len(v)] = v
 
     try:
-        # Build adjacency: |corrcoef|
-        corr = np.corrcoef(padded)
-        if corr.ndim < 2:
-            return result
+        # Build adjacency: |correlation| via primitives
+        n_vecs = len(padded)
+        corr = np.eye(n_vecs)
+        for i in range(n_vecs):
+            for j in range(i + 1, n_vecs):
+                c = _correlation(padded[i], padded[j])
+                if np.isfinite(c):
+                    corr[i, j] = c
+                    corr[j, i] = c
+
         adj = np.abs(corr)
         np.fill_diagonal(adj, 0.0)
-        adj = np.where(np.isfinite(adj), adj, 0.0)
 
         L = laplacian_matrix(adj, normalized=True)
         eigs = laplacian_eigenvalues(L)
@@ -165,5 +178,56 @@ def compute_laplacian_view(
         pass
     except Exception as e:
         warnings.warn(f"trajectory_views.compute_laplacian_view: {type(e).__name__}: {e}", RuntimeWarning, stacklevel=2)
+
+    return result
+
+
+def compute_wavelet_view(
+    trajectories: Dict[str, Dict[str, np.ndarray]],
+    feature_cols: List[str],
+    min_length: int = 8,
+) -> Dict[str, float]:
+    """
+    Wavelet view: run wavelet_stability on each signal's feature trajectory.
+    Extract dominant_scale, scale_entropy, energy_ratio.
+    Aggregate across signals via nanmedian.
+
+    Output keys: wavelet_{feature}_dominant_scale, wavelet_{feature}_scale_entropy,
+                 wavelet_{feature}_energy_ratio
+    """
+    result = {}
+
+    for feat in feature_cols:
+        dom_scales = []
+        entropies = []
+        energy_ratios = []
+
+        for sig_trajs in trajectories.values():
+            if feat not in sig_trajs:
+                continue
+            arr = sig_trajs[feat]
+            arr = arr[~np.isnan(arr)] if len(arr) > 0 else arr
+            n = len(arr)
+            if n < min_length:
+                continue
+            if np.std(arr) < 1e-10:
+                dom_scales.append(0.0)
+                entropies.append(0.0)
+                energy_ratios.append(np.nan)
+                continue
+
+            try:
+                r = _wavelet_stability(arr)
+                dom_scales.append(float(r.get('dominant_scale', np.nan)))
+                entropies.append(float(r.get('entropy', np.nan)))
+                energy_ratios.append(float(r.get('energy_ratio', np.nan)))
+            except (ValueError, TypeError):
+                pass
+            except Exception as e:
+                warnings.warn(f"trajectory_views.compute_wavelet_view: {type(e).__name__}: {e}", RuntimeWarning, stacklevel=2)
+
+        result[f'wavelet_{feat}_dominant_scale'] = float(np.nanmedian(dom_scales)) if dom_scales else np.nan
+        result[f'wavelet_{feat}_scale_entropy'] = float(np.nanmedian(entropies)) if entropies else np.nan
+        result[f'wavelet_{feat}_energy_ratio'] = float(np.nanmedian(energy_ratios)) if energy_ratios else np.nan
 
     return result
