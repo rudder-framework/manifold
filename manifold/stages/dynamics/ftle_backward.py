@@ -31,6 +31,18 @@ from manifold.core.dynamics.formal_definitions import classify_stability
 from manifold.io.writer import write_output
 from manifold.utils import safe_fmt
 
+# Rosenstein is O(n²) pairwise distances.  2000 samples → 4M pairs (fast).
+# 24000 samples → 576M pairs (minutes in pure Python).
+# For ergodic systems, tail-2000 gives equivalent Lyapunov exponents.
+_MAX_SAMPLES = 2000
+
+
+def _cap(values: np.ndarray) -> np.ndarray:
+    """Take the tail of the signal if it exceeds _MAX_SAMPLES."""
+    if len(values) > _MAX_SAMPLES:
+        return values[-_MAX_SAMPLES:]
+    return values
+
 
 def run(
     observations_path: str,
@@ -112,9 +124,9 @@ def run(
                     pre_values_comp = pre_values[::-1].copy() if backward else pre_values
                     post_values_comp = post_values[::-1].copy() if backward else post_values
 
-                    ftle_full = compute_ftle(values_comp, min_samples=min_samples, method=method)
-                    ftle_pre = compute_ftle(pre_values_comp, min_samples=min(min_samples, 50), method=method) if len(pre_values) >= 20 else {'ftle': None, 'ftle_std': None, 'confidence': 0}
-                    ftle_post = compute_ftle(post_values_comp, min_samples=min_samples, method=method) if len(post_values) >= min_samples else {'ftle': None, 'ftle_std': None, 'confidence': 0}
+                    ftle_full = compute_ftle(_cap(values_comp), min_samples=min_samples, method=method)
+                    ftle_pre = compute_ftle(_cap(pre_values_comp), min_samples=min(min_samples, 50), method=method) if len(pre_values) >= 20 else {'ftle': None, 'ftle_std': None, 'confidence': 0}
+                    ftle_post = compute_ftle(_cap(post_values_comp), min_samples=min_samples, method=method) if len(post_values) >= min_samples else {'ftle': None, 'ftle_std': None, 'confidence': 0}
 
                     prefix = 'ftle'
                     ftle_val = ftle_full['ftle']
@@ -149,7 +161,7 @@ def run(
                 else:
                     values_comp = values[::-1].copy() if backward else values
                     ftle_result = compute_ftle(
-                        values_comp,
+                        _cap(values_comp),
                         min_samples=min_samples,
                         method=method,
                     )
@@ -183,7 +195,7 @@ def run(
 
             values_comp = values[::-1].copy() if backward else values
             ftle_result = compute_ftle(
-                values_comp,
+                _cap(values_comp),
                 min_samples=min_samples,
                 method=method,
             )

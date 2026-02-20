@@ -32,6 +32,18 @@ from manifold.core.dynamics.lyapunov import compute as compute_lyapunov
 from manifold.io.writer import write_output
 from manifold.utils import safe_fmt
 
+# Rosenstein is O(n²) pairwise distances.  2000 samples → 4M pairs (fast).
+# 24000 samples → 576M pairs (minutes in pure Python).
+# For ergodic systems, tail-2000 gives equivalent Lyapunov exponents.
+_MAX_SAMPLES = 2000
+
+
+def _cap(values: np.ndarray) -> np.ndarray:
+    """Take the tail of the signal if it exceeds _MAX_SAMPLES."""
+    if len(values) > _MAX_SAMPLES:
+        return values[-_MAX_SAMPLES:]
+    return values
+
 
 def run(
     observations_path: str,
@@ -85,7 +97,7 @@ def run(
                 values = cohort_data['value'].to_numpy()
 
                 lyap_result = compute_lyapunov(
-                    values,
+                    _cap(values),
                     min_samples=min_samples,
                     method=method,
                 )
@@ -103,7 +115,7 @@ def run(
             values = signal_data['value'].to_numpy()
 
             lyap_result = compute_lyapunov(
-                values,
+                _cap(values),
                 min_samples=min_samples,
                 method=method,
             )

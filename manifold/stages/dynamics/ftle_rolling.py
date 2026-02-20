@@ -92,6 +92,15 @@ def run(
             if len(values) < window_size:
                 continue
 
+            # Compute embedding params once per signal on first window.
+            # Cao analysis is the dominant cost per call (~0.5s vs ~0.03s with cached params).
+            first_window = values[:window_size]
+            if direction == 'backward':
+                first_window = first_window[::-1]
+            seed_result = compute_ftle(first_window, min_samples=min_samples)
+            cached_dim = seed_result.get('embedding_dim')
+            cached_tau = seed_result.get('embedding_tau')
+
             # Rolling window FTLE
             prev_ftle = None
             signal_results = []
@@ -104,8 +113,11 @@ def run(
                 if direction == 'backward':
                     window = window[::-1]
 
-                # Compute FTLE
-                ftle_result = compute_ftle(window, min_samples=min_samples)
+                # Compute FTLE with cached embedding params (skip Cao per window)
+                ftle_result = compute_ftle(
+                    window, min_samples=min_samples,
+                    emb_dim=cached_dim, emb_tau=cached_tau,
+                )
 
                 if ftle_result['ftle'] is None:
                     continue

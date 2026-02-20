@@ -29,6 +29,9 @@ from manifold.core.pairwise.divergence import kl_divergence, js_divergence
 from manifold.core.pairwise import cointegration, copula
 from manifold.io.writer import write_output
 
+# DTW is O(n²) and Granger does VAR fitting.  Cap to keep both tractable.
+_MAX_SAMPLES = 2000
+
 
 def _compute_pair(args):
     """Compute all information flow metrics for a single pair. Runs in worker process."""
@@ -216,6 +219,11 @@ def run(
             min_len = min(len(x), len(y))
             x = x[:min_len]
             y = y[:min_len]
+
+            # Cap to _MAX_SAMPLES (tail): DTW is O(n²), Granger does VAR fitting
+            if len(x) > _MAX_SAMPLES:
+                x = x[-_MAX_SAMPLES:]
+                y = y[-_MAX_SAMPLES:]
 
             if len(x) < min_samples:
                 continue
