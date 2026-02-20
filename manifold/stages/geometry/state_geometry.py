@@ -258,9 +258,9 @@ def compute_cohort_geometry(
             # Bootstrap confidence interval for effective_dim
             if len(matrix) >= 5:
                 bs = bootstrap_effective_dim(matrix, n_bootstrap=50)
-                row['eff_dim_std'] = bs['eff_dim_std']
-                row['eff_dim_ci_low'] = bs['eff_dim_ci_low']
-                row['eff_dim_ci_high'] = bs['eff_dim_ci_high']
+                row['eff_dim_std'] = np.nan  # not computed by bootstrap; CI bounds suffice
+                row['eff_dim_ci_low'] = bs['effective_dim_lower']
+                row['eff_dim_ci_high'] = bs['effective_dim_upper']
             else:
                 row['eff_dim_std'] = np.nan
                 row['eff_dim_ci_low'] = np.nan
