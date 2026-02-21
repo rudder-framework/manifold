@@ -335,9 +335,31 @@ def compute_cohort_geometry(
             print(f"  Processed {i + 1}/{n_groups}...")
 
     # Build DataFrame
-    result = pl.DataFrame(results)
     from manifold.io.units import cohort_geometry_units
     meta = cohort_geometry_units(signal_0_name, signal_0_unit)
+
+    if not results:
+        # All groups skipped (e.g., every cohort has < 2 valid signals).
+        # Write a schema-only parquet so downstream stages don't crash
+        # with FileNotFoundError — they handle 0-row input gracefully.
+        if verbose:
+            print("  No eigendecomposition computed (all cohorts have < 2 valid signals)")
+        result = pl.DataFrame(schema={
+            'signal_0_end': pl.Float64,
+            'signal_0_start': pl.Float64,
+            'signal_0_center': pl.Float64,
+            'engine': pl.String,
+            'n_signals': pl.Int64,
+            'n_features': pl.Int64,
+            'eigenvalue_1': pl.Float64,
+            'effective_dim': pl.Float64,
+            'total_variance': pl.Float64,
+            'eigenvalue_entropy': pl.Float64,
+            'eigenvalue_entropy_norm': pl.Float64,
+            'condition_number': pl.Float64,
+        })
+    else:
+        result = pl.DataFrame(results)
     write_output(result, data_path, 'cohort_geometry', verbose=verbose, metadata=meta)
 
     # Base metadata (no column_units) for sidecars — loadings are dimensionless

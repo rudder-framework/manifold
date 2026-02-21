@@ -256,6 +256,7 @@ def _merge_cohort_outputs(
 
         for filename in sorted(all_files):
             parts = []
+            schema_sample = None
             for info in cohort_map.values():
                 part_path = Path(info['output_dir']) / subdir / filename
                 if part_path.exists():
@@ -263,6 +264,8 @@ def _merge_cohort_outputs(
                         df = pl.read_parquet(str(part_path))
                         if len(df) > 0:
                             parts.append(df)
+                        elif schema_sample is None and len(df.columns) > 0:
+                            schema_sample = df  # keep schema from 0-row file
                     except Exception:
                         pass
 
@@ -272,6 +275,14 @@ def _merge_cohort_outputs(
                 merged_count += 1
                 if verbose:
                     print(f"  {subdir}/{filename}: {len(merged)} rows ({len(parts)} cohorts)")
+            elif schema_sample is not None:
+                # All cohorts produced 0-row files — write schema-only parquet
+                # so downstream stages can read it without FileNotFoundError
+                final_subdir.mkdir(parents=True, exist_ok=True)
+                schema_sample.write_parquet(str(final_subdir / filename))
+                merged_count += 1
+                if verbose:
+                    print(f"  {subdir}/{filename}: 0 rows (schema only)")
 
     if verbose:
         print(f"  Merged {merged_count} files")
