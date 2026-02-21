@@ -6,7 +6,7 @@ Delegates to pmtvs time_constant primitive.
 
 import numpy as np
 from typing import Dict
-from manifold.primitives.individual.domain import time_constant
+from manifold.core._compat import time_constant
 
 
 def compute(y: np.ndarray, I: np.ndarray = None) -> Dict[str, float]:

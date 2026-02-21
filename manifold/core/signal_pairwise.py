@@ -28,9 +28,7 @@ from typing import List, Dict, Optional, Any, Tuple
 from itertools import combinations
 
 # Import primitives for all mathematical computation
-from manifold.primitives.individual.similarity import (
-    euclidean_distance, cosine_similarity, correlation_coefficient,
-)
+from manifold.core._pmtvs import euclidean_distance, cosine_similarity, correlation as _correlation
 
 # Import configuration
 from manifold.config import get_config
@@ -146,7 +144,7 @@ def compute_pairwise_at_index(
         # CORRELATION → ENGINES PRIMITIVE
         # ─────────────────────────────────────────────────
         if D > 1:
-            correlation = correlation_coefficient(signal_a, signal_b)
+            correlation = _correlation(signal_a, signal_b)
             # Handle NaN from correlation_coefficient (can happen with constant signals)
             if np.isnan(correlation):
                 correlation = 0.0

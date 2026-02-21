@@ -24,9 +24,7 @@ import polars as pl
 from typing import List, Dict, Optional, Any, Set
 
 # Import primitives for all mathematical computation
-from manifold.primitives.individual.normalization import zscore_normalize
-from manifold.primitives.individual.similarity import euclidean_distance, cosine_similarity
-from manifold.primitives.individual.geometry import covariance_matrix, eigendecomposition
+from manifold.core._pmtvs import zscore_normalize, euclidean_distance, cosine_similarity, covariance_matrix, eigendecomposition
 
 # Import configuration
 from manifold.config import get_config
@@ -342,7 +340,7 @@ def compute_signal_geometry(
                     # EIGENDECOMPOSITION → ENGINES PRIMITIVE
                     # ─────────────────────────────────────────────────
                     cov_matrix = covariance_matrix(normalized)
-                    eigenvalues, eigenvectors = eigendecomposition(cov_matrix, sort_descending=True)
+                    eigenvalues, eigenvectors = eigendecomposition(cov_matrix)
                     # Principal components are rows (transpose eigenvectors)
                     principal_components = eigenvectors.T
                 except (np.linalg.LinAlgError, ValueError):

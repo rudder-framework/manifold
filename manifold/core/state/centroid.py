@@ -12,7 +12,7 @@ import numpy as np
 import polars as pl
 from typing import Dict, Any, Optional, List
 
-from manifold.primitives.individual.similarity import euclidean_distance
+from manifold.core._pmtvs import euclidean_distance
 
 
 def compute(signal_matrix: np.ndarray, min_signals: int = 2) -> Dict[str, Any]:

@@ -29,8 +29,7 @@ Outputs:
 import numpy as np
 from typing import Dict, Any, Optional, Tuple
 
-from manifold.primitives.pairwise.regression import linear_regression
-from manifold.primitives.pairwise.correlation import kendall_tau as _kendall_tau
+from manifold.core._pmtvs import linear_regression, kendall_tau as _kendall_tau
 
 
 def compute(

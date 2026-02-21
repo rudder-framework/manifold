@@ -9,7 +9,9 @@ import warnings
 
 import numpy as np
 from typing import Dict
-from manifold.primitives.config import PRIMITIVES_CONFIG as cfg
+
+# Min samples for stationarity tests (was PRIMITIVES_CONFIG.min_samples.stationarity)
+_MIN_SAMPLES_STATIONARITY = 20
 
 
 def compute(y: np.ndarray) -> Dict[str, float]:
@@ -41,7 +43,7 @@ def compute(y: np.ndarray) -> Dict[str, float]:
     y = y[~np.isnan(y)]
     n = len(y)
 
-    if n < cfg.min_samples.stationarity:
+    if n < _MIN_SAMPLES_STATIONARITY:
         return result
 
     # Check for constant signal

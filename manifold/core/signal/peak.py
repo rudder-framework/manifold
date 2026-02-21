@@ -5,7 +5,7 @@ Imports from primitives/individual/statistics.py (canonical).
 """
 
 import numpy as np
-from manifold.primitives.individual.statistics import peak_to_peak
+from manifold.core._stats import peak_to_peak
 
 
 def compute(y: np.ndarray) -> dict:

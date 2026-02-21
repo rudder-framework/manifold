@@ -15,17 +15,8 @@ import warnings
 import numpy as np
 from typing import Dict, Any, Optional, List
 
-from manifold.primitives.embedding import (
-    time_delay_embedding,
-    optimal_delay,
-    optimal_dimension,
-)
-from manifold.primitives.dynamical.sensitivity import (
-    compute_variable_sensitivity,
-    compute_sensitivity_evolution,
-    detect_sensitivity_transitions,
-    compute_influence_matrix,
-)
+from pmtvs import time_delay_embedding, optimal_delay, optimal_dimension
+from manifold.core._pmtvs import compute_variable_sensitivity, compute_sensitivity_evolution, detect_sensitivity_transitions, compute_influence_matrix
 
 
 def compute(

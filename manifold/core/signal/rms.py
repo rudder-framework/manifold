@@ -5,7 +5,7 @@ Imports from primitives/individual/statistics.py (canonical).
 """
 
 import numpy as np
-from manifold.primitives.individual.statistics import rms
+from manifold.core._stats import rms
 
 
 def compute(y: np.ndarray) -> dict:

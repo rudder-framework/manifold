@@ -6,14 +6,7 @@ Imports from primitives/individual/statistics.py (canonical).
 
 import numpy as np
 from typing import Dict
-from manifold.primitives.individual.statistics import (
-    kurtosis,
-    skewness,
-    crest_factor,
-    rms,
-    zero_crossings,
-    mean_crossings,
-)
+from manifold.core._stats import kurtosis, skewness, crest_factor, rms, zero_crossings, mean_crossings
 
 
 def compute(y: np.ndarray) -> Dict[str, float]:

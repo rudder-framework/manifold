@@ -46,6 +46,9 @@ STAGE_DIRS = {
     'system_cohort_positions':    'system',
     'system_pairwise':            'system',
     'system_information_flow':    'system',
+    'trajectory_signatures':      'system',
+    'trajectory_library':         'system',
+    'trajectory_match':           'system',
 
     # system/system_dynamics/ — fleet-level dynamics
     'system_ftle':                'system/system_dynamics',

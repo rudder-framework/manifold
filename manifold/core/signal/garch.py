@@ -6,7 +6,7 @@ Delegates to pmtvs garch primitive.
 
 import numpy as np
 from typing import Dict
-from manifold.primitives.individual.volatility import garch
+# TODO: needs pmtvs export — garch
 
 
 def compute(y: np.ndarray) -> Dict[str, float]:
@@ -19,4 +19,10 @@ def compute(y: np.ndarray) -> Dict[str, float]:
     Returns:
         dict with garch_omega, garch_alpha, garch_beta, garch_persistence
     """
-    return garch(y)
+    # garch not yet in pmtvs
+    return {
+        'garch_omega': np.nan,
+        'garch_alpha': np.nan,
+        'garch_beta': np.nan,
+        'garch_persistence': np.nan,
+    }

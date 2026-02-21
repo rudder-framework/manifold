@@ -37,7 +37,7 @@ def compute(y: np.ndarray) -> Dict[str, Any]:
 
     # Pass raw signal to lyapunov_rosenstein — it handles embedding internally.
     # Do NOT pre-embed; the primitive expects a 1D time series.
-    from manifold.primitives.dynamical.lyapunov import lyapunov_rosenstein
+    from pmtvs import lyapunov_rosenstein  # top-level export in published pmtvs
 
     lyap, divergence, iterations = lyapunov_rosenstein(y)
 

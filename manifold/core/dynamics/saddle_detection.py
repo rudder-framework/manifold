@@ -15,17 +15,8 @@ import warnings
 import numpy as np
 from typing import Dict, Any, Optional, List
 
-from manifold.primitives.embedding import (
-    time_delay_embedding,
-    optimal_delay,
-    optimal_dimension,
-)
-from manifold.primitives.dynamical.saddle import (
-    detect_saddle_points,
-    classify_jacobian_eigenvalues,
-    compute_separatrix_distance,
-    compute_basin_stability,
-)
+from pmtvs import time_delay_embedding, optimal_delay, optimal_dimension
+from manifold.core._pmtvs import detect_saddle_points, classify_jacobian_eigenvalues, compute_separatrix_distance, compute_basin_stability
 
 
 def compute(
@@ -65,7 +56,7 @@ def compute(
             emb_dim = optimal_dimension(y, emb_tau, max_dim=10)
 
         # Embed signal
-        embedded = time_delay_embedding(y, dimension=emb_dim, delay=emb_tau)
+        embedded = time_delay_embedding(y, dim=emb_dim, tau=emb_tau)
 
         if len(embedded) < 50:
             return _empty_result()

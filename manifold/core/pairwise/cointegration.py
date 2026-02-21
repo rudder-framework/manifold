@@ -25,8 +25,7 @@ References:
 import numpy as np
 from typing import Optional
 
-from manifold.primitives.pairwise.regression import linear_regression
-from manifold.primitives.tests.stationarity_tests import adf_test as _adf_test
+from manifold.core._pmtvs import linear_regression, adf_test as _adf_test
 
 
 def compute(
@@ -81,7 +80,7 @@ def compute(
     residual_std = np.std(residuals)
 
     # Step 2: ADF test on residuals
-    adf_stat, adf_pvalue, _, _ = _adf_test(residuals, max_lag=max_lag)
+    adf_stat, adf_pvalue = _adf_test(residuals, max_lag=max_lag)
 
     # Half-life of mean reversion (AR(1) on residuals)
     half_life = _half_life(residuals, linear_regression)

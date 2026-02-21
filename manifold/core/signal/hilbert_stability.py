@@ -5,7 +5,7 @@ Delegates to pmtvs hilbert_stability primitive.
 """
 
 import numpy as np
-from manifold.primitives.individual.stability import hilbert_stability
+from manifold.core._compat import hilbert_stability
 
 
 def compute(y: np.ndarray, fs: float = 1.0) -> dict:

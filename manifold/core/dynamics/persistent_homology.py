@@ -47,11 +47,7 @@ def compute(
             total_persistence_h0, total_persistence_h1,
             n_significant_h0, n_significant_h1
     """
-    from manifold.primitives.topology import (
-        persistence_diagram,
-        betti_numbers,
-        persistence_entropy,
-    )
+    from manifold.core._pmtvs import persistence_diagram, betti_numbers, persistence_entropy
 
     trajectory = np.asarray(trajectory, dtype=np.float64)
 
@@ -75,31 +71,42 @@ def compute(
         subsampled = True
 
     try:
-        # Compute persistence diagram
-        diagrams = persistence_diagram(trajectory, max_dimension=max_dim)
+        # Compute persistence diagram (pmtvs returns flat List[Tuple[float,float]])
+        dgm = persistence_diagram(trajectory)
 
-        # Betti numbers (count features with persistence above noise threshold)
-        noise_thresh = _estimate_noise_threshold(diagrams)
-        betti = betti_numbers(diagrams, threshold=noise_thresh)
+        # Split into H0 (birth=0) and H1 (birth>0)
+        dgm_h0 = [(b, d) for b, d in dgm if b == 0.0]
+        dgm_h1 = [(b, d) for b, d in dgm if b > 0.0]
 
-        # Also get raw betti (no threshold) for comparison
-        betti_raw = betti_numbers(diagrams)
+        # Noise threshold from all persistence values
+        all_pers = [d - b for b, d in dgm if np.isfinite(d - b)]
+        noise_thresh = float(np.median(all_pers)) if all_pers else 0.0
+
+        # Betti numbers (features above noise threshold)
+        betti_0 = sum(1 for b, d in dgm_h0 if (d - b) > noise_thresh)
+        betti_1 = sum(1 for b, d in dgm_h1 if (d - b) > noise_thresh)
 
         # Persistence entropy per dimension
-        ent_h0 = persistence_entropy(diagrams, dimension=0)
-        ent_h1 = persistence_entropy(diagrams, dimension=1) if max_dim >= 1 else np.nan
+        ent_h0 = persistence_entropy(dgm_h0) if dgm_h0 else np.nan
+        ent_h1 = persistence_entropy(dgm_h1) if dgm_h1 and max_dim >= 1 else np.nan
 
-        # Summary metrics per dimension
-        max_pers_h0, total_pers_h0 = _persistence_summary(diagrams, 0)
-        max_pers_h1, total_pers_h1 = _persistence_summary(diagrams, 1) if max_dim >= 1 else (np.nan, np.nan)
+        # Summary metrics
+        def _pers_summary(pairs):
+            pers = [d - b for b, d in pairs if np.isfinite(d - b)]
+            if not pers:
+                return np.nan, np.nan
+            return float(max(pers)), float(sum(pers))
 
-        # Significant features (persistence > noise threshold)
-        n_sig_h0 = _count_significant(diagrams, 0, noise_thresh)
-        n_sig_h1 = _count_significant(diagrams, 1, noise_thresh) if max_dim >= 1 else 0
+        max_pers_h0, total_pers_h0 = _pers_summary(dgm_h0)
+        max_pers_h1, total_pers_h1 = _pers_summary(dgm_h1) if max_dim >= 1 else (np.nan, np.nan)
+
+        # Significant features
+        n_sig_h0 = sum(1 for b, d in dgm_h0 if np.isfinite(d - b) and (d - b) > noise_thresh)
+        n_sig_h1 = sum(1 for b, d in dgm_h1 if np.isfinite(d - b) and (d - b) > noise_thresh) if max_dim >= 1 else 0
 
         return {
-            'betti_0': betti.get(0, 0),
-            'betti_1': betti.get(1, 0),
+            'betti_0': betti_0,
+            'betti_1': betti_1,
             'persistence_entropy_h0': ent_h0,
             'persistence_entropy_h1': ent_h1,
             'max_persistence_h0': max_pers_h0,

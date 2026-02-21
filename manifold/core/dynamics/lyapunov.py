@@ -15,15 +15,8 @@ import warnings
 import numpy as np
 from typing import Dict, Any, Optional
 
-from manifold.primitives.embedding import (
-    optimal_delay,
-    optimal_dimension,
-)
-from manifold.primitives.dynamical.lyapunov import (
-    lyapunov_rosenstein,
-    lyapunov_kantz,
-)
-from manifold.primitives.pairwise.regression import linear_regression
+from pmtvs import optimal_delay, optimal_dimension, lyapunov_rosenstein, lyapunov_kantz
+from manifold.core._pmtvs import linear_regression
 
 
 def compute(

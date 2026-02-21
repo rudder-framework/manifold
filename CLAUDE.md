@@ -1,9 +1,9 @@
 # CLAUDE.md — Manifold
 
 Manifold is a domain-agnostic dynamical systems computation engine.
-It reads `observations.parquet` and produces 27 parquet files in 5 directories.
+It reads `observations.parquet` and a `manifest.yaml`, then produces parquet files in organized directories.
 
-**Design principle:** Stages orchestrate. Engines compute. Primitives (standalone package) do math.
+**Design principle:** Stages orchestrate. Engines compute. pmtvs does math.
 Each layer only calls the layer below it.
 
 **Manifold computes. It never classifies, labels, or interprets.**
@@ -19,71 +19,38 @@ GitHub org: `rudder-framework`
 ```
 rudder-framework/prime       → interpreter, classification, SQL analysis
 rudder-framework/manifold    → THIS REPO — blind compute engine
-rudder-framework/primitives  → Rust+Python math functions (shared dependency, PyPI: pmtvs)
+rudder-framework/pmtvs       → Rust+Python math functions (PyPI: pmtvs)
 ```
 
 Prime depends on Manifold's output. Manifold never depends on Prime.
-Both depend on primitives (`pmtvs` on PyPI). Primitives depends on nothing.
+Both depend on pmtvs (`pip install pmtvs`). pmtvs depends on nothing.
 
 ```
-primitives/pmtvs   (leaf — no dependencies)
-   ↑    ↑
-   |    |
+pmtvs   (leaf — no dependencies)
+ ↑   ↑
+ |   |
 Prime  Manifold
-   |    ↑
-   └────┘    (Prime calls Manifold's pipeline)
+ |   ↑
+ └───┘    (Prime calls Manifold's pipeline)
 ```
-
-**Note:** `manifold/primitives/` contains thin re-exports that delegate to the
-standalone `pmtvs` package (`pip install pmtvs`). All math lives in `~/primitives/`.
 
 ---
 
-## How to Run
-
-### Library API (how Prime calls Manifold)
-
-```python
-from manifold import run
-
-run(
-    observations_path="~/domains/rossler/observations.parquet",
-    manifest_path="~/domains/rossler/manifest.yaml",
-    output_dir="~/domains/rossler/output",
-)
-```
-
-Three explicit paths. No guessing. No path discovery.
-
-### CLI (debugging only)
-
-```bash
-cd ~/manifold
-python -m manifold ~/domains/rossler           # Full pipeline on rossler
-python -m manifold ~/domains/cmapss/FD_004/train  # Full pipeline on FD004
-python -m manifold ~/domains/calce             # Full pipeline on calce
-```
-
-The CLI resolves `data_path` into the three explicit paths and calls `run()`.
-All 24 stages run. No flags needed.
-
-**Virtual environment:** `./venv/` — always use it. Never create a new one.
-
-**Rust backend:** Controlled by `PRIMITIVES_USE_RUST` env var in the standalone
-`pmtvs` package (default: on). Manifold itself has no Rust code or toggle.
-
-**Parallel workers:** `MANIFOLD_WORKERS` env var (default: `0` = auto-detect).
-FD004 with 249 cohorts across 18 stages: ~3 minutes with Rust + 9 workers.
-
----
-
-## Architecture: Three Layers
+## Architecture: Two Layers
 
 ```
 manifold/stages/       RUNNERS — orchestrate I/O. Read parquet, call engines, write parquet.
 manifold/core/         ENGINES — compute. DataFrames in, DataFrames out. No file I/O.
-manifold/primitives/   RE-EXPORTS — thin wrappers delegating to standalone pmtvs package.
 ```
+
+ALL math imports come directly from pmtvs:
+```python
+from pmtvs import sample_entropy, hurst_exponent, eigendecomposition
+```
+
+There is no `manifold/primitives/` directory. It was removed.
+Never recreate it. Never create wrapper functions for pmtvs.
+If a function name doesn't match, fix the call site or add an alias in pmtvs.
 
 Each layer ONLY calls the layer below it.
 
@@ -91,45 +58,73 @@ Each layer ONLY calls the layer below it.
 |-------|-------|---------|----------|
 | `stages/group/run.py` (runner) | manifest, file paths | writes parquet files | YES |
 | `core/*.py` (engine) | config dict, DataFrames | DataFrames | NO |
-| `primitives/*.py` | re-exports from `pmtvs` package | numpy arrays | NO |
+| `pmtvs` (external package) | numpy arrays | numpy arrays / floats | NO |
 
 Also:
 - `manifold/io/` — reader.py, writer.py, manifest.py (all parquet I/O)
-- `manifold/validation/` — input checks (sequential I, no nulls, signal_id present)
-- `manifold/run.py` — top-level sequencer (dependency-ordered, not strictly group-sequential)
+- `manifold/validation/` — input checks (sequential signal_0, no nulls, signal_id present)
+- `manifold/run.py` — top-level sequencer (dependency-ordered)
 
 ### Layer enforcement
 
 ```bash
-# These should return NOTHING. If they return hits, someone broke the contract:
-grep -rn "from manifold.stages" manifold/core/ manifold/primitives/
-grep -rn "from manifold.core" manifold/primitives/
+# These should return NOTHING:
+grep -rn "from manifold.stages" manifold/core/
+grep -rn "manifold.primitives" manifold/
 ```
 
 Nobody reaches up. Nobody skips a layer.
 
 ---
 
+## How to Run
+
+### CLI
+
+```bash
+cd ~/manifold
+./venv/bin/python -m manifold ~/domains/rossler/train
+./venv/bin/python -m manifold ~/domains/cmapss/FD_004/train
+./venv/bin/python -m manifold ~/domains/pendulum/train
+```
+
+Point at a directory containing `time_observations.parquet` and `manifest.yaml`.
+All stages run. No flags needed.
+
+### Library API (how Prime calls Manifold)
+
+```python
+from manifold import run
+
+run(
+    observations_path="~/domains/rossler/train/time_observations.parquet",
+    manifest_path="~/domains/rossler/train/manifest.yaml",
+    output_dir="~/domains/rossler/train/time_output",
+)
+```
+
+Three explicit paths. No guessing. No path discovery.
+
+**Virtual environment:** `./venv/` — always use it. Never create a new one.
+
+**Parallel workers:** `MANIFOLD_WORKERS` env var (default: `0` = auto-detect).
+
+---
+
 ## Import Conventions
 
 ```python
-# Primitives: direct function imports (re-exports chain to standalone package)
-from manifold.primitives.individual.spectral import psd
-from manifold.primitives.dynamical.ftle import compute_ftle
+# Math: always direct from pmtvs
+from pmtvs import sample_entropy, hurst_exponent, eigendecomposition
+from pmtvs import svd_decomposition as svd
+from pmtvs import optimal_delay, optimal_dimension
 
 # Core engines: module imports
 from manifold.core.state_geometry import compute_state_geometry
+from manifold.core.geometry_dynamics import compute_geometry_dynamics
 
 # Stages import from core, never from other stages
-from manifold.core.geometry_dynamics import compute_geometry_dynamics
 ```
-
-**Re-export pattern:** Each file in `manifold/primitives/` contains only:
-```python
-"""Re-export from standalone primitives package."""
-from pmtvs.<category>.<module> import *  # noqa: F401,F403
-```
-All math implementation lives in the standalone `pmtvs` package.
 
 ---
 
@@ -141,84 +136,91 @@ All math implementation lives in the standalone `pmtvs` package.
 |--------|------|----------|-------------|
 | cohort | String | Optional | Grouping key (engine_1, pump_A). User-defined, never used inside engines. |
 | signal_id | String | Required | Which signal (temp, pressure, vibration) |
-| I | UInt32 | Required | Canonical sequential index: 0, 1, 2, 3... per signal_id. **NOT a timestamp.** |
+| signal_0 | Float64 | Required | Canonical sequential index: 0, 1, 2, 3... per signal_id. **NOT a timestamp.** |
 | value | Float64 | Required | The measurement |
 
-**I is sacred.** Manifold groups by `(signal_id, I)` where I is always sequential integers starting at 0.
+**signal_0 is sacred.** Manifold groups by `(signal_id, signal_0)` where signal_0 is always sequential integers starting at 0.
 Never reindex. Never use timestamps. Never skip values.
 
 **observations.parquet is sacred.** Never modify it. Never normalize it in place.
 Never add columns. It is READ ONLY.
 
-### Output: 27 parquet files in 5 directories
+### Output: Parquet files in organized directories
 
-All output goes to `<data_dir>/output/`:
+All output goes to `<prefix>_output/` matching the observations file prefix
+(e.g., `time_observations.parquet` → `time_output/`):
 
 #### `signal/` — "What does each signal look like?"
 
-| File | Stage | Group | Description |
-|------|-------|-------|-------------|
-| signal_vector.parquet | 01 | vector | Per-signal windowed features (FFT, entropy, hurst, kurtosis...) |
-| signal_geometry.parquet | 05 | geometry | Distance-to-centroid, coherence, projections |
-| signal_stability.parquet | 33 | vector | Hilbert + Wavelet analysis |
+| File | Stage | Description |
+|------|-------|-------------|
+| signal_vector.parquet | 01 | Per-signal windowed features (FFT, entropy, hurst, kurtosis...) |
+| signal_geometry.parquet | 05 | Distance-to-centroid, coherence, projections |
+| signal_stability.parquet | 33 | Hilbert + Wavelet analysis |
 
 #### `cohort/` — "What is the system's geometric structure and signal relationships?"
 
-| File | Stage | Group | Description |
-|------|-------|-------|-------------|
-| cohort_geometry.parquet | 03 | geometry | Eigenvalues, effective_dim, condition_number — **THE core output** |
-| cohort_vector.parquet | 02 | geometry | Cross-signal centroid per window |
-| cohort_signal_positions.parquet | 03 | geometry | Signal loadings on PCs |
-| cohort_feature_loadings.parquet | 03 | geometry | Feature loadings on PC1 |
-| cohort_pairwise.parquet | 06 | information | Covariance matrix within each window |
-| cohort_information_flow.parquet | 10 | information | Granger causality, transfer entropy, copula |
+| File | Stage | Description |
+|------|-------|-------------|
+| cohort_geometry.parquet | 03 | Eigenvalues, effective_dim, condition_number — **THE core output** |
+| cohort_vector.parquet | 02 | Cross-signal centroid per window |
+| cohort_signal_positions.parquet | 03 | Signal loadings on PCs |
+| cohort_feature_loadings.parquet | 03 | Feature loadings on PC1 |
+| cohort_pairwise.parquet | 06 | Covariance matrix within each window |
+| cohort_information_flow.parquet | 10 | Granger causality, transfer entropy, copula |
 
 #### `cohort/cohort_dynamics/` — "How is each cohort changing over time?"
 
-| File | Stage | Group | Description |
-|------|-------|-------|-------------|
-| breaks.parquet | 00 | vector | Change-point detection (Heaviside/Dirac) |
-| geometry_dynamics.parquet | 07 | geometry | Velocity/jerk of geometry evolution |
-| ftle.parquet | 08 | dynamics | Finite-Time Lyapunov Exponents |
-| lyapunov.parquet | 08_lyapunov | dynamics | Largest Lyapunov exponent |
-| thermodynamics.parquet | 09a | dynamics | Temperature, entropy from eigenvalue spectra |
-| ftle_field.parquet | 15 | dynamics | Local FTLE grid (LCS/astrodynamics) |
-| ftle_backward.parquet | 17 | dynamics | Backward FTLE (attracting structures) |
-| velocity_field.parquet | 21 | dynamics | State-space velocity field |
-| ftle_rolling.parquet | 22 | dynamics | Time-varying FTLE |
-| ridge_proximity.parquet | 23 | dynamics | Urgency = v . grad(FTLE) |
-| persistent_homology.parquet | 36 | dynamics | Topological persistence (Betti numbers) |
+| File | Stage | Description |
+|------|-------|-------------|
+| breaks.parquet | 00 | Change-point detection |
+| geometry_dynamics.parquet | 07 | Velocity/jerk of geometry evolution |
+| ftle.parquet | 08 | Finite-Time Lyapunov Exponents |
+| lyapunov.parquet | 08_lyapunov | Largest Lyapunov exponent |
+| thermodynamics.parquet | 09a | Temperature, entropy from eigenvalue spectra |
+| ftle_field.parquet | 15 | Local FTLE grid |
+| ftle_backward.parquet | 17 | Backward FTLE |
+| velocity_field.parquet | 21 | State-space velocity field |
+| ftle_rolling.parquet | 22 | Time-varying FTLE |
+| ridge_proximity.parquet | 23 | Urgency = v · grad(FTLE) |
+| persistent_homology.parquet | 36 | Topological persistence (Betti numbers) |
 
 #### `system/` — "How do cohorts compare across the fleet?"
 
-| File | Stage | Group | Description |
-|------|-------|-------|-------------|
-| system_geometry.parquet | 26 | energy | SVD at cohort scale (Scale 2) |
-| system_vector.parquet | 25 | energy | Cohort-level feature vector (Scale 2 input) |
-| system_cohort_positions.parquet | 26 | energy | Cohort loadings on PCs |
-| system_pairwise.parquet | 27 | energy | Pairwise cohort comparison |
-| system_information_flow.parquet | 28 | energy | Granger at system scale |
+| File | Stage | Description |
+|------|-------|-------------|
+| system_geometry.parquet | 26 | SVD at cohort scale (Scale 2) |
+| system_vector.parquet | 25 | Cohort-level feature vector (Scale 2 input) |
+| system_cohort_positions.parquet | 26 | Cohort loadings on PCs |
+| system_pairwise.parquet | 27 | Pairwise cohort comparison |
+| system_information_flow.parquet | 28 | Granger at system scale |
 
 #### `system/system_dynamics/` — "How is the fleet evolving over time?"
 
-| File | Stage | Group | Description |
-|------|-------|-------|-------------|
-| ftle.parquet | 30 | energy | FTLE on cohort trajectories |
-| velocity_field.parquet | 31 | energy | Velocity field at fleet scale |
+| File | Stage | Description |
+|------|-------|-------------|
+| ftle.parquet | 30 | FTLE on cohort trajectories |
+| velocity_field.parquet | 31 | Velocity field at fleet scale |
+
+#### `parameterization/` — "Which signals matter most?"
+
+| File | Stage | Description |
+|------|-------|-------------|
+| signal_dominance.parquet | 03b | Mean/final PC1 loading, dominance rank |
 
 ---
 
-## 24 Stages, 5 Source Groups
+## Stages and Groups
 
-Stages live in `manifold/stages/<group>/` and run in dependency order (not strictly by group):
+Stages live in `manifold/stages/<group>/` and run in dependency order:
 
-| Group | Stages | Count |
-|-------|--------|-------|
-| **vector/** | breaks(00), signal_vector(01), signal_stability(33) | 3 |
-| **geometry/** | state_vector(02), state_geometry(03), signal_geometry(05), geometry_dynamics(07) | 4 |
-| **dynamics/** | ftle(08), lyapunov(08_lyapunov), cohort_thermodynamics(09a), ftle_field(15), ftle_backward(17), velocity_field(21), ftle_rolling(22), ridge_proximity(23), persistent_homology(36) | 9 |
-| **information/** | signal_pairwise(06), information_flow(10) | 2 |
-| **energy/** | cohort_vector(25), system_geometry(26), cohort_pairwise(27), cohort_information_flow(28), cohort_ftle(30), cohort_velocity_field(31) | 6 |
+| Group | Stages | What it computes |
+|-------|--------|-----------------|
+| **vector/** | 00, 01, 33 | Per-signal features (breaks, signal_vector, stability) |
+| **geometry/** | 02, 03, 03b, 05, 07 | State vectors, eigendecomposition, signal geometry, dynamics |
+| **dynamics/** | 08, 08_lyapunov, 09a, 15, 17, 21, 22, 23, 36 | FTLE, Lyapunov, velocity, topology, thermodynamics |
+| **information/** | 06, 10 | Pairwise coupling, Granger causality, transfer entropy |
+| **energy/** | 25, 26, 27, 28, 30, 31 | Cohort vectors, system geometry, fleet-scale analysis |
 
 ---
 
@@ -256,41 +258,39 @@ Insufficient data → return NaN, never skip.
 
 ## Rules
 
-### 1. THREE LAYERS, ONE DIRECTION
-Runners call engines. Engines call primitives. Nobody reaches up.
+### 1. TWO LAYERS, ONE DIRECTION
+Runners call engines. Engines call pmtvs. Nobody reaches up.
 
-### 2. NO CLASSIFICATION IN MANIFOLD
+### 2. ALL MATH FROM PMTVS
+`from pmtvs import function_name` — always. No wrappers. No shims.
+If a parameter name doesn't match, fix the call site.
+
+### 3. NO CLASSIFICATION IN MANIFOLD
 Manifold computes numbers. It never decides what those numbers mean.
 No trajectory_type, stability_class, is_chaotic, regime labels.
 Classification lives in Prime via SQL.
 
-### 3. OBSERVATIONS ARE SACRED
-Never modify `observations.parquet`. Never normalize it in place.
+### 4. OBSERVATIONS ARE SACRED
+Never modify observations.parquet. Never normalize it in place.
 Never add columns. It is READ ONLY.
 
-### 4. I IS SEQUENTIAL
-I = 0, 1, 2, 3... per signal_id. Always. No timestamps. No gaps.
+### 5. signal_0 IS SEQUENTIAL
+signal_0 = 0, 1, 2, 3... per signal_id. Always. No timestamps. No gaps.
 
-### 5. COHORT IS USER-OPTIONAL
+### 6. COHORT IS USER-OPTIONAL
 `cohort` is a grouping key the user provides for their own bookkeeping.
 Engines never filter or classify by cohort. The math is blind to it.
 
-### 6. COMPUTE ONCE, QUERY FOREVER
+### 7. COMPUTE ONCE, QUERY FOREVER
 Manifold runs once and writes parquet files. Every question gets answered
-by Prime running SQL against those files. If Manifold needs to run twice
-to answer a question, the architecture is wrong.
+by Prime running SQL against those files.
 
-### 7. NO HACKS
+### 8. NO HACKS
 - No `sys.modules` aliases
-- No `_PrimitivesNamespace` shim classes
-- No compatibility layers
+- No shim classes or compatibility layers
+- No `manifold/primitives/` directory
+- No wrapper functions around pmtvs
 - If imports are broken, fix them properly
-
-### 8. SHOW YOUR WORK
-Before modifying any file:
-1. Show the existing file you're modifying
-2. Show the existing pattern you're following
-3. Get approval before creating NEW files
 
 ---
 
@@ -298,7 +298,7 @@ Before modifying any file:
 
 | Type of Code | Location | Pattern |
 |--------------|----------|---------|
-| New primitive | `~/primitives/` (standalone repo, PyPI: `pmtvs`) | Pure function, numpy in/out. Add re-export in `manifold/primitives/`. |
+| New math function | `pmtvs` (separate repo, PyPI) | Pure function, numpy in/out |
 | New engine | `manifold/core/` | DataFrame in, DataFrame out, no I/O |
 | New stage runner | `manifold/stages/<group>/` | Follow existing runner pattern |
 | New I/O helper | `manifold/io/` | Reader or writer only |
@@ -307,9 +307,9 @@ Before modifying any file:
 
 ## Sibling Repos
 
-- **Prime** (`~/prime/`) — The interpreter. Reads Manifold's 27 parquet files via DuckDB SQL. Handles typology, classification, analysis, canary detection, brittleness scoring, ML features. Static HTML + DuckDB-WASM explorer for browser-based analysis.
-- **Primitives** (`~/primitives/`, PyPI: `pmtvs`) — Rust+Python math functions. Hurst, Lyapunov, FTLE, perm_entropy, ADF, spectral analysis. Shared by both Prime and Manifold.
-- **Manifold** (this repo) — The compute engine. `observations.parquet` in, 27 parquet files out.
+- **Prime** (`~/prime/`) — The interpreter. Reads Manifold's parquet files via DuckDB SQL. Handles typology, classification, analysis, canary detection, brittleness scoring, ML features. Static HTML + DuckDB-WASM explorer for browser-based analysis.
+- **pmtvs** (`~/pmtvs/`, PyPI: `pmtvs`) — Rust+Python math functions. 244 functions: entropy, fractal, dynamical systems, spectral, embedding, topology, information theory, statistical tests. Shared by both Prime and Manifold.
+- **Manifold** (this repo) — The compute engine. `observations.parquet` + `manifest.yaml` in, parquet files out.
 
 ---
 
@@ -317,23 +317,22 @@ Before modifying any file:
 
 ```
 ~/domains/
-├── Bearings_IMS/        # IMS bearing degradation
-├── Challenge_Data/      # Challenge dataset
-├── building_vibration/  # Building vibration monitoring
-├── calce/               # Battery calendar aging
-├── cmapss/              # C-MAPSS turbofan (FD001-FD004)
-├── hydraulic/           # Hydraulic condition monitoring
-├── lorenz/              # Chaotic system (Lorenz attractor)
-├── lumo/                # Lumo dataset
+├── rossler/             # Chaotic system (Rössler attractor)
 ├── pendulum/            # Pendulum dynamics
-└── rossler/             # Chaotic system (Rossler attractor)
+├── cmapss/              # C-MAPSS turbofan (FD001–FD004)
+├── hydraulic/           # Hydraulic condition monitoring
+├── calce/               # Battery calendar aging
+├── lorenz/              # Chaotic system (Lorenz attractor)
+├── Bearings_IMS/        # IMS bearing degradation
+├── building_vibration/  # Building vibration monitoring
+└── lumo/                # Lumo dataset
 ```
 
 ---
 
 ## What NOT to Touch
 
-- Mathematical logic inside engines (only change with explicit approval)
+- Mathematical logic inside pmtvs (separate repo)
 - Output file schemas (downstream SQL depends on column names)
 - The `main` branch (work on feature branches)
 - Stage execution order in `run.py` (dependencies are real)

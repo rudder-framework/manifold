@@ -13,14 +13,9 @@ import warnings
 import numpy as np
 from typing import Dict, Any
 
-from manifold.primitives.individual.fractal import (
-    hurst_exponent,
-    hurst_r2,
-    dfa,
-)
-from manifold.primitives.individual.correlation import (
-    autocorrelation,
-)
+from pmtvs import hurst_exponent
+from manifold.core._pmtvs import dfa, autocorrelation
+from manifold.core._compat import hurst_r2
 
 
 def compute(y: np.ndarray, method: str = 'rs') -> Dict[str, float]:
@@ -87,8 +82,14 @@ def compute_acf_decay(y: np.ndarray, max_lag: int = 50) -> Dict[str, Any]:
             'acf_half_life': np.nan,
         }
 
-    # Get all ACF values then slice to max_lag
-    acf_vals = autocorrelation(y)[:max_lag + 1]
+    # Vectorized ACF computation (pmtvs autocorrelation is per-lag, too slow in loop)
+    y_centered = y - np.mean(y)
+    var = np.sum(y_centered ** 2)
+    if var == 0:
+        return {'acf_lag1': np.nan, 'acf_lag10': np.nan, 'acf_half_life': np.nan}
+    acf_vals = [1.0]
+    for lag in range(1, max_lag + 1):
+        acf_vals.append(float(np.sum(y_centered[:-lag] * y_centered[lag:]) / var))
 
     # Find half-life (lag where ACF < 0.5)
     half_life = np.nan

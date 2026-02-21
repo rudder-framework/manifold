@@ -5,7 +5,7 @@ Delegates to pmtvs wavelet_stability primitive.
 """
 
 import numpy as np
-from manifold.primitives.individual.stability import wavelet_stability
+from manifold.core._compat import wavelet_stability
 
 
 def compute(y: np.ndarray, fs: float = 1.0, n_scales: int = 16) -> dict:

@@ -341,7 +341,7 @@ def _fit_frank(u1: np.ndarray, u2: np.ndarray, tau: float) -> dict:
 
 def _gaussian_copula_loglik(u1: np.ndarray, u2: np.ndarray, rho: float) -> float:
     """Log-likelihood of the Gaussian copula density."""
-    from manifold.primitives.individual.distributions import ndtri
+    from scipy.special import ndtri
 
     # Transform to normal quantiles
     x1 = ndtri(np.clip(u1, 1e-6, 1 - 1e-6))

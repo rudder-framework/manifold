@@ -11,15 +11,7 @@ import polars as pl
 from scipy import stats
 from typing import Dict, Any, Optional, List, Literal
 
-from pmtvs import (
-    zscore_normalize,
-    covariance_matrix,
-    eigendecomposition,
-    condition_number as _condition_number,
-    shannon_entropy,
-    effective_dimension,
-    linear_regression,
-)
+from manifold.core._pmtvs import zscore_normalize, covariance_matrix, eigendecomposition, condition_number as _condition_number, effective_dimension, shannon_entropy, linear_regression
 
 
 def compute(

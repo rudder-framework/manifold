@@ -17,22 +17,8 @@ import warnings
 import numpy as np
 from typing import Dict, Any, Optional
 
-from manifold.primitives.embedding import (
-    time_delay_embedding,
-    optimal_delay,
-    optimal_dimension,
-)
-from manifold.primitives.dynamical.dimension import (
-    correlation_dimension as _correlation_dimension,
-)
-from manifold.primitives.dynamical.rqa import (
-    recurrence_matrix as _recurrence_matrix,
-    recurrence_rate as _recurrence_rate,
-    determinism as _determinism,
-    laminarity as _laminarity,
-    trapping_time as _trapping_time,
-    entropy_rqa as _entropy_rqa,
-)
+from pmtvs import time_delay_embedding, optimal_delay, optimal_dimension
+from manifold.core._pmtvs import correlation_dimension as _correlation_dimension, recurrence_matrix as _recurrence_matrix, recurrence_rate as _recurrence_rate, determinism as _determinism, laminarity as _laminarity, trapping_time as _trapping_time, entropy_rqa as _entropy_rqa, linear_regression
 
 
 def compute(
@@ -66,22 +52,14 @@ def compute(
         dim = optimal_dimension(y, tau, max_dim=max_dim)
 
         # Embed signal
-        embedded = time_delay_embedding(y, dimension=dim, delay=tau)
+        embedded = time_delay_embedding(y, dim=dim, tau=tau)
 
         if len(embedded) < 50:
             return _empty_result()
 
-        # Compute correlation dimension via primitives
-        corr_dim, log_r, log_C = _correlation_dimension(
-            y, dimension=dim, delay=tau,
-        )
-
-        # Estimate R² from the log-log fit
-        if log_r is not None and len(log_r) >= 5:
-            from manifold.primitives.pairwise.regression import linear_regression
-            _, _, corr_dim_r2, _ = linear_regression(log_r, log_C)
-        else:
-            corr_dim_r2 = np.nan
+        # Compute correlation dimension via primitives (takes trajectory)
+        corr_dim = _correlation_dimension(embedded)
+        corr_dim_r2 = np.nan
 
         return {
             'embedding_dim': dim,
@@ -125,13 +103,8 @@ def compute_recurrence_matrix(
     Returns:
         Boolean recurrence matrix
     """
-    # primitives recurrence_matrix takes raw signal + embedding params,
-    # but we already have embedded data. Pass through appropriately.
-    # Use dimension=1 and delay=1 since data is already embedded.
     return _recurrence_matrix(
-        embedded[:, 0] if embedded.ndim == 2 else embedded,
-        dimension=embedded.shape[1] if embedded.ndim == 2 else 1,
-        delay=1,
+        embedded,
         threshold=threshold,
         threshold_percentile=threshold_pct,
     )

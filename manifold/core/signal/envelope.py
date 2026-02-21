@@ -8,8 +8,8 @@ Primitives handle validation - no redundant checks here.
 import warnings
 
 import numpy as np
-from manifold.primitives.individual.hilbert import envelope
-from manifold.primitives.individual.statistics import kurtosis, rms
+from manifold.core._pmtvs import envelope
+from manifold.core._stats import kurtosis, rms
 
 
 def compute(y: np.ndarray) -> dict:

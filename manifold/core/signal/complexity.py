@@ -7,11 +7,8 @@ Primitives handle min_samples via config - no redundant checks here.
 
 import numpy as np
 from typing import Dict
-from manifold.primitives.individual.entropy import (
-    sample_entropy,
-    permutation_entropy,
-    approximate_entropy,
-)
+from pmtvs import sample_entropy, permutation_entropy
+from manifold.core._pmtvs import approximate_entropy
 
 
 def compute(y: np.ndarray) -> Dict[str, float]:

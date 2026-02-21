@@ -10,10 +10,7 @@ Thin wrapper over primitives/information/divergence.py.
 
 import numpy as np
 
-from manifold.primitives.information.divergence import (
-    kl_divergence as _kl_divergence,
-    js_divergence as _js_divergence,
-)
+from manifold.core._pmtvs import kl_divergence as _kl_divergence, js_divergence as _js_divergence
 
 
 def kl_divergence(x: np.ndarray, y: np.ndarray) -> float:

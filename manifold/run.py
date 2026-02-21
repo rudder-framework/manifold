@@ -72,13 +72,14 @@ ALL_STAGES = [
     ('energy.cohort_information_flow',   '28'),
     ('energy.cohort_ftle',              '30'),
     ('energy.cohort_velocity_field',     '31'),
+    ('energy.trajectory_signature',      '32'),
 
     # signal/ (stability)
     ('vector.signal_stability',          '33'),
 ]
 
 # System-level stage IDs (fleet comparison, requires n_cohorts >= 2)
-SYSTEM_STAGE_IDS = {'25', '26', '27', '28', '30', '31'}
+SYSTEM_STAGE_IDS = {'25', '26', '27', '28', '30', '31', '32'}
 
 # Output subdirectories that belong to system-level computation
 SYSTEM_SUBDIRS = {'system', 'system/system_dynamics'}
@@ -406,10 +407,10 @@ def run(
 
     if verbose:
         # Resolve backend info
-        from manifold.primitives._config import USE_RUST
         try:
             import pmtvs
-            backend_info = f"pmtvs ({'Rust' if USE_RUST else 'Python'})"
+            _use_rust = getattr(pmtvs, 'USE_RUST', False)
+            backend_info = f"pmtvs ({'Rust' if _use_rust else 'Python'})"
         except ImportError:
             backend_info = "Python (pmtvs not installed)"
 
@@ -807,6 +808,9 @@ def _dispatch(
     ):
         _dispatch_fleet(module, stage_name, output_dir, verbose, data_path_str, system_mode)
 
+    elif stage_name == 'trajectory_signature':
+        _dispatch_trajectory_signature(module, output_dir, verbose, data_path_str, system_mode)
+
     else:
         if verbose:
             print(f"  Warning: Unknown stage {stage_name}")
@@ -878,6 +882,48 @@ def _dispatch_fleet(
 
     elif stage_name == 'cohort_velocity_field':
         module.run(str(sg_path), data_path=data_path_str, verbose=verbose)
+
+
+def _dispatch_trajectory_signature(
+    module,
+    output_dir: Path,
+    verbose: bool,
+    data_path_str: str = '',
+    system_mode: str = 'auto',
+) -> None:
+    """
+    Dispatch stage 32 (trajectory signature library).
+
+    Reads cohort_geometry, geometry_dynamics, velocity_field.
+    Same fleet guard as _dispatch_fleet (n_cohorts >= 2 unless force).
+    """
+    import polars as _pl
+
+    sg_path = Path(_out(output_dir, 'cohort_geometry.parquet'))
+    if not sg_path.exists():
+        if verbose:
+            print("  Skipped (cohort_geometry.parquet not found)")
+        return
+
+    sg = _pl.read_parquet(str(sg_path))
+    if len(sg) == 0:
+        if verbose:
+            print("  Skipped (cohort_geometry.parquet is empty)")
+        return
+    if system_mode != 'force':
+        if 'cohort' not in sg.columns or sg['cohort'].n_unique() < 2:
+            n = sg['cohort'].n_unique() if 'cohort' in sg.columns else 0
+            if verbose:
+                print(f"  Skipped (n_cohorts={n} < 2)")
+            return
+
+    module.run(
+        cohort_geometry_path=str(sg_path),
+        geometry_dynamics_path=_out(output_dir, 'geometry_dynamics.parquet'),
+        velocity_field_path=_out(output_dir, 'velocity_field.parquet'),
+        data_path=data_path_str,
+        verbose=verbose,
+    )
 
 
 def _find_typology(manifest: Dict[str, Any], output_dir: Path) -> Optional[str]:

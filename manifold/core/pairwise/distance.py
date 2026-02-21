@@ -9,7 +9,7 @@ Thin wrapper over primitives/pairwise/distance.py.
 
 import numpy as np
 
-from manifold.primitives.pairwise.distance import dynamic_time_warping
+from manifold.core._pmtvs import dynamic_time_warping
 
 
 def compute_dtw(x: np.ndarray, y: np.ndarray) -> float:

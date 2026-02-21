@@ -6,13 +6,9 @@ Delegates to pmtvs spectral primitives.
 
 import numpy as np
 from typing import Dict
-from manifold.primitives.individual.spectral import (
-    dominant_frequency,
-    spectral_centroid,
-    spectral_bandwidth,
-    spectral_entropy,
-)
-from manifold.primitives.individual.spectral_features import spectral_slope
+from manifold.core._pmtvs import dominant_frequency, spectral_centroid, spectral_bandwidth, spectral_entropy
+# TODO: needs pmtvs export — spectral_slope
+# from pmtvs import spectral_slope
 
 
 def compute(y: np.ndarray, sample_rate: float = 1.0) -> Dict[str, float]:
@@ -54,6 +50,7 @@ def compute(y: np.ndarray, sample_rate: float = 1.0) -> Dict[str, float]:
     result['spectral_entropy'] = spectral_entropy(y, fs=sample_rate, normalize=True)
     result['spectral_centroid'] = spectral_centroid(y, fs=sample_rate)
     result['spectral_bandwidth'] = spectral_bandwidth(y, fs=sample_rate)
-    result['spectral_slope'] = spectral_slope(y, fs=sample_rate)
+    # TODO: spectral_slope not yet in pmtvs
+    result['spectral_slope'] = np.nan
 
     return result

@@ -8,7 +8,7 @@ import warnings
 
 import numpy as np
 from typing import Dict
-from manifold.primitives.individual.trend_features import rate_of_change
+from manifold.core._pmtvs import rate_of_change
 
 
 def compute(y: np.ndarray, I: np.ndarray = None) -> Dict[str, float]:
@@ -37,14 +37,14 @@ def compute(y: np.ndarray, I: np.ndarray = None) -> Dict[str, float]:
         return result
 
     try:
-        r = rate_of_change(y)
+        roc = rate_of_change(y)  # returns array of differences
 
         result = {
-            'mean_rate': r.get('mean_roc', np.nan),
-            'max_rate': r.get('max_roc', np.nan),
-            'min_rate': np.nan,
-            'rate_std': r.get('std_roc', np.nan),
-            'abs_max_rate': r.get('max_roc', np.nan),
+            'mean_rate': float(np.mean(roc)),
+            'max_rate': float(np.max(roc)),
+            'min_rate': float(np.min(roc)),
+            'rate_std': float(np.std(roc)),
+            'abs_max_rate': float(np.max(np.abs(roc))),
         }
     except Exception as e:
         warnings.warn(f"rate_of_change.compute: {type(e).__name__}: {e}", RuntimeWarning, stacklevel=2)

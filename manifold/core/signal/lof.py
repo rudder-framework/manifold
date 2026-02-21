@@ -6,7 +6,7 @@ Delegates to pmtvs local_outlier_factor primitive.
 
 import numpy as np
 from typing import Dict
-from manifold.primitives.individual.domain import local_outlier_factor
+from manifold.core._compat import local_outlier_factor
 
 
 def compute(y: np.ndarray, n_neighbors: int = 20, embedding_dim: int = 3, delay: int = 1) -> Dict[str, float]:

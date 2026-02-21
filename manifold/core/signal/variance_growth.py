@@ -10,7 +10,7 @@ import warnings
 import numpy as np
 from typing import Dict
 
-from manifold.primitives.pairwise.regression import linear_regression
+from manifold.core._pmtvs import linear_regression
 
 
 def compute(y: np.ndarray) -> Dict[str, float]:

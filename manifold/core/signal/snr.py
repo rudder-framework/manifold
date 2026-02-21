@@ -6,7 +6,8 @@ Delegates to pmtvs snr primitive.
 
 import numpy as np
 from typing import Dict
-from manifold.primitives.individual.spectral_features import snr as _snr
+from manifold.core._pmtvs import psd
+# TODO: needs pmtvs export — snr
 
 
 def compute(y: np.ndarray) -> Dict[str, float]:
@@ -32,8 +33,23 @@ def compute(y: np.ndarray) -> Dict[str, float]:
     if len(y) < 8:
         return result
 
-    r = _snr(y)
-    result['snr_db'] = r.get('snr_db', np.nan)
-    result['snr_linear'] = r.get('snr', np.nan)
+    try:
+        # Simple SNR: signal power = variance of smoothed, noise = variance of residual
+        freqs, power = psd(y)
+        total_power = float(np.sum(power))
+        # Top 10% of spectral power = signal, rest = noise
+        sorted_power = np.sort(power)[::-1]
+        n_signal = max(1, len(sorted_power) // 10)
+        signal_power = float(np.sum(sorted_power[:n_signal]))
+        noise_power = max(total_power - signal_power, 1e-12)
+        snr_linear = signal_power / noise_power
+        snr_db = 10 * np.log10(snr_linear) if snr_linear > 0 else np.nan
+
+        result['snr_db'] = snr_db
+        result['snr_linear'] = snr_linear
+        result['signal_power'] = signal_power
+        result['noise_power'] = noise_power
+    except Exception:
+        pass
 
     return result

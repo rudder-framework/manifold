@@ -25,7 +25,7 @@ Physics:
 import numpy as np
 from typing import Dict, Any
 
-from manifold.primitives.information.entropy import shannon_entropy as _shannon_entropy
+from manifold.core._pmtvs import shannon_entropy as _shannon_entropy
 
 
 MIN_SAMPLES = 4

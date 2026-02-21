@@ -6,13 +6,8 @@ Delegates to pmtvs recurrence and dimension primitives.
 
 import numpy as np
 from typing import Dict, Any
-from manifold.primitives.dynamical.rqa import (
-    recurrence_matrix,
-    recurrence_rate as _recurrence_rate,
-    determinism as _determinism,
-)
-from manifold.primitives.dynamical.dimension import correlation_dimension as _correlation_dimension
-from manifold.primitives.embedding.delay import optimal_dimension
+from pmtvs import optimal_dimension, time_delay_embedding
+from manifold.core._pmtvs import recurrence_matrix, recurrence_rate as _recurrence_rate, determinism as _determinism, correlation_dimension as _correlation_dimension
 
 
 def compute_recurrence_matrix(x: np.ndarray, threshold: float = None, embed_dim: int = 3, delay: int = 1) -> np.ndarray:
@@ -23,7 +18,8 @@ def compute_recurrence_matrix(x: np.ndarray, threshold: float = None, embed_dim:
     if len(x) < embed_dim * delay + 1:
         return np.array([[]])
 
-    return recurrence_matrix(x, dim=embed_dim, tau=delay, threshold=threshold)
+    trajectory = time_delay_embedding(x, dim=embed_dim, tau=delay)
+    return recurrence_matrix(trajectory, threshold=threshold)
 
 
 def compute_recurrence_rate(x: np.ndarray, threshold: float = None, embed_dim: int = 3, delay: int = 1) -> Dict[str, float]:
@@ -53,7 +49,7 @@ def compute_determinism(x: np.ndarray, threshold: float = None, embed_dim: int =
     if R.size == 0:
         return {'determinism': np.nan}
 
-    return {'determinism': float(_determinism(R, min_line=min_line))}
+    return {'determinism': float(_determinism(R, min_line_length=min_line))}
 
 
 def compute_correlation_dimension(x: np.ndarray, embed_dims: list = None, delay: int = 1) -> Dict[str, float]:
@@ -65,7 +61,8 @@ def compute_correlation_dimension(x: np.ndarray, embed_dims: list = None, delay:
         return {'correlation_dimension': np.nan}
 
     embed_dim = max(embed_dims) if embed_dims else 5
-    return {'correlation_dimension': float(_correlation_dimension(x, dim=embed_dim, tau=delay))}
+    trajectory = time_delay_embedding(x, dim=embed_dim, tau=delay)
+    return {'correlation_dimension': float(_correlation_dimension(trajectory))}
 
 
 def compute_embedding_dim(x: np.ndarray, max_dim: int = 10, delay: int = 1, threshold: float = 0.1) -> Dict[str, float]:
@@ -76,7 +73,7 @@ def compute_embedding_dim(x: np.ndarray, max_dim: int = 10, delay: int = 1, thre
     if len(x) < 10:
         return {'embedding_dim': np.nan}
 
-    return {'embedding_dim': float(optimal_dimension(x, max_dim=max_dim, tau=delay))}
+    return {'embedding_dim': float(optimal_dimension(x, tau=delay, max_dim=max_dim))}
 
 
 def compute(x: np.ndarray, metric: str = 'all') -> Dict[str, float]:

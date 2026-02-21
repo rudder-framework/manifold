@@ -6,10 +6,8 @@ Delegates to pmtvs discrete_entropy and transition_matrix primitives.
 
 import numpy as np
 from typing import Dict, Any
-from manifold.primitives.individual.discrete import (
-    discrete_entropy,
-    transition_matrix,
-)
+from manifold.core._pmtvs import shannon_entropy
+# TODO: needs pmtvs export — discrete_entropy, transition_matrix
 
 
 MIN_SAMPLES = 4
@@ -38,8 +36,8 @@ def compute(y: np.ndarray, n_bins: int = 10) -> Dict[str, Any]:
     if len(y_clean) < MIN_SAMPLES:
         raise ValueError(f"Need {MIN_SAMPLES} non-NaN samples, got {len(y_clean)}")
 
-    # Shannon entropy (scalar)
-    shannon = float(discrete_entropy(y_clean))
+    # Shannon entropy (scalar) — using pmtvs shannon_entropy on discretized signal
+    shannon = float(shannon_entropy(y_clean, base=2))
 
     # Normalized entropy
     unique_vals = np.unique(y_clean)
@@ -47,9 +45,28 @@ def compute(y: np.ndarray, n_bins: int = 10) -> Dict[str, Any]:
     max_entropy = np.log2(k) if k > 1 else 1.0
     normalized = float(shannon / max_entropy) if max_entropy > 0 else 0.0
 
-    # Transition matrix for conditional entropy
-    tm = transition_matrix(y_clean)
-    conditional = tm.get('entropy', 0.0)
+    # Inline transition matrix conditional entropy (transition_matrix not in pmtvs)
+    # Build transition counts and compute conditional entropy
+    levels = y_clean
+    unique_levels = np.unique(levels)
+    n_levels = len(unique_levels)
+    if n_levels > 1:
+        level_map = {v: i for i, v in enumerate(unique_levels)}
+        mapped = np.array([level_map[v] for v in levels])
+        T = np.zeros((n_levels, n_levels))
+        for i in range(len(mapped) - 1):
+            T[mapped[i], mapped[i + 1]] += 1
+        row_sums = T.sum(axis=1, keepdims=True)
+        row_sums = np.where(row_sums == 0, 1, row_sums)
+        T_prob = T / row_sums
+        row_entropies = []
+        for row in T_prob:
+            p = row[row > 0]
+            row_entropies.append(-np.sum(p * np.log2(p)))
+        weights = T.sum(axis=1) / T.sum()
+        conditional = float(np.sum(weights * row_entropies))
+    else:
+        conditional = 0.0
 
     # Entropy rate ≈ conditional entropy for stationary Markov chains
     entropy_rate = conditional

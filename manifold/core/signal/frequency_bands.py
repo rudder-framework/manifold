@@ -6,7 +6,7 @@ Imports from primitives/individual/spectral.py (canonical).
 
 import numpy as np
 from typing import Dict
-from manifold.primitives.individual.spectral import psd
+from manifold.core._pmtvs import psd
 
 
 def compute(y: np.ndarray, sample_rate: float = 1.0, bands: dict = None) -> Dict[str, float]:

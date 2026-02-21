@@ -13,13 +13,7 @@ import warnings
 import numpy as np
 from typing import Dict, Any, Optional, Tuple
 
-from manifold.primitives.pairwise.causality import (
-    granger_causality as _granger,
-)
-from manifold.primitives.information import (
-    transfer_entropy as _transfer_entropy,
-)
-from manifold.primitives.information.entropy import shannon_entropy as _shannon_entropy
+from manifold.core._pmtvs import granger_causality as _granger, transfer_entropy as _transfer_entropy, shannon_entropy as _shannon_entropy
 
 
 def compute_granger(
@@ -59,12 +53,12 @@ def compute_granger(
             'optimal_lag': np.nan,
         }
 
-    f_stat, p_value, optimal_lag = _granger(source, target, max_lag=max_lag)
+    f_stat, p_value = _granger(source, target, max_lag=max_lag)
 
     return {
         'granger_f': float(f_stat),
         'granger_p': float(p_value),
-        'optimal_lag': int(optimal_lag),
+        'optimal_lag': max_lag,
     }
 
 

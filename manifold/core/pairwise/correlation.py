@@ -13,15 +13,7 @@ Thin wrapper over primitives/pairwise/correlation.py.
 import numpy as np
 from typing import Dict, Any, Optional, Tuple
 
-from manifold.primitives.pairwise.correlation import (
-    correlation as _correlation,
-    cross_correlation as _cross_correlation,
-    lag_at_max_xcorr as _lag_at_max_xcorr,
-)
-from manifold.primitives.pairwise.information import (
-    mutual_information as _mutual_info,
-)
-from manifold.primitives.information.entropy import shannon_entropy as _shannon_entropy
+from manifold.core._pmtvs import correlation as _correlation, cross_correlation as _cross_correlation, lag_at_max_xcorr as _lag_at_max_xcorr, mutual_information as _mutual_info, shannon_entropy as _shannon_entropy
 
 
 def compute(
@@ -56,7 +48,13 @@ def compute(
             'correlation_abs': np.nan,
         }
     
-    corr = _correlation(x, y, method=method)
+    if method == 'spearman':
+        # Rank-transform for Spearman
+        x_ranked = np.argsort(np.argsort(x)).astype(float)
+        y_ranked = np.argsort(np.argsort(y)).astype(float)
+        corr = _correlation(x_ranked, y_ranked)
+    else:
+        corr = _correlation(x, y)
     
     return {
         'correlation': float(corr),

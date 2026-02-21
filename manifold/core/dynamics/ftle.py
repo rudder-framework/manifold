@@ -22,16 +22,8 @@ import warnings
 import numpy as np
 from typing import Dict, Any, Optional
 
-from manifold.primitives.embedding import (
-    optimal_delay,
-    optimal_dimension,
-)
-from manifold.primitives.embedding.delay import cao_embedding_analysis
-from manifold.primitives.dynamical.lyapunov import (
-    lyapunov_rosenstein,
-    lyapunov_kantz,
-)
-from manifold.primitives.pairwise.regression import linear_regression
+from pmtvs import optimal_delay, optimal_dimension, lyapunov_rosenstein, lyapunov_kantz
+from manifold.core._pmtvs import cao_embedding_analysis, linear_regression
 
 
 def compute(
@@ -70,7 +62,7 @@ def compute(
         # Auto-detect embedding delay
         tau_used = tau_method if emb_tau is None else 'user'
         if emb_tau is None:
-            emb_tau = optimal_delay(y, max_lag=min(100, n // 10), method=tau_method)
+            emb_tau = optimal_delay(y, max_lag=min(100, n // 10))
             max_tau = n // 20
             emb_tau = min(emb_tau, max_tau)
 
@@ -81,12 +73,12 @@ def compute(
 
         if emb_dim is None:
             if dim_method == 'cao':
-                cao_result = cao_embedding_analysis(y, emb_tau, max_dim=10)
-                emb_dim = cao_result['dimension']
-                is_deterministic = cao_result['is_deterministic']
-                e1_saturation_dim = cao_result['E1_saturation_dim']
+                cao_result = cao_embedding_analysis(y, max_dim=10, tau=emb_tau)
+                emb_dim = cao_result['optimal_dim']
+                is_deterministic = cao_result.get('is_deterministic')
+                e1_saturation_dim = cao_result.get('E1_saturation_dim')
             else:
-                emb_dim = optimal_dimension(y, emb_tau, max_dim=10, method=dim_method)
+                emb_dim = optimal_dimension(y, tau=emb_tau, max_dim=10)
 
         # Check if embedding would leave enough points
         embedded_length = n - (emb_dim - 1) * emb_tau
@@ -95,9 +87,10 @@ def compute(
 
         # Compute FTLE
         if method == 'kantz':
-            ftle, divergence, iterations = lyapunov_kantz(
+            ftle, divergence = lyapunov_kantz(
                 y, dimension=emb_dim, delay=emb_tau
             )
+            iterations = divergence  # use divergence array for confidence
         else:
             ftle, divergence, iterations = lyapunov_rosenstein(
                 y, dimension=emb_dim, delay=emb_tau

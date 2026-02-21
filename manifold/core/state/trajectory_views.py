@@ -17,12 +17,12 @@ import warnings
 import numpy as np
 from typing import List, Dict
 
-from manifold.primitives.individual.spectral import spectral_profile
-from manifold.primitives.individual.hilbert import envelope
-from manifold.primitives.individual.stability import wavelet_stability as _wavelet_stability
-from manifold.primitives.matrix.graph import laplacian_matrix, laplacian_eigenvalues
-from manifold.primitives.pairwise.regression import linear_regression
-from manifold.primitives.pairwise.correlation import correlation as _correlation
+from manifold.core._pmtvs import dominant_frequency as _dominant_frequency, envelope, linear_regression, correlation as _correlation
+from manifold.core._compat import (
+    spectral_flatness as _spectral_flatness,
+    wavelet_stability as _wavelet_stability,
+    graph_laplacian,
+)
 
 
 def compute_fourier_view(
@@ -49,9 +49,8 @@ def compute_fourier_view(
             if len(arr) < min_length:
                 continue
 
-            sp = spectral_profile(arr)
-            dom_freqs.append(sp.get('dominant_frequency', np.nan))
-            flatnesses.append(sp.get('spectral_flatness', np.nan))
+            dom_freqs.append(_dominant_frequency(arr))
+            flatnesses.append(_spectral_flatness(arr))
 
         result[f'fourier_{feat}_dominant_freq'] = float(np.nanmedian(dom_freqs)) if dom_freqs else np.nan
         result[f'fourier_{feat}_spectral_flatness'] = float(np.nanmedian(flatnesses)) if flatnesses else np.nan
@@ -165,8 +164,8 @@ def compute_laplacian_view(
         adj = np.abs(corr)
         np.fill_diagonal(adj, 0.0)
 
-        L = laplacian_matrix(adj, normalized=True)
-        eigs = laplacian_eigenvalues(L)
+        L = graph_laplacian(adj, normalized=True)
+        eigs = np.sort(np.real(np.linalg.eigvalsh(L)))
 
         if len(eigs) >= 2 and np.any(np.isfinite(eigs)):
             result['laplacian_algebraic_connectivity'] = float(eigs[1])

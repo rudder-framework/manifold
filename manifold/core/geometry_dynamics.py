@@ -37,8 +37,7 @@ import polars as pl
 from typing import Dict, Optional, Any
 
 # Import primitives for all mathematical computation
-from manifold.primitives.individual.derivatives import first_derivative, second_derivative, jerk
-from manifold.primitives.individual.dynamics import attractor_reconstruction
+from manifold.core._pmtvs import first_derivative, second_derivative, jerk, attractor_reconstruction
 
 # Import configuration
 from manifold.config import get_config

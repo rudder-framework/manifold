@@ -7,11 +7,9 @@ Primitives handle min_samples via config - no redundant checks here.
 
 import numpy as np
 from typing import Dict
-from manifold.primitives.individual.fractal import (
-    hurst_exponent,
-    hurst_r2,
-    dfa,
-)
+from pmtvs import hurst_exponent
+from manifold.core._pmtvs import dfa
+from manifold.core._compat import hurst_r2
 
 
 def compute(y: np.ndarray, method: str = 'rs') -> Dict[str, float]:
