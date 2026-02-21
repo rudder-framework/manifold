@@ -56,13 +56,15 @@ Each layer ONLY calls the layer below it.
 
 | Layer | Input | Returns | Does I/O |
 |-------|-------|---------|----------|
-| `stages/group/run.py` (runner) | manifest, file paths | writes parquet files | YES |
+| `stages/<group>/<stage>.py` (runner) | manifest, file paths | writes parquet files | YES |
 | `core/*.py` (engine) | config dict, DataFrames | DataFrames | NO |
 | `pmtvs` (external package) | numpy arrays | numpy arrays / floats | NO |
 
 Also:
 - `manifold/io/` — reader.py, writer.py, manifest.py (all parquet I/O)
 - `manifold/validation/` — input checks (sequential signal_0, no nulls, signal_id present)
+- `manifold/config/` — config_manager.py + YAML defaults, domain configs, environment configs
+- `manifold/features/` — trajectory fingerprints and feature extraction
 - `manifold/run.py` — top-level sequencer (dependency-ordered)
 
 ### Layer enforcement
@@ -120,8 +122,9 @@ from pmtvs import svd_decomposition as svd
 from pmtvs import optimal_delay, optimal_dimension
 
 # Core engines: module imports
-from manifold.core.state_geometry import compute_state_geometry
 from manifold.core.geometry_dynamics import compute_geometry_dynamics
+from manifold.core.signal_geometry import compute_signal_geometry
+from manifold.core.state.eigendecomp import compute as compute_eigenvalues
 
 # Stages import from core, never from other stages
 ```

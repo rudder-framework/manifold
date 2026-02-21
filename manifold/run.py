@@ -2,7 +2,7 @@
 Manifold Sequencer
 ==================
 
-Orchestrates all 25 pipeline stages in dependency order.
+Orchestrates all 27 pipeline stages in dependency order.
 Pure orchestration — no computation here.
 
 All stages always run. No opt-in. No tiers.
@@ -11,7 +11,7 @@ Architecture: Manifold computes, Prime interprets.
     If it's linear algebra → Manifold.
     If it's SQL → Prime.
 
-Output: 28 parquet files in 6 directories (signal/, cohort/, cohort/cohort_dynamics/, system/, system/system_dynamics/, parameterization/).
+Output: 33 parquet files in 6 directories (signal/, cohort/, cohort/cohort_dynamics/, system/, system/system_dynamics/, parameterization/).
 
 Usage:
     python -m manifold domains/rossler
