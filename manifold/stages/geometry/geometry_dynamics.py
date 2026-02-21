@@ -31,6 +31,8 @@ def run(
     dt: Optional[float] = None,
     smooth_window: Optional[int] = None,
     verbose: bool = True,
+    signal_0_name: str = "",
+    signal_0_unit: str = "",
 ) -> pl.DataFrame:
     """
     Run geometry dynamics computation.
@@ -60,6 +62,8 @@ def run(
         verbose=verbose,
     )
 
-    write_output(result, data_path, 'geometry_dynamics', verbose=verbose)
+    from manifold.io.units import geometry_dynamics_units
+    meta = geometry_dynamics_units(signal_0_name, signal_0_unit)
+    write_output(result, data_path, 'geometry_dynamics', verbose=verbose, metadata=meta)
 
     return result

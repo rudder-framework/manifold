@@ -10,7 +10,7 @@ from pathlib import Path
 from manifold.io.reader import STAGE_DIRS
 
 
-def _safe_write(df: pl.DataFrame, path: Path, verbose: bool = True) -> bool:
+def _safe_write(df: pl.DataFrame, path: Path, verbose: bool = True, metadata: dict = None) -> bool:
     """
     Guard against writing invalid parquet files.
 
@@ -24,13 +24,15 @@ def _safe_write(df: pl.DataFrame, path: Path, verbose: bool = True) -> bool:
             print(f"  !! Skipped {path} (empty schema — 0 columns)")
         return False
 
+    kw = {"metadata": metadata} if metadata else {}
+
     if df.height == 0:
         # Schema-only parquet: columns defined, 0 rows.
         # DuckDB/Polars can read this; downstream SQL won't crash.
-        df.head(0).write_parquet(str(path))
+        df.head(0).write_parquet(str(path), **kw)
         return True
 
-    df.write_parquet(str(path))
+    df.write_parquet(str(path), **kw)
     return True
 
 
@@ -39,6 +41,7 @@ def write_output(
     data_path: str,
     name: str,
     verbose: bool = True,
+    metadata: dict = None,
 ) -> Path:
     """
     Write a stage output to the correct subdirectory.
@@ -48,6 +51,7 @@ def write_output(
         data_path: Root data directory (e.g., domains/rossler)
         name: Output name (e.g., 'signal_vector', 'cohort_geometry')
         verbose: Print path on write
+        metadata: Optional Parquet file-level key-value metadata
 
     Returns:
         Path to written file, or None if skipped
@@ -57,7 +61,7 @@ def write_output(
     path = output_path(data_path, name)
     path.parent.mkdir(parents=True, exist_ok=True)
 
-    if not _safe_write(df, path, verbose=verbose):
+    if not _safe_write(df, path, verbose=verbose, metadata=metadata):
         return None
 
     if verbose:
@@ -72,6 +76,7 @@ def write_sidecar(
     parent_name: str,
     sidecar_suffix: str,
     verbose: bool = True,
+    metadata: dict = None,
 ) -> Path:
     """
     Write a sidecar file alongside its parent.
@@ -86,7 +91,7 @@ def write_sidecar(
     parent_path = output_path(data_path, parent_name)
     sidecar_path = parent_path.parent / f"{sidecar_name}.parquet"
 
-    if not _safe_write(df, sidecar_path, verbose=verbose):
+    if not _safe_write(df, sidecar_path, verbose=verbose, metadata=metadata):
         return None
 
     if verbose:

@@ -44,6 +44,8 @@ def run(
     smooth_window: int = 11,
     include_components: bool = True,
     verbose: bool = True,
+    signal_0_name: str = "",
+    signal_0_unit: str = "",
 ) -> pl.DataFrame:
     """
     Compute state-space velocity field.
@@ -224,7 +226,9 @@ def run(
             'motion_dimensionality': pl.Float64,
         })
 
-    write_output(result, data_path, 'velocity_field', verbose=verbose)
+    from manifold.io.units import velocity_field_units
+    meta = velocity_field_units(signal_0_name, signal_0_unit)
+    write_output(result, data_path, 'velocity_field', verbose=verbose, metadata=meta)
 
     # Write velocity components sidecar (narrow schema)
     if component_rows:

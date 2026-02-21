@@ -87,7 +87,9 @@ def compute_cohort_geometry(
     data_path: str = ".",
     feature_groups: Optional[Dict[str, List[str]]] = None,
     max_eigenvalues: int = 5,
-    verbose: bool = True
+    verbose: bool = True,
+    signal_0_name: str = "",
+    signal_0_unit: str = "",
 ) -> pl.DataFrame:
     """
     Compute cohort geometry (eigenvalues per engine per index).
@@ -334,17 +336,22 @@ def compute_cohort_geometry(
 
     # Build DataFrame
     result = pl.DataFrame(results)
-    write_output(result, data_path, 'cohort_geometry', verbose=verbose)
+    from manifold.io.units import cohort_geometry_units
+    meta = cohort_geometry_units(signal_0_name, signal_0_unit)
+    write_output(result, data_path, 'cohort_geometry', verbose=verbose, metadata=meta)
+
+    # Base metadata (no column_units) for sidecars — loadings are dimensionless
+    sidecar_meta = {k: v for k, v in meta.items() if k != "manifold.column_units"}
 
     # Write signal loadings as first-class output (narrow schema)
     if loading_rows:
         loadings_df = pl.DataFrame(loading_rows)
-        write_output(loadings_df, data_path, 'cohort_signal_positions', verbose=verbose)
+        write_output(loadings_df, data_path, 'cohort_signal_positions', verbose=verbose, metadata=sidecar_meta)
 
     # Write feature loadings as first-class output (narrow schema)
     if feature_loading_rows:
         feat_loadings_df = pl.DataFrame(feature_loading_rows)
-        write_output(feat_loadings_df, data_path, 'cohort_feature_loadings', verbose=verbose)
+        write_output(feat_loadings_df, data_path, 'cohort_feature_loadings', verbose=verbose, metadata=sidecar_meta)
 
         # Summary per engine
         if len(result) > 0 and 'engine' in result.columns:
@@ -370,6 +377,8 @@ def run(
     cohort_vector_path: str,
     data_path: str = ".",
     verbose: bool = True,
+    signal_0_name: str = "",
+    signal_0_unit: str = "",
 ) -> pl.DataFrame:
     """Run cohort geometry computation (wrapper for compute_cohort_geometry)."""
     return compute_cohort_geometry(
@@ -377,6 +386,8 @@ def run(
         cohort_vector_path,
         data_path,
         verbose=verbose,
+        signal_0_name=signal_0_name,
+        signal_0_unit=signal_0_unit,
     )
 
 

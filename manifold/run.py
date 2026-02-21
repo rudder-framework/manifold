@@ -641,9 +641,11 @@ def _dispatch(
     system_mode: str = 'auto',
 ) -> None:
     """Dispatch a stage with the correct arguments and output path."""
+    from manifold.io.manifest import get_signal_0_metadata
 
     intervention = manifest.get('intervention')
     stage_name = module_path.split('.')[-1]  # e.g., 'ftle', 'breaks'
+    s0_meta = get_signal_0_metadata(manifest)
 
     # ── vector ──
 
@@ -680,6 +682,8 @@ def _dispatch(
             _out(output_dir, 'cohort_vector.parquet'),
             data_path=data_path_str,
             verbose=verbose,
+            signal_0_name=s0_meta['name'],
+            signal_0_unit=s0_meta['unit'],
         )
 
     elif stage_name == 'signal_geometry':
@@ -703,6 +707,8 @@ def _dispatch(
             _out(output_dir, 'cohort_geometry.parquet'),
             data_path=data_path_str,
             verbose=verbose,
+            signal_0_name=s0_meta['name'],
+            signal_0_unit=s0_meta['unit'],
         )
 
     # ── information ──
@@ -771,7 +777,13 @@ def _dispatch(
         )
 
     elif stage_name == 'velocity_field':
-        module.run(obs_path, data_path=data_path_str, verbose=verbose)
+        module.run(
+            obs_path,
+            data_path=data_path_str,
+            verbose=verbose,
+            signal_0_name=s0_meta['name'],
+            signal_0_unit=s0_meta['unit'],
+        )
 
     elif stage_name == 'ftle_rolling':
         module.run(obs_path, data_path=data_path_str, verbose=verbose)
