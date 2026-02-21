@@ -14,7 +14,7 @@ import numpy as np
 import pytest
 from pathlib import Path
 
-from trajectory_features import (
+from manifold.features.trajectory_features import (
     extract_single_axis_features,
     extract_cross_axis_features,
     build_feature_matrix,
@@ -35,17 +35,17 @@ def _make_synthetic_sigs(n_engines=10, n_windows=8, collapse_engines=None):
         collapsing = eng in collapse_engines
         for w in range(n_windows):
             t = w / (n_windows - 1)  # 0 to 1
-            
+
             if collapsing:
                 eff_dim = 2.8 - 0.5 * t  # 2.8 → 2.3
                 cond = 2.0 + 6.0 * t      # 2.0 → 8.0
             else:
                 eff_dim = 2.6 + 0.05 * np.sin(t * 3)  # stable oscillation
                 cond = 2.5 + 0.3 * np.sin(t * 2)
-            
+
             speed = 0.5 + 0.3 * np.random.randn()
             curv = 1.0 + 0.5 * t + 0.2 * np.random.randn()
-            
+
             rows.append({
                 'cohort': eng,
                 'signal_0_end': float(w * 24 + 24),
@@ -64,7 +64,7 @@ def _make_synthetic_sigs(n_engines=10, n_windows=8, collapse_engines=None):
                 'torsion': float('nan'),
                 'arc_length': float(w) * 1.2,
             })
-    
+
     return pl.DataFrame(rows)
 
 
@@ -99,7 +99,7 @@ class TestSingleAxisFeatures:
         feats = extract_single_axis_features(sigs, match, 'test')
         assert len(feats) == 10
         assert 'cohort' in feats.columns
-        assert f'test_n_windows' in feats.columns
+        assert 'test_n_windows' in feats.columns
 
     def test_all_metrics_present(self):
         sigs = _make_synthetic_sigs()
@@ -114,12 +114,12 @@ class TestSingleAxisFeatures:
         sigs = _make_synthetic_sigs(collapse_engines=collapse)
         match = _make_synthetic_match(collapse_engines=collapse)
         feats = extract_single_axis_features(sigs, match, 'ax')
-        
+
         for eng in collapse:
             row = feats.filter(pl.col('cohort') == eng)
             delta = row['ax_effective_dim_delta'][0]
             assert delta < -0.2, f"{eng} should collapse: delta={delta}"
-        
+
         stable = feats.filter(~pl.col('cohort').is_in(collapse))
         for row in stable.iter_rows(named=True):
             assert abs(row['ax_effective_dim_delta']) < 0.2, \
@@ -130,7 +130,7 @@ class TestSingleAxisFeatures:
         sigs = _make_synthetic_sigs(n_engines=3, collapse_engines=collapse)
         match = _make_synthetic_match(n_engines=3, collapse_engines=collapse)
         feats = extract_single_axis_features(sigs, match, 'ax')
-        
+
         row = feats.filter(pl.col('cohort') == 'engine_1')
         pw = row['ax_eff_dim_pos_weighted'][0]
         mean = row['ax_effective_dim_mean'][0]
@@ -142,7 +142,7 @@ class TestSingleAxisFeatures:
         sigs = _make_synthetic_sigs(n_engines=3, collapse_engines=['engine_1'])
         match = _make_synthetic_match(n_engines=3, collapse_engines=['engine_1'])
         feats = extract_single_axis_features(sigs, match, 'ax')
-        
+
         row = feats.filter(pl.col('cohort') == 'engine_1')
         q1 = row['ax_effective_dim_q1'][0]
         q3 = row['ax_effective_dim_q3'][0]
@@ -172,13 +172,13 @@ class TestCrossAxisFeatures:
             _make_synthetic_match(n_engines=5, collapse_engines=['engine_1']),
             'axis_b',
         )
-        
+
         cross = extract_cross_axis_features({'axis_a': axis_a, 'axis_b': axis_b})
-        
+
         eng1 = cross.filter(pl.col('cohort') == 'engine_1')
         assert eng1['cross_n_axes_collapsing'][0] == 2
         assert eng1['cross_collapse_on_all'][0] == 1
-        
+
         eng2 = cross.filter(pl.col('cohort') == 'engine_2')
         assert eng2['cross_n_axes_collapsing'][0] == 1
         assert eng2['cross_collapse_on_all'][0] == 0
@@ -190,7 +190,7 @@ class TestCrossAxisFeatures:
             'axis_a',
         )
         cross = extract_cross_axis_features({'axis_a': axis_a})
-        
+
         for row in cross.iter_rows(named=True):
             assert row['cross_n_axes_collapsing'] == 0
 
@@ -201,17 +201,17 @@ class TestBuildFeatureMatrix:
         collapse = ['engine_1']
         sigs = _make_synthetic_sigs(collapse_engines=collapse)
         match = _make_synthetic_match(collapse_engines=collapse)
-        
+
         sigs_path = tmp_path / 'sigs.parquet'
         match_path = tmp_path / 'match.parquet'
         sigs.write_parquet(str(sigs_path))
         match.write_parquet(str(match_path))
-        
+
         features = build_feature_matrix(
             {'test_axis': {'sigs': str(sigs_path), 'match': str(match_path)}},
             verbose=False,
         )
-        
+
         assert len(features) == 10
         assert 'cohort' in features.columns
         assert 'cross_n_axes_collapsing' in features.columns
@@ -223,16 +223,12 @@ class TestBuildFeatureMatrix:
         match_path = tmp_path / 'match.parquet'
         sigs.write_parquet(str(sigs_path))
         match.write_parquet(str(match_path))
-        
+
         features = build_feature_matrix(
             {'test': {'sigs': str(sigs_path), 'match': str(match_path)}},
             drop_zero_variance=True,
             verbose=False,
         )
-        
+
         # trajectory_position should be dropped (always 1.0)
         assert 'test_trajectory_position' not in features.columns
-
-
-if __name__ == '__main__':
-    pytest.main([__file__, '-v'])

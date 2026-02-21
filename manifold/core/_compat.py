@@ -390,3 +390,12 @@ def spectral_flatness(signal: np.ndarray, fs: float = 1.0) -> float:
     if arithmetic_mean == 0:
         return np.nan
     return float(geometric_mean / arithmetic_mean)
+
+
+# ---------------------------------------------------------------------------
+# kurtosis  (pmtvs_statistics — added after 0.1.4)
+# ---------------------------------------------------------------------------
+def kurtosis(signal: np.ndarray, fisher: bool = True) -> float:
+    """Compute excess kurtosis (Fisher). Fallback for pmtvs < 0.3."""
+    from scipy.stats import kurtosis as scipy_kurtosis
+    return float(scipy_kurtosis(signal, fisher=fisher))

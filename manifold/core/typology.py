@@ -29,6 +29,10 @@ from manifold.core._pmtvs import (
     spectral_flatness as pmtvs_spectral_flatness,
     kurtosis as pmtvs_kurtosis,
 )
+from manifold.core._compat import (
+    spectral_flatness as _compat_spectral_flatness,
+    kurtosis as _compat_kurtosis,
+)
 
 # CV threshold for "varies" — default, Prime can override
 CV_THRESHOLD = 0.10
@@ -66,13 +70,15 @@ def _lyapunov_proxy(x: np.ndarray) -> float:
 def _spectral_flatness(x: np.ndarray) -> float:
     if len(x) < 4:
         return np.nan
-    return float(pmtvs_spectral_flatness(x))
+    fn = pmtvs_spectral_flatness if pmtvs_spectral_flatness is not None else _compat_spectral_flatness
+    return float(fn(x))
 
 
 def _kurtosis(x: np.ndarray) -> float:
     if len(x) < 4:
         return np.nan
-    return float(pmtvs_kurtosis(x, fisher=True))
+    fn = pmtvs_kurtosis if pmtvs_kurtosis is not None else _compat_kurtosis
+    return float(fn(x, fisher=True))
 
 
 def _cv(x: np.ndarray) -> float:
